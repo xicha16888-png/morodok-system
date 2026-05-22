@@ -1,0 +1,12 @@
+{
+  "name": "morodok-system",
+  "version": "2.0.0",
+  "description": "MORODOK 手机分期管理系统 — 云端版",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18.0.0" },
+  "dependencies": {
+    "express": "^4.18.2",
+    "@supabase/supabase-js": "^2.39.0"
+  }
+}

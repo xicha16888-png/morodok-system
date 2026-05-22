@@ -1,0 +1,97 @@
+╔══════════════════════════════════════════════════════════════╗
+║         MORODOK 云端部署完整教程（约20分钟）                   ║
+╚══════════════════════════════════════════════════════════════╝
+
+完成后效果：
+✅ 任何地方用手机/电脑都能访问
+✅ 数据永久保存在云端，电脑坏了也不丢
+✅ 完全免费
+
+═══════════════════════════════════════
+第一步：注册 Supabase（云数据库）约5分钟
+═══════════════════════════════════════
+
+1. 打开浏览器，访问：https://supabase.com
+2. 点击右上角 "Start your project" 按钮
+3. 用 GitHub 或 Google 账号注册（推荐用 Google）
+4. 注册完成后，点击 "New project" 创建项目：
+   - Organization：默认就行
+   - Project name：输入 morodok
+   - Database Password：设一个密码（记下来）
+   - Region：选 Southeast Asia（新加坡，最近）
+5. 点击 "Create new project"，等待约1分钟
+
+6. 项目创建好后，点击左侧菜单 "SQL Editor"
+7. 在右侧空白处，把下面这段代码完整复制粘贴进去：
+
+   CREATE TABLE appdata (
+     key TEXT PRIMARY KEY,
+     value JSONB NOT NULL,
+     updated_at TIMESTAMP DEFAULT NOW()
+   );
+
+8. 点击右上角绿色 "Run" 按钮，看到 "Success" 即可
+
+9. 点击左侧菜单 "Project Settings" → "API"
+10. 复制以下两个值（保存到记事本）：
+    - Project URL（形如 https://xxxxx.supabase.co）
+    - anon / public 那一行的 Key
+
+═══════════════════════════════════════
+第二步：注册 GitHub（代码仓库）约5分钟
+═══════════════════════════════════════
+
+1. 访问：https://github.com
+2. 点击 "Sign up" 注册账号
+3. 注册完成后，点击右上角 "+" → "New repository"
+4. Repository name 填：morodok-system
+5. 选 Public，点击 "Create repository"
+6. 进入仓库后，点击 "uploading an existing file"
+7. 把解压后的所有文件（server.js、package.json、public文件夹）
+   全部拖进去上传
+8. 点击 "Commit changes" 保存
+
+═══════════════════════════════════════
+第三步：注册 Render（云服务器）约5分钟
+═══════════════════════════════════════
+
+1. 访问：https://render.com
+2. 点击 "Get Started" → 用 GitHub 账号登录
+3. 点击 "New +" → "Web Service"
+4. 选择你刚才创建的 morodok-system 仓库
+5. 填写配置：
+   - Name：morodok-system
+   - Runtime：Node
+   - Build Command：npm install
+   - Start Command：npm start
+6. 往下滚动找到 "Environment Variables"，添加两个变量：
+   - Key: SUPABASE_URL    Value: 第一步复制的 Project URL
+   - Key: SUPABASE_KEY    Value: 第一步复制的 anon Key
+7. 点击 "Create Web Service"
+8. 等待约3分钟部署完成
+
+═══════════════════════════════════════
+完成！访问你的系统
+═══════════════════════════════════════
+
+部署完成后，Render 会给你一个网址，形如：
+  https://morodok-system.onrender.com
+
+这个网址全球任何地方都能访问！
+把它收藏起来，发给同事，用手机浏览器也能直接打开。
+
+═══════════════════════════════════════
+注意事项
+═══════════════════════════════════════
+
+免费版限制：
+- Render 免费版：不活跃15分钟后会"休眠"，
+  第一次打开需要等约30秒启动，之后正常使用
+- Supabase 免费版：500MB存储，可存约100万条记录
+- 如需不休眠，Render 付费版约 $7/月
+
+数据安全：
+- 数据存在 Supabase 云端，Render 只是运行程序
+- 即使 Render 挂了，数据在 Supabase 里不会丢失
+
+遇到问题？把错误信息发给 Claude AI 帮你解决！
