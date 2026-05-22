@@ -1,0 +1,1546 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MORODOK · 手机销售分期管理系统</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#0f2d5c;--blue:#1565c0;--sky:#1e88e5;--light:#e3f2fd;
+  --green:#2e7d32;--red:#c62828;--amber:#f57c00;--gray:#546e7a;--bg:#f0f4f8;
+  --white:#fff;--border:#cfd8dc;--text:#1a2a3a;--muted:#78909c;
+}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Noto Sans SC',sans-serif;background:var(--bg);color:var(--text)}
+
+.header{background:linear-gradient(135deg,#0a1f42,var(--navy) 40%,var(--blue) 80%,var(--sky));
+  color:#fff;padding:0 20px;height:54px;display:flex;align-items:center;
+  justify-content:space-between;box-shadow:0 2px 16px rgba(0,0,0,.35);
+  position:fixed;top:0;left:0;right:0;z-index:200}
+.header-title{font-size:18px;font-weight:700;display:flex;align-items:center;gap:10px}
+.header-right{display:flex;align-items:center;gap:12px;font-size:12px}
+.chip{background:rgba(255,255,255,.15);padding:4px 12px;border-radius:20px;font-size:11px;border:1px solid rgba(255,255,255,.2)}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:#4caf50;display:inline-block;margin-right:4px}
+.sync-dot.syncing{background:var(--amber);animation:pulse 1s infinite}
+.sync-dot.error{background:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+.layout{display:flex;height:calc(100vh - 54px);margin-top:54px}
+
+.sidebar{width:205px;background:linear-gradient(180deg,#0a1f42,var(--navy));
+  color:#fff;display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0}
+.sidebar::-webkit-scrollbar{width:3px}
+.sidebar::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15)}
+.sb-logo{padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.08)}
+.sb-logo-sub{font-size:10px;color:rgba(255,255,255,.35);letter-spacing:2px;text-transform:uppercase}
+.sb-logo-name{font-size:15px;font-weight:700}
+.sb-label{font-size:9px;color:rgba(255,255,255,.3);padding:10px 16px 3px;letter-spacing:2px;text-transform:uppercase}
+.nav-item{display:flex;align-items:center;gap:9px;padding:9px 16px;cursor:pointer;
+  font-size:12.5px;transition:all .18s;border-left:3px solid transparent;color:rgba(255,255,255,.65)}
+.nav-item:hover{background:rgba(255,255,255,.07);color:#fff;border-left-color:rgba(30,136,229,.5)}
+.nav-item.active{background:rgba(30,136,229,.25);border-left-color:#64b5f6;color:#fff;font-weight:500}
+.nav-icon{font-size:14px;width:16px;text-align:center;flex-shrink:0}
+.nav-divider{height:1px;background:rgba(255,255,255,.07);margin:4px 12px}
+.nav-badge{margin-left:auto;background:var(--red);color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;font-weight:700}
+
+.main{flex:1;overflow-y:auto;padding:20px 22px}
+.main::-webkit-scrollbar{width:5px}
+.main::-webkit-scrollbar-thumb{background:#cfd8dc;border-radius:4px}
+
+.page-header{margin-bottom:18px}
+.page-title{font-size:20px;font-weight:700;color:var(--navy);display:flex;align-items:center;gap:8px;margin-bottom:3px}
+.page-sub{font-size:12px;color:var(--muted)}
+
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.stat-card{background:#fff;border-radius:10px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.07);position:relative;overflow:hidden;transition:transform .2s}
+.stat-card:hover{transform:translateY(-2px)}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:10px 10px 0 0}
+.stat-card.blue::before{background:linear-gradient(90deg,var(--sky),#42a5f5)}
+.stat-card.green::before{background:linear-gradient(90deg,var(--green),#43a047)}
+.stat-card.amber::before{background:linear-gradient(90deg,var(--amber),#ffa726)}
+.stat-card.red::before{background:linear-gradient(90deg,var(--red),#ef5350)}
+.stat-card.purple::before{background:linear-gradient(90deg,#6a1b9a,#ab47bc)}
+.stat-icon{position:absolute;right:14px;top:14px;font-size:28px;opacity:.12}
+.stat-label{font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:500}
+.stat-value{font-size:26px;font-weight:700;line-height:1}
+.stat-card.blue .stat-value{color:var(--sky)}.stat-card.green .stat-value{color:var(--green)}
+.stat-card.amber .stat-value{color:var(--amber)}.stat-card.red .stat-value{color:var(--red)}
+.stat-card.purple .stat-value{color:#7b1fa2}
+.stat-sub{font-size:11px;color:var(--muted);margin-top:6px}
+
+.card{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.07);padding:18px 20px;margin-bottom:14px}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.card-title{font-size:14px;font-weight:600;color:var(--navy)}
+
+.table-wrap{overflow-x:auto;border-radius:6px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{background:var(--navy);color:#fff;padding:9px 12px;text-align:left;font-weight:500;white-space:nowrap;font-size:12px}
+td{padding:9px 12px;border-bottom:1px solid #eef2f7;color:var(--text);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#f8faff}
+.badge{display:inline-flex;align-items:center;padding:2px 9px;border-radius:12px;font-size:11px;font-weight:500;white-space:nowrap}
+.badge-green{background:#e8f5e9;color:#2e7d32}.badge-red{background:#ffebee;color:#c62828}
+.badge-amber{background:#fff3e0;color:#e65100}.badge-blue{background:#e3f2fd;color:#1565c0}
+.badge-gray{background:#eceff1;color:#546e7a}.badge-purple{background:#f3e5f5;color:#6a1b9a}
+.pt3{background:#fff3e0;color:#e65100;display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.pt6{background:#e8f5e9;color:#2e7d32;display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.pt9{background:#e3f2fd;color:#1565c0;display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.pt12{background:#f3e5f5;color:#6a1b9a;display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+
+.form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.form-group{display:flex;flex-direction:column;gap:5px}
+.form-group label{font-size:11px;color:var(--gray);font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.form-group input,.form-group select,.form-group textarea{border:1.5px solid var(--border);border-radius:7px;padding:9px 11px;font-size:13px;font-family:inherit;background:#fff;color:var(--text);transition:all .2s;outline:none}
+.form-group input:focus,.form-group select:focus{border-color:var(--sky);box-shadow:0 0 0 3px rgba(30,136,229,.1)}
+.form-group input[readonly]{background:#f8faff;color:var(--muted)}
+.form-group.span2{grid-column:span 2}.form-group.span3{grid-column:span 3}
+
+.btn{padding:9px 18px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:none;transition:all .2s;font-family:inherit;display:inline-flex;align-items:center;gap:6px}
+.btn-primary{background:var(--sky);color:#fff;box-shadow:0 2px 8px rgba(30,136,229,.3)}
+.btn-primary:hover{background:var(--blue);transform:translateY(-1px)}
+.btn-success{background:var(--green);color:#fff}
+.btn-success:hover{background:#1b5e20}
+.btn-danger{background:var(--red);color:#fff;padding:5px 11px;font-size:11px;border-radius:5px}
+.btn-sm{padding:5px 12px;font-size:12px}
+.btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--gray)}
+.btn-outline:hover{border-color:var(--sky);color:var(--sky);background:#f0f7ff}
+.btn-row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+
+.alert{padding:11px 15px;border-radius:8px;font-size:13px;margin-bottom:12px;display:flex;align-items:center;gap:8px;border-left:3px solid}
+.alert-red{background:#ffebee;color:#b71c1c;border-color:var(--red)}
+.alert-amber{background:#fff8e1;color:#e65100;border-color:var(--amber)}
+.alert-green{background:#e8f5e9;color:#2e7d32;border-color:var(--green)}
+.alert-blue{background:#e3f2fd;color:#1565c0;border-color:var(--sky)}
+
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(10,31,66,.6);z-index:500;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+.modal-bg.open{display:flex}
+.modal{background:#fff;border-radius:14px;padding:26px;min-width:400px;max-width:90vw;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal-title{font-size:16px;font-weight:700;color:var(--navy);margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.modal-close{cursor:pointer;color:var(--muted);font-size:20px;background:none;border:none;padding:0}
+
+.home-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:16px}
+.home-card{background:#fff;border-radius:12px;padding:26px 14px;text-align:center;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.08);transition:all .25s;border:2px solid transparent}
+.home-card:hover{transform:translateY(-5px);box-shadow:0 10px 28px rgba(30,136,229,.2);border-color:var(--sky)}
+.home-card .icon{font-size:36px;margin-bottom:10px}
+.home-card .label{font-size:13px;font-weight:600;color:var(--navy)}
+.home-card .sublabel{font-size:11px;color:var(--muted);margin-top:3px}
+.home-bottom-row{display:flex;gap:10px;flex-wrap:wrap;padding:12px 0}
+.home-bottom-btn{padding:9px 18px;border-radius:8px;background:#fff;color:var(--navy);font-size:13px;font-weight:500;cursor:pointer;border:1.5px solid var(--border);transition:all .2s;font-family:inherit}
+.home-bottom-btn:hover{border-color:var(--sky);color:var(--sky);background:#f0f7ff}
+
+.reminder-item{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-radius:8px;margin-bottom:8px;font-size:13px;gap:12px}
+.reminder-item.overdue{background:#fff5f5;border-left:3px solid var(--red)}
+.reminder-item.warn{background:#fffbf0;border-left:3px solid var(--amber)}
+.reminder-item.info{background:#f0f7ff;border-left:3px solid var(--sky)}
+
+.search-row{display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap}
+.search-row input,.search-row select{border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;outline:none;font-family:inherit;background:#fff}
+.search-row input{flex:1;min-width:180px}
+.search-row input:focus,.search-row select:focus{border-color:var(--sky)}
+
+.empty-state{text-align:center;padding:50px 20px;color:var(--muted)}
+.empty-state .ei{font-size:48px;margin-bottom:12px;opacity:.5}
+.fw700{font-weight:700}.text-green{color:var(--green);font-weight:600}.text-red{color:var(--red);font-weight:600}
+.text-amber{color:var(--amber);font-weight:600}.text-blue{color:var(--sky);font-weight:600}.text-muted{color:var(--muted)}
+
+/* Loading overlay */
+.loading-overlay{display:none;position:fixed;inset:0;background:rgba(10,31,66,.7);z-index:999;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+.loading-overlay.show{display:flex}
+.loading-spinner{width:48px;height:48px;border:4px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{color:#fff;font-size:15px}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-title">📱 手机销售分期管理系统</div>
+  <div class="header-right">
+    <span id="syncStatus"><span class="sync-dot"></span>已同步</span>
+    <span class="chip" id="companyName">MORODOK</span>
+    <span class="chip" id="dateDisplay"></span>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-sub">管理系统</div><div class="sb-logo-name">MORODOK</div></div>
+    <div style="padding:4px 0">
+      <div class="sb-label">主菜单</div>
+      <div class="nav-item active" data-page="home"><span class="nav-icon">🏠</span>系统首页</div>
+    </div>
+    <div class="nav-divider"></div>
+    <div style="padding:4px 0">
+      <div class="sb-label">销售管理</div>
+      <div class="nav-item" data-page="sale-add"><span class="nav-icon">➕</span>销售登记</div>
+      <div class="nav-item" data-page="sale-list"><span class="nav-icon">🔍</span>销售查询</div>
+      <div class="nav-item" data-page="payment-add"><span class="nav-icon">💳</span>还款登记</div>
+      <div class="nav-item" data-page="early-payment"><span class="nav-icon">⚡</span>提前还款</div>
+    </div>
+    <div class="nav-divider"></div>
+    <div style="padding:4px 0">
+      <div class="sb-label">统计报表</div>
+      <div class="nav-item" data-page="stats-collection"><span class="nav-icon">📊</span>收款统计</div>
+      <div class="nav-item" data-page="stats-profit"><span class="nav-icon">💰</span>利润统计</div>
+      <div class="nav-item" data-page="finance-report"><span class="nav-icon">📈</span>月度财务报表</div>
+      <div class="nav-item" data-page="expenses"><span class="nav-icon">🧾</span>日常开支</div>
+    </div>
+    <div class="nav-divider"></div>
+    <div style="padding:4px 0">
+      <div class="sb-label">提醒 / 查询</div>
+      <div class="nav-item" data-page="reminder-tomorrow"><span class="nav-icon">⏰</span>明日还款提醒</div>
+      <div class="nav-item" data-page="reminder-overdue"><span class="nav-icon">🚨</span>逾期未还提醒<span class="nav-badge" id="overdueBadge" style="display:none">0</span></div>
+      <div class="nav-item" data-page="payment-query"><span class="nav-icon">📋</span>需还款查询</div>
+    </div>
+    <div class="nav-divider"></div>
+    <div style="padding:4px 0">
+      <div class="sb-label">基础设置</div>
+      <div class="nav-item" data-page="phones"><span class="nav-icon">📱</span>手机型号</div>
+      <div class="nav-item" data-page="suppliers"><span class="nav-icon">🏢</span>供商信息</div>
+      <div class="nav-item" data-page="purchase-add"><span class="nav-icon">🛒</span>采购登记</div>
+      <div class="nav-item" data-page="inventory"><span class="nav-icon">📦</span>库存查看</div>
+      <div class="nav-item" data-page="company"><span class="nav-icon">⚙️</span>单位信息</div>
+    </div>
+    <div style="height:16px"></div>
+  </div>
+  <div class="main" id="mainContent"></div>
+</div>
+
+<div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-title"><span id="modalTitle"></span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text" id="loadingText">正在加载...</div>
+</div>
+
+<script>
+'use strict';
+// ══════════════════════════════════════════════════════
+// API LAYER — 所有数据存服务器，多人实时共享
+// ══════════════════════════════════════════════════════
+let _db = null;
+let _syncTimer = null;
+let _dirty = false;
+
+async function loadDB() {
+  const res = await fetch('/api/data');
+  _db = await res.json();
+  const co = _db.company;
+  if (co?.name) document.getElementById('companyName').textContent = co.name;
+}
+
+async function saveDB() {
+  setSyncStatus('syncing');
+  try {
+    await fetch('/api/data', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(_db) });
+    setSyncStatus('ok');
+    _dirty = false;
+  } catch(e) {
+    setSyncStatus('error');
+  }
+}
+
+function markDirty() {
+  _dirty = true;
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(() => { if (_dirty) saveDB(); }, 800);
+}
+
+function setSyncStatus(state) {
+  const el = document.getElementById('syncStatus');
+  const dot = el.querySelector('.sync-dot');
+  dot.className = 'sync-dot' + (state === 'syncing' ? ' syncing' : state === 'error' ? ' error' : '');
+  el.lastChild.textContent = state === 'syncing' ? '同步中...' : state === 'error' ? '同步失败!' : '已同步';
+}
+
+function DB_get(k) { return _db ? _db[k] : null; }
+function DB_set(k, v) { if (_db) { _db[k] = v; markDirty(); } }
+
+function showLoading(text='正在加载...') { document.getElementById('loadingText').textContent=text; document.getElementById('loadingOverlay').classList.add('show'); }
+function hideLoading() { document.getElementById('loadingOverlay').classList.remove('show'); }
+
+// ══════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════
+function newId() { const id = DB_get('nextId') || 1001; DB_set('nextId', id + 1); return id; }
+function today() { return new Date().toISOString().slice(0, 10); }
+function addDays(d, n) { const dt = new Date(d); dt.setDate(dt.getDate() + n); return dt.toISOString().slice(0, 10); }
+function fmt(v) { return '$' + (+(v || 0)).toFixed(2); }
+function esc(s) { return String(s || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+
+function showMsg(id, text, type) {
+  const el = document.getElementById(id); if (!el) return;
+  const cls = {green:'alert-green',red:'alert-red',amber:'alert-amber',blue:'alert-blue'}[type] || 'alert-green';
+  el.innerHTML = `<div class="alert ${cls}" style="margin-top:12px">${text}</div>`;
+  setTimeout(() => { if (el) el.innerHTML = ''; }, 5000);
+}
+function showModal(title, body) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = body;
+  document.getElementById('modalBg').classList.add('open');
+}
+window.closeModal = () => document.getElementById('modalBg').classList.remove('open');
+
+// ══════════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════════
+const PAGES = {
+  'home': renderHome, 'sale-add': renderSaleAdd, 'sale-list': renderSaleList,
+  'payment-add': renderPaymentAdd, 'early-payment': renderEarlyPayment,
+  'stats-collection': renderStatsCollection, 'finance-report': renderFinanceReport, 'expenses': renderExpenses,
+  'stats-profit': renderStatsProfit, 'reminder-tomorrow': renderReminderTomorrow,
+  'reminder-overdue': renderReminderOverdue, 'payment-query': renderPaymentQuery,
+  'phones': renderPhones, 'suppliers': renderSuppliers,
+  'purchase-add': renderPurchaseAdd, 'inventory': renderInventory, 'company': renderCompany
+};
+
+function nav(page) {
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
+  const fn = PAGES[page];
+  const mc = document.getElementById('mainContent');
+  if (fn && mc) { mc.innerHTML = fn(); mc.scrollTop = 0; initPage(page); }
+  updateBadges();
+}
+document.querySelectorAll('.nav-item[data-page]').forEach(el => el.addEventListener('click', () => nav(el.dataset.page)));
+
+function initPage(page) {
+  if (page === 'sale-add') {
+    const nd = new Date(); nd.setMonth(nd.getMonth() + 1);
+    const fd = document.getElementById('sFirstDue'); if (fd) fd.value = nd.toISOString().slice(0, 10);
+    calcInstall();
+  }
+  if (page === 'payment-add') loadContractPeriods();
+}
+
+function updateBadges() {
+  const td = today();
+  const cnt = (DB_get('sales') || []).reduce((c, s) => c + s.schedule.filter(p => !p.paid && p.dueDate < td).length, 0);
+  const b = document.getElementById('overdueBadge');
+  if (b) { b.style.display = cnt > 0 ? '' : 'none'; b.textContent = cnt; }
+}
+
+// Auto-refresh every 30s so all users see latest data
+setInterval(async () => {
+  if (!_dirty) {
+    await loadDB();
+    const page = document.querySelector('.nav-item.active')?.dataset?.page;
+    if (page && PAGES[page]) { document.getElementById('mainContent').innerHTML = PAGES[page](); initPage(page); updateBadges(); }
+  }
+}, 30000);
+
+// ══════════════════════════════════════════════════════
+// HOME
+// ══════════════════════════════════════════════════════
+function renderHome() {
+  const sales = DB_get('sales') || [];
+  const pays = DB_get('payments') || [];
+  const td = today();
+  const overdue = [];
+  sales.forEach(s => s.schedule.forEach(p => { if (!p.paid && p.dueDate < td) overdue.push({s, p}); }));
+  const tPaid = pays.reduce((a, p) => a + (+p.principal) + (+p.interest), 0);
+  const pending = sales.reduce((a, s) => { const paid = s.schedule.filter(p => p.paid).reduce((x, p) => x + (+p.paidPrincipal || 0), 0); return a + (+s.installmentAmount - paid); }, 0);
+  return `
+  <div class="page-header"><div class="page-title">🏠 系统首页</div><div class="page-sub">今日 ${td} · 数据实时共享</div></div>
+  <div class="stats-grid">
+    <div class="stat-card blue"><span class="stat-icon">📋</span><div class="stat-label">合同总数</div><div class="stat-value">${sales.length}</div><div class="stat-sub">${sales.filter(s=>s.status==='进行中').length} 笔进行中 · ${sales.filter(s=>s.status==='提前结清').length} 笔提前结清</div></div>
+    <div class="stat-card green"><span class="stat-icon">💵</span><div class="stat-label">累计收款</div><div class="stat-value">${fmt(tPaid)}</div><div class="stat-sub">本金+利息合计</div></div>
+    <div class="stat-card amber"><span class="stat-icon">⏳</span><div class="stat-label">待回收本金</div><div class="stat-value">${fmt(pending)}</div></div>
+    <div class="stat-card red"><span class="stat-icon">🚨</span><div class="stat-label">逾期账单</div><div class="stat-value">${overdue.length}</div><div class="stat-sub">${overdue.length > 0 ? '需立即跟进' : '暂无逾期 👍'}</div></div>
+  </div>
+  ${overdue.length > 0 ? `<div class="alert alert-red">⚠️ 当前有 ${overdue.length} 笔逾期账单，合计 ${fmt(overdue.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}，请及时处理！<button class="btn btn-danger btn-sm" style="margin-left:12px" onclick="nav('reminder-overdue')">立即查看</button></div>` : ''}
+  <div class="home-grid">
+    ${[['➕','销售登记','新建分期合同','sale-add'],['💳','还款登记','录入收款记录','payment-add'],
+       ['📊','收款统计','月度汇总','stats-collection'],['💰','利润统计','盈利分析','stats-profit'],
+       ['📈','月度财务','放款/回款/利润','finance-report'],['⚡','提前还款','协商结清','early-payment'],
+       ['🔍','销售查询','合同检索','sale-list'],['⏰','明日提醒','明日到期','reminder-tomorrow'],
+       ['🚨','逾期提醒','催收列表','reminder-overdue'],['📋','还款查询','30天计划','payment-query']
+    ].map(([i,l,s,p]) => `<div class="home-card" onclick="nav('${p}')"><div class="icon">${i}</div><div class="label">${l}</div><div class="sublabel">${s}</div></div>`).join('')}
+  </div>
+  <div class="card"><div class="card-header"><div class="card-title">快速入口</div></div>
+  <div class="home-bottom-row">
+    ${[['⚙️ 单位信息','company'],['🏢 供商信息','suppliers'],['📱 手机型号','phones'],['🛒 采购登记','purchase-add'],['📦 库存查看','inventory'],['🧾 日常开支','expenses']]
+    .map(([l,p]) => `<button class="home-bottom-btn" onclick="nav('${p}')">${l}</button>`).join('')}
+  </div></div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// SALE ADD
+// ══════════════════════════════════════════════════════
+function renderSaleAdd() {
+  const phones = DB_get('phones') || [];
+  const opts = phones.map(p => `<option value="${p.id}">${esc(p.brand)} ${esc(p.model)} — 库存${p.stock}台 (建议${fmt(p.price)})</option>`).join('');
+  return `
+  <div class="page-header"><div class="page-title">➕ 销售登记</div><div class="page-sub">新建手机分期合同，自动生成还款计划</div></div>
+  <div class="card">
+    <div class="card-title" style="margin-bottom:16px">📝 合同信息</div>
+    <div class="form-grid">
+      <div class="form-group"><label>合同日期</label><input type="date" id="sDate" value="${today()}"></div>
+      <div class="form-group"><label>客户姓名 *</label><input id="sCust" placeholder="输入客户全名"></div>
+      <div class="form-group"><label>客户电话</label><input id="sCustPhone" placeholder="联系电话"></div>
+      <div class="form-group span2"><label>手机型号 *</label><select id="sModel" onchange="calcInstall()">${opts || '<option>请先添加手机型号</option>'}</select></div>
+      <div class="form-group"><label>销售价格 ($) *</label><input type="number" id="sSalePrice" placeholder="0.00" step="0.01" oninput="calcInstall()"></div>
+      <div class="form-group"><label>首付金额 ($)</label><input type="number" id="sDeposit" value="0" step="0.01" oninput="calcInstall()"></div>
+      <div class="form-group"><label>分期期数</label>
+        <select id="sPeriods" onchange="calcInstall()">
+          <option value="3">3期</option><option value="6" selected>6期</option>
+          <option value="9">9期</option><option value="12">12期</option>
+          <option value="18">18期</option><option value="24">24期</option>
+        </select>
+      </div>
+      <div class="form-group"><label>月利率 (%)</label><input type="number" id="sRate" value="6" step="0.1" oninput="calcInstall()"></div>
+      <div class="form-group"><label>首次还款日</label><input type="date" id="sFirstDue"></div>
+    </div>
+    <div style="background:#f0f7ff;border-radius:8px;padding:14px;margin-top:14px">
+      <div style="font-size:12px;color:var(--sky);font-weight:600;margin-bottom:10px">📊 自动计算结果</div>
+      <div class="form-grid">
+        <div class="form-group"><label>分期本金 ($)</label><input id="sInstAmt" readonly></div>
+        <div class="form-group"><label>每期还款 ($)</label><input id="sMonthly" readonly></div>
+        <div class="form-group"><label>利息总额 ($)</label><input id="sTotalInt" readonly></div>
+      </div>
+    </div>
+    <div class="form-grid" style="margin-top:14px">
+      <div class="form-group span3"><label>备注</label><input id="sNote" placeholder="可选"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="submitSale()">✅ 保存合同</button>
+      <button class="btn btn-outline" onclick="nav('sale-list')">📋 查看合同列表</button>
+    </div>
+    <div id="saleMsg"></div>
+  </div>`;
+}
+
+window.calcInstall = function() {
+  const price = +(document.getElementById('sSalePrice')?.value || 0);
+  const dep = +(document.getElementById('sDeposit')?.value || 0);
+  const periods = +(document.getElementById('sPeriods')?.value || 6);
+  const rate = +(document.getElementById('sRate')?.value || 6) / 100;
+  const principal = Math.max(0, price - dep);
+  const totalInt = principal * rate * periods;
+  const monthly = (principal + totalInt) / periods;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v.toFixed(2); };
+  set('sInstAmt', principal); set('sMonthly', monthly); set('sTotalInt', totalInt);
+};
+
+window.submitSale = function() {
+  const cust = document.getElementById('sCust')?.value?.trim();
+  const custPhone = document.getElementById('sCustPhone')?.value?.trim() || '';
+  const price = +(document.getElementById('sSalePrice')?.value || 0);
+  const dep = +(document.getElementById('sDeposit')?.value || 0);
+  const periods = +(document.getElementById('sPeriods')?.value || 6);
+  const rate = +(document.getElementById('sRate')?.value || 6) / 100;
+  const firstDue = document.getElementById('sFirstDue')?.value || '';
+  const note = document.getElementById('sNote')?.value || '';
+  const modelId = +(document.getElementById('sModel')?.value || 0);
+  const sDate = document.getElementById('sDate')?.value || today();
+  if (!cust) { showMsg('saleMsg', '请填写客户姓名', 'red'); return; }
+  if (!price) { showMsg('saleMsg', '请填写销售价格', 'red'); return; }
+  if (dep >= price) { showMsg('saleMsg', '首付不能超过售价', 'red'); return; }
+  if (!firstDue) { showMsg('saleMsg', '请选择首次还款日', 'red'); return; }
+  const phones = DB_get('phones') || [];
+  const ph = phones.find(p => p.id === modelId);
+  const principal = price - dep;
+  const totalInt = principal * rate * periods;
+  const monthly = (principal + totalInt) / periods;
+  const schedule = [];
+  for (let i = 0; i < periods; i++) {
+    const d = new Date(firstDue); d.setMonth(d.getMonth() + i);
+    schedule.push({ period: i+1, dueDate: d.toISOString().slice(0,10),
+      principalDue: +(principal/periods).toFixed(2), interestDue: +(principal*rate).toFixed(2),
+      paid: false, paidDate: null, paidPrincipal: 0, paidInterest: 0, penalty: 0 });
+  }
+  const sale = { id: newId(), date: sDate, customer: cust, customerPhone: custPhone,
+    modelId, modelName: ph ? `${ph.brand} ${ph.model}` : '',
+    salePrice: price, deposit: dep, installmentAmount: principal,
+    periods, rate: rate*100, monthlyPayment: monthly, totalInterest: totalInt,
+    firstDue, note, schedule, status: '进行中' };
+  if (ph) { const idx = phones.findIndex(p => p.id === modelId); phones[idx].stock = Math.max(0, ph.stock - 1); DB_set('phones', phones); }
+  const sales = DB_get('sales') || []; sales.push(sale); DB_set('sales', sales);
+  showMsg('saleMsg', `✅ 合同 #${sale.id} 已保存！${cust}，${periods}期，每期 ${fmt(monthly)}`, 'green');
+  ['sCust','sCustPhone','sSalePrice','sNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('sDeposit').value = '0';
+  calcInstall(); updateBadges();
+};
+
+// ══════════════════════════════════════════════════════
+// SALE LIST
+// ══════════════════════════════════════════════════════
+function renderSaleList() {
+  return `
+  <div class="page-header"><div class="page-title">🔍 销售查询</div></div>
+  <div class="card">
+    <div class="search-row">
+      <input id="saleSearch" placeholder="搜索客户姓名 / 合同号 / 手机型号..." oninput="filterSales()">
+      <select id="saleStatusFilter" onchange="filterSales()"><option value="">全部状态</option><option value="进行中">进行中</option><option value="已结清">已结清</option></select>
+      <button class="btn btn-primary btn-sm" onclick="nav('sale-add')">➕ 新建合同</button>
+    </div>
+    <div id="saleTableWrap">${buildSalesTable(DB_get('sales') || [])}</div>
+  </div>`;
+}
+
+function buildSalesTable(sales) {
+  if (!sales.length) return `<div class="empty-state"><div class="ei">📭</div><p>暂无合同</p></div>`;
+  const pt = {3:'pt3',6:'pt6',9:'pt9',12:'pt12',18:'pt9',24:'pt12'};
+  return `<div class="table-wrap"><table>
+    <tr><th>#</th><th>日期</th><th>客户</th><th>型号</th><th>售价</th><th>首付</th><th>分期本金</th><th>期数</th><th>每期</th><th>进度</th><th>状态</th><th>操作</th></tr>
+    ${sales.slice().reverse().map(s => {
+      const paid = s.schedule.filter(p => p.paid).length;
+      return `<tr>
+        <td class="fw700 text-blue">#${s.id}</td><td>${s.date}</td>
+        <td><div class="fw700">${esc(s.customer)}</div><div class="text-muted" style="font-size:11px">${esc(s.customerPhone||'')}</div></td>
+        <td>${esc(s.modelName||'-')}</td><td>${fmt(s.salePrice)}</td><td>${fmt(s.deposit)}</td>
+        <td class="fw700">${fmt(s.installmentAmount)}</td>
+        <td><span class="${pt[s.periods]||'pt6'}">${s.periods}期</span></td>
+        <td>${fmt(s.monthlyPayment)}</td>
+        <td><span style="font-size:12px">${paid}/${s.periods}</span>
+          <div style="background:#e3f2fd;height:4px;border-radius:2px;margin-top:4px;width:60px">
+            <div style="background:var(--sky);height:4px;border-radius:2px;width:${Math.round(paid/s.periods*100)}%"></div>
+          </div></td>
+        <td><span class="badge ${s.status==='已结清'?'badge-green':'badge-blue'}">${s.status}</span></td>
+        <td><button class="btn btn-outline btn-sm" onclick="viewSchedule(${s.id})">还款计划</button>
+            <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSale(${s.id})">删除</button></td>
+      </tr>`;}).join('')}
+  </table></div>`;
+}
+
+window.filterSales = function() {
+  const q = (document.getElementById('saleSearch')?.value||'').toLowerCase();
+  const st = document.getElementById('saleStatusFilter')?.value||'';
+  let sales = DB_get('sales')||[];
+  if (q) sales = sales.filter(s => s.customer.toLowerCase().includes(q)||String(s.id).includes(q)||(s.modelName||'').toLowerCase().includes(q));
+  if (st) sales = sales.filter(s => s.status === st);
+  const wrap = document.getElementById('saleTableWrap');
+  if (wrap) wrap.innerHTML = buildSalesTable(sales);
+};
+
+window.viewSchedule = function(id) {
+  const s = (DB_get('sales')||[]).find(x => x.id === id); if (!s) return;
+  showModal(`还款计划 — ${esc(s.customer)} (#${s.id})`,
+    `<div class="table-wrap"><table>
+      <tr><th>期次</th><th>到期日</th><th>本金</th><th>利息</th><th>合计</th><th>状态</th></tr>
+      ${s.schedule.map(p => `<tr>
+        <td>第${p.period}期</td><td>${p.dueDate}</td><td>${fmt(p.principalDue)}</td><td>${fmt(p.interestDue)}</td>
+        <td class="fw700">${fmt((+p.principalDue)+(+p.interestDue))}</td>
+        <td><span class="badge ${p.paid?'badge-green':'badge-amber'}">${p.paid?'已还 '+p.paidDate:'待还'}</span></td>
+      </tr>`).join('')}
+    </table></div>`);
+};
+
+window.deleteSale = function(id) {
+  const s = (DB_get('sales')||[]).find(x => x.id === id);
+  if (!s) return;
+  if (!confirm(`确认删除合同 #${s.id}（${s.customer}）？\n⚠️ 相关收款记录不会自动删除，删除后不可恢复！`)) return;
+  DB_set('sales', (DB_get('sales')||[]).filter(x => x.id !== id));
+  // Also remove early payment records for this contract
+  DB_set('earlyPayments', (DB_get('earlyPayments')||[]).filter(r => r.contractId !== id));
+  nav('sale-list');
+};
+// ══════════════════════════════════════════════════════
+function renderPaymentAdd() {
+  const sales = (DB_get('sales')||[]).filter(s => s.status !== '已结清');
+  const opts = sales.map(s => `<option value="${s.id}">#${s.id} — ${esc(s.customer)} (${s.periods}期 每期${fmt(s.monthlyPayment)})</option>`).join('');
+  const pays = (DB_get('payments')||[]).slice(-15).reverse();
+  return `
+  <div class="page-header"><div class="page-title">💳 还款登记</div></div>
+  <div class="card">
+    <div class="form-grid">
+      <div class="form-group span3"><label>选择合同 *</label><select id="pContract" onchange="loadContractPeriods()">${opts||'<option>暂无进行中合同</option>'}</select></div>
+      <div class="form-group"><label>还款日期</label><input type="date" id="pDate" value="${today()}"></div>
+      <div class="form-group"><label>还款期次</label><select id="pPeriod" onchange="autoFillPayment()"></select></div>
+      <div class="form-group"><label>实收本金 ($)</label><input type="number" id="pPrincipal" placeholder="0.00" step="0.01"></div>
+      <div class="form-group"><label>实收利息 ($)</label><input type="number" id="pInterest" placeholder="0.00" step="0.01"></div>
+      <div class="form-group"><label>滞纳金 ($)</label><input type="number" id="pPenalty" value="0" step="0.01"></div>
+      <div class="form-group"><label>备注</label><input id="pNote" placeholder="可选"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-success" onclick="submitPayment()">✅ 确认收款</button>
+      <button class="btn btn-outline" onclick="loadContractPeriods()">🔄 刷新</button>
+    </div>
+    <div id="payMsg"></div>
+  </div>
+  <div class="card"><div class="card-title" style="margin-bottom:14px">最近收款记录</div>${buildPayTable(pays)}</div>`;
+}
+
+window.loadContractPeriods = function() {
+  const id = +(document.getElementById('pContract')?.value||0);
+  const s = (DB_get('sales')||[]).find(x => x.id === id);
+  const sel = document.getElementById('pPeriod'); if (!s||!sel) return;
+  sel.innerHTML = s.schedule.filter(p => !p.paid).map(p => `<option value="${p.period}">第${p.period}期 (到期:${p.dueDate})</option>`).join('');
+  autoFillPayment();
+};
+window.autoFillPayment = function() {
+  const id = +(document.getElementById('pContract')?.value||0);
+  const period = +(document.getElementById('pPeriod')?.value||0);
+  const s = (DB_get('sales')||[]).find(x => x.id === id);
+  const p = s?.schedule.find(x => x.period === period);
+  if (p) { const pi = document.getElementById('pPrincipal'); const ii = document.getElementById('pInterest');
+    if (pi) pi.value = (+p.principalDue).toFixed(2); if (ii) ii.value = (+p.interestDue).toFixed(2); }
+};
+window.submitPayment = function() {
+  const contractId = +(document.getElementById('pContract')?.value||0);
+  const periodNo = +(document.getElementById('pPeriod')?.value||0);
+  const pDate = document.getElementById('pDate')?.value||today();
+  const principal = +(document.getElementById('pPrincipal')?.value||0);
+  const interest = +(document.getElementById('pInterest')?.value||0);
+  const penalty = +(document.getElementById('pPenalty')?.value||0);
+  if (!contractId) { showMsg('payMsg','请选择合同','red'); return; }
+  if (!principal&&!interest) { showMsg('payMsg','请填写金额','red'); return; }
+  const sales = DB_get('sales')||[];
+  const si = sales.findIndex(s => s.id === contractId); if (si < 0) return;
+  const s = sales[si];
+  const pi = s.schedule.findIndex(p => p.period === periodNo); if (pi < 0) return;
+  if (s.schedule[pi].paid) { showMsg('payMsg','该期已登记','amber'); return; }
+  s.schedule[pi] = {...s.schedule[pi], paid:true, paidDate:pDate, paidPrincipal:principal, paidInterest:interest, penalty};
+  if (s.schedule.every(p => p.paid)) s.status = '已结清';
+  sales[si] = s; DB_set('sales', sales);
+  const pays = DB_get('payments')||[];
+  pays.push({id:newId(), contractId, customer:s.customer, period:periodNo, date:pDate, principal, interest, penalty});
+  DB_set('payments', pays);
+  showMsg('payMsg', `✅ 收款成功！${s.customer} 第${periodNo}期，合计 ${fmt(principal+interest+penalty)}`, 'green');
+  ['pPenalty','pNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = id==='pPenalty'?'0':''; });
+  loadContractPeriods(); updateBadges();
+};
+function buildPayTable(pays) {
+  if (!pays.length) return `<div class="empty-state"><div class="ei">📝</div><p>暂无记录</p></div>`;
+  return `<div class="table-wrap"><table><tr><th>日期</th><th>客户</th><th>合同</th><th>期次</th><th>本金</th><th>利息</th><th>合计</th></tr>
+    ${pays.map(p => `<tr><td>${p.date}</td><td class="fw700">${esc(p.customer)}</td><td class="text-blue">#${p.contractId}</td>
+      <td>第${p.period}期</td><td>${fmt(p.principal)}</td><td>${fmt(p.interest)}</td>
+      <td class="fw700 text-green">${fmt((+p.principal)+(+p.interest)+(+p.penalty||0))}</td></tr>`).join('')}
+  </table></div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// STATS
+// ══════════════════════════════════════════════════════
+function renderStatsCollection() {
+  const pays = DB_get('payments')||[]; const sales = DB_get('sales')||[];
+  const byMonth = {};
+  pays.forEach(p => { const m = p.date.slice(0,7); if (!byMonth[m]) byMonth[m]={principal:0,interest:0,count:0};
+    byMonth[m].principal += +p.principal; byMonth[m].interest += +p.interest; byMonth[m].count++; });
+  const months = Object.keys(byMonth).sort().reverse();
+  const tP = pays.reduce((a,p)=>a+(+p.principal),0), tI = pays.reduce((a,p)=>a+(+p.interest),0);
+  const pending = sales.reduce((a,s)=>{const paid=s.schedule.filter(p=>p.paid).reduce((x,p)=>x+(+p.paidPrincipal||0),0);return a+(+s.installmentAmount-paid);},0);
+  return `
+  <div class="page-header"><div class="page-title">📊 收款统计</div></div>
+  <div class="stats-grid">
+    <div class="stat-card green"><div class="stat-label">累计收款总额</div><div class="stat-value">${fmt(tP+tI)}</div><div class="stat-sub">共 ${pays.length} 笔</div></div>
+    <div class="stat-card blue"><div class="stat-label">收回本金</div><div class="stat-value">${fmt(tP)}</div></div>
+    <div class="stat-card amber"><div class="stat-label">收回利息</div><div class="stat-value">${fmt(tI)}</div></div>
+    <div class="stat-card red"><div class="stat-label">待回收本金</div><div class="stat-value">${fmt(pending)}</div></div>
+  </div>
+  <div class="card"><div class="card-title" style="margin-bottom:14px">按月收款</div>
+    ${months.length?`<div class="table-wrap"><table><tr><th>月份</th><th>笔数</th><th>本金</th><th>利息</th><th>合计</th></tr>
+      ${months.map(m=>`<tr><td class="fw700">${m}</td><td>${byMonth[m].count}</td><td>${fmt(byMonth[m].principal)}</td><td>${fmt(byMonth[m].interest)}</td><td class="fw700 text-green">${fmt(byMonth[m].principal+byMonth[m].interest)}</td></tr>`).join('')}
+    </table></div>`:`<div class="empty-state"><div class="ei">📊</div><p>暂无记录</p></div>`}
+  </div>`;
+}
+
+function renderStatsProfit() {
+  const sales = DB_get('sales')||[], phones = DB_get('phones')||[], pays = DB_get('payments')||[];
+  const earlyPays = DB_get('earlyPayments')||[];
+  const expenses  = DB_get('expenses')||[];
+
+  const normalSales = sales.filter(s => s.status !== '提前结清');
+  const tSale = sales.reduce((a,s)=>a+(+s.salePrice),0);
+  const tCost = sales.reduce((a,s)=>{const p=phones.find(ph=>ph.id===s.modelId);return a+(p?+p.cost:0);},0);
+  const tGross = tSale - tCost;
+  const tNormalInterest = normalSales.reduce((a,s)=>a+(+s.totalInterest),0);
+  const tPaidNormalInt  = pays.reduce((a,p)=>a+(+p.interest),0);
+  const tEarlyProfit    = earlyPays.reduce((a,r)=>a+(+r.actualProfit),0);
+  const tEarlyOrigInt   = earlyPays.reduce((a,r)=>a+(+r.origRemainInterest),0);
+  const tEarlyDiff      = tEarlyProfit - tEarlyOrigInt;
+  const tExpenses       = expenses.reduce((a,e)=>a+(+e.amount),0);
+  const tProfitBeforeExp = tGross + tNormalInterest + tEarlyProfit;
+  const tNet            = tProfitBeforeExp - tExpenses;
+
+  // Expense breakdown by category
+  const byCat = {};
+  expenses.forEach(e => { byCat[e.cat] = (byCat[e.cat]||0) + (+e.amount); });
+  const catEntries = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+
+  return `
+  <div class="page-header"><div class="page-title">💰 利润统计</div><div class="page-sub">含正常分期 + 提前还款 + 日常开支扣除</div></div>
+
+  <!-- 核心4指标 -->
+  <div class="stats-grid">
+    <div class="stat-card green"><span class="stat-icon">🏆</span><div class="stat-label">最终净利润</div><div class="stat-value" style="font-size:${tNet<0?'20px':'26px'};color:${tNet>=0?'var(--green)':'var(--red)'}">${fmt(tNet)}</div><div class="stat-sub">已扣除全部开支</div></div>
+    <div class="stat-card blue"><span class="stat-icon">📈</span><div class="stat-label">税前利润</div><div class="stat-value">${fmt(tProfitBeforeExp)}</div><div class="stat-sub">毛利+利息（未扣开支）</div></div>
+    <div class="stat-card amber"><span class="stat-icon">💹</span><div class="stat-label">销售毛利</div><div class="stat-value">${fmt(tGross)}</div><div class="stat-sub">总售价 ${fmt(tSale)} − 成本 ${fmt(tCost)}</div></div>
+    <div class="stat-card red"><span class="stat-icon">🧾</span><div class="stat-label">累计日常开支</div><div class="stat-value">${fmt(tExpenses)}</div><div class="stat-sub">${expenses.length} 笔开支记录</div></div>
+  </div>
+
+  <!-- 利润构成 -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title" style="margin-bottom:14px">💡 利润构成分析</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600">收入来源</div>
+        ${[
+          ['销售毛利', tGross, 'var(--sky)'],
+          ['正常分期利息（预期）', tNormalInterest, 'var(--green)'],
+          ['提前还款实际利润', tEarlyProfit, 'var(--amber)'],
+        ].map(([l,v,c])=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eef2f7">
+            <span style="font-size:13px">${l}</span>
+            <span style="font-weight:700;color:${c}">${fmt(v)}</span>
+          </div>`).join('')}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;font-weight:700">
+          <span>税前利润合计</span><span style="color:var(--navy)">${fmt(tProfitBeforeExp)}</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600">开支扣除 ${catEntries.length > 0 ? `（${catEntries.length} 类）` : ''}</div>
+        ${catEntries.length ? catEntries.map(([cat,amt])=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #eef2f7">
+            <span style="font-size:13px">${esc(cat)}</span>
+            <span style="font-weight:600;color:var(--red)">− ${fmt(amt)}</span>
+          </div>`).join('') : '<div style="color:var(--muted);font-size:13px;padding:8px 0">暂无开支记录</div>'}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:2px solid var(--border);font-weight:700">
+          <span>开支合计</span><span style="color:var(--red)">− ${fmt(tExpenses)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:${tNet>=0?'#e8f5e9':'#ffebee'};border-radius:8px;margin-top:6px;font-weight:700;font-size:15px">
+          <span>最终净利润</span>
+          <span style="color:${tNet>=0?'var(--green)':'var(--red)'}">${fmt(tNet)}</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px;padding:0 4px">
+          <button class="btn btn-outline btn-sm" onclick="nav('expenses')" style="font-size:11px">🧾 管理开支记录</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  ${earlyPays.length > 0 ? `
+  <div class="card" style="border-left:4px solid var(--amber)">
+    <div class="card-header">
+      <div class="card-title">⚡ 提前还款利润汇总</div>
+      <span class="badge ${tEarlyDiff >= 0 ? 'badge-green' : 'badge-red'}">利润变化：${tEarlyDiff >= 0 ? '+' : ''}${fmt(tEarlyDiff)}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+      ${[['提前结清合同',earlyPays.length+'笔'],['原应收利息',fmt(tEarlyOrigInt)],['实际收到利润',fmt(tEarlyProfit)],['利润增减',(tEarlyDiff>=0?'+':'')+fmt(tEarlyDiff)]].map(([l,v],i)=>`
+        <div style="background:${i===3?(tEarlyDiff>=0?'#e8f5e9':'#ffebee'):(i===2?'#e8f5e9':'#fff8e1')};border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${l}</div>
+          <div style="font-size:20px;font-weight:700;color:${i===3?(tEarlyDiff>=0?'var(--green)':'var(--red)'):i===0?'var(--amber)':'var(--green)'}">${v}</div>
+        </div>`).join('')}
+    </div>
+    <div class="table-wrap"><table>
+      <tr><th>日期</th><th>客户</th><th>合同#</th><th>协商还款额</th><th>原应收利息</th><th>实际利润</th><th>利润差异</th></tr>
+      ${earlyPays.map(r=>{const diff=+r.actualProfit-+r.origRemainInterest;return`<tr>
+        <td>${r.date}</td><td class="fw700">${esc(r.customer)}</td><td class="text-blue">#${r.contractId}</td>
+        <td class="text-amber fw700">${fmt(r.negotiatedAmount)}</td><td>${fmt(r.origRemainInterest)}</td>
+        <td class="text-green fw700">${fmt(r.actualProfit)}</td>
+        <td class="${diff>=0?'text-green':'text-red'} fw700">${diff>=0?'+':''}${fmt(diff)}</td>
+      </tr>`;}).join('')}
+    </table></div>
+  </div>` : ''}
+
+  <div class="card">
+    <div class="card-title" style="margin-bottom:14px">各合同盈利明细</div>
+    ${sales.length?`<div class="table-wrap"><table>
+      <tr><th>#</th><th>客户</th><th>型号</th><th>售价</th><th>成本</th><th>毛利</th><th>利息/利润</th><th>净利润</th><th>状态</th></tr>
+      ${sales.slice().reverse().map(s=>{
+        const ph=phones.find(p=>p.id===s.modelId), cost=ph?+ph.cost:0;
+        const gross=+s.salePrice-cost;
+        let interestVal, interestLabel;
+        if (s.status === '提前结清') {
+          const ep = earlyPays.find(r => r.contractId === s.id);
+          interestVal = ep ? +ep.actualProfit : 0;
+          interestLabel = `<span class="badge badge-amber" style="font-size:10px">⚡提前</span> ${fmt(interestVal)}`;
+        } else {
+          interestVal = +s.totalInterest;
+          interestLabel = fmt(interestVal);
+        }
+        const net = gross + interestVal;
+        const statusBadge = s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':'badge-blue';
+        return`<tr>
+          <td class="fw700 text-blue">#${s.id}</td><td class="fw700">${esc(s.customer)}</td>
+          <td>${esc(s.modelName||'-')}</td><td>${fmt(s.salePrice)}</td><td>${fmt(cost)}</td>
+          <td class="text-green">${fmt(gross)}</td><td>${interestLabel}</td>
+          <td><b style="color:var(--navy)">${fmt(net)}</b></td>
+          <td><span class="badge ${statusBadge}">${s.status}</span></td>
+        </tr>`;}).join('')}
+    </table></div>`:`<div class="empty-state"><div class="ei">💰</div><p>暂无数据</p></div>`}
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// REMINDERS
+// ══════════════════════════════════════════════════════
+function renderReminderTomorrow() {
+  const tomorrow = addDays(today(), 1), sales = DB_get('sales')||[], items = [];
+  sales.forEach(s => s.schedule.forEach(p => { if (!p.paid && p.dueDate === tomorrow) items.push({s,p}); }));
+  const total = items.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0);
+  return `
+  <div class="page-header"><div class="page-title">⏰ 明日还款提醒</div><div class="page-sub">明日（${tomorrow}）到期账单</div></div>
+  ${items.length?`<div class="alert alert-blue">📅 明日共 ${items.length} 笔到期，应收合计 ${fmt(total)}</div>`:`<div class="alert alert-green">🎉 明日无到期账单</div>`}
+  <div class="card">${items.map(({s,p})=>`
+    <div class="reminder-item info">
+      <div><div class="fw700">${esc(s.customer)} <span class="text-muted" style="font-weight:400;font-size:12px">${esc(s.customerPhone||'')}</span></div>
+        <div style="font-size:12px;color:var(--muted)">#${s.id} · 第${p.period}/${s.periods}期</div></div>
+      <div style="text-align:right"><div class="fw700 text-blue" style="font-size:15px">${fmt((+p.principalDue)+(+p.interestDue))}</div>
+        <button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="nav('payment-add')">登记收款</button></div>
+    </div>`).join('')||`<div class="empty-state"><div class="ei">😌</div><p>无到期账单</p></div>`}
+  </div>`;
+}
+
+function renderReminderOverdue() {
+  const td = today(), sales = DB_get('sales')||[], items = [];
+  sales.forEach(s => s.schedule.forEach(p => { if (!p.paid && p.dueDate < td) { const days = Math.floor((new Date(td)-new Date(p.dueDate))/86400000); items.push({s,p,days}); }}));
+  items.sort((a,b) => b.days-a.days);
+  return `
+  <div class="page-header"><div class="page-title">🚨 逾期未还款提醒</div></div>
+  ${items.length?`<div class="alert alert-red">⚠️ 共 ${items.length} 笔逾期，合计 ${fmt(items.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}！</div>`:`<div class="alert alert-green">✅ 暂无逾期账单</div>`}
+  <div class="card">${items.map(({s,p,days})=>`
+    <div class="reminder-item ${days>30?'overdue':'warn'}">
+      <div><div class="fw700">${esc(s.customer)} <span class="text-muted" style="font-weight:400;font-size:12px">${esc(s.customerPhone||'')}</span></div>
+        <div style="font-size:12px;color:var(--muted)">#${s.id} · 第${p.period}/${s.periods}期 · 到期日：${p.dueDate}</div></div>
+      <div style="text-align:right"><div class="fw700 text-red" style="font-size:15px">${fmt((+p.principalDue)+(+p.interestDue))}</div>
+        <span class="badge badge-red">逾期 ${days} 天</span><br>
+        <button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="nav('payment-add')">登记收款</button></div>
+    </div>`).join('')||`<div class="empty-state"><div class="ei">🏅</div><p>暂无逾期</p></div>`}
+  </div>`;
+}
+
+function renderPaymentQuery() {
+  const td = today(), nd = addDays(td, 30), sales = DB_get('sales')||[], items = [];
+  sales.forEach(s => s.schedule.forEach(p => { if (!p.paid && p.dueDate >= td && p.dueDate <= nd) items.push({s,p}); }));
+  items.sort((a,b) => a.p.dueDate.localeCompare(b.p.dueDate));
+  return `
+  <div class="page-header"><div class="page-title">📋 需还款查询</div><div class="page-sub">未来30天（${td} 至 ${nd}）</div></div>
+  ${items.length?`<div class="alert alert-amber">📅 未来30天共 ${items.length} 笔，应收合计 ${fmt(items.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}</div>`:''}
+  <div class="card">${items.map(({s,p})=>{const dl=Math.floor((new Date(p.dueDate)-new Date(td))/86400000);return`
+    <div class="reminder-item ${dl<=3?'warn':'info'}">
+      <div><div class="fw700">${esc(s.customer)}</div>
+        <div style="font-size:12px;color:var(--muted)">#${s.id} · 第${p.period}期 · 到期：${p.dueDate}</div></div>
+      <div style="text-align:right"><div class="fw700" style="font-size:15px">${fmt((+p.principalDue)+(+p.interestDue))}</div>
+        <div style="font-size:11px;color:var(--muted)">还剩 ${dl} 天</div>
+        <button class="btn btn-primary btn-sm" style="margin-top:4px" onclick="nav('payment-add')">登记收款</button></div>
+    </div>`;}).join('')||`<div class="empty-state"><div class="ei">📭</div><p>未来30天无到期账单</p></div>`}
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// PHONES / SUPPLIERS / PURCHASE / INVENTORY / COMPANY
+// ══════════════════════════════════════════════════════
+function renderPhones() {
+  const phones = DB_get('phones')||[];
+  return `<div class="page-header"><div class="page-title">📱 手机型号管理</div></div>
+  <div class="card"><div class="card-title" style="margin-bottom:14px">添加新型号</div>
+    <div class="form-grid">
+      <div class="form-group"><label>品牌</label><input id="phBrand" placeholder="Apple"></div>
+      <div class="form-group"><label>型号</label><input id="phModel" placeholder="iPhone 16 Pro"></div>
+      <div class="form-group"><label>进货价 ($)</label><input id="phCost" type="number" placeholder="0.00" step="0.01"></div>
+      <div class="form-group"><label>建议售价 ($)</label><input id="phPrice" type="number" placeholder="0.00" step="0.01"></div>
+      <div class="form-group"><label>初始库存</label><input id="phStock" type="number" value="0" min="0"></div>
+    </div>
+    <div class="btn-row"><button class="btn btn-primary" onclick="addPhone()">➕ 添加型号</button></div>
+    <div id="phoneMsg"></div>
+  </div>
+  <div class="card"><div class="card-title" style="margin-bottom:14px">型号列表</div><div id="phoneTable">${buildPhonesTable(phones)}</div></div>`;
+}
+function buildPhonesTable(phones) {
+  if (!phones.length) return `<div class="empty-state"><div class="ei">📱</div><p>暂无型号</p></div>`;
+  return `<div class="table-wrap"><table><tr><th>品牌</th><th>型号</th><th>进货价</th><th>售价</th><th>利润/台</th><th>库存</th><th>操作</th></tr>
+    ${phones.map(p=>`<tr><td class="fw700">${esc(p.brand)}</td><td>${esc(p.model)}</td><td>${fmt(p.cost)}</td><td>${fmt(p.price)}</td>
+      <td class="text-green">${fmt(+p.price-+p.cost)}</td>
+      <td><span class="badge ${p.stock===0?'badge-red':p.stock<=2?'badge-amber':'badge-green'}">${p.stock} 台</span></td>
+      <td><button class="btn btn-danger btn-sm" onclick="deletePhone(${p.id})">删除</button></td></tr>`).join('')}
+  </table></div>`;
+}
+window.addPhone = function() {
+  const brand = document.getElementById('phBrand')?.value?.trim(), model = document.getElementById('phModel')?.value?.trim();
+  if (!brand||!model) { showMsg('phoneMsg','请填写品牌和型号','red'); return; }
+  const phones = DB_get('phones')||[];
+  phones.push({id:newId(),brand,model,cost:+(document.getElementById('phCost')?.value||0),price:+(document.getElementById('phPrice')?.value||0),stock:+(document.getElementById('phStock')?.value||0)});
+  DB_set('phones',phones); document.getElementById('phoneTable').innerHTML=buildPhonesTable(phones);
+  ['phBrand','phModel','phCost','phPrice'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('phStock').value='0'; showMsg('phoneMsg','✅ 已添加','green');
+};
+window.deletePhone = function(id) {
+  if (!confirm('确认删除？')) return;
+  const phones=(DB_get('phones')||[]).filter(p=>p.id!==id); DB_set('phones',phones);
+  document.getElementById('phoneTable').innerHTML=buildPhonesTable(phones);
+};
+
+function renderSuppliers() {
+  const sups = DB_get('suppliers')||[];
+  return `<div class="page-header"><div class="page-title">🏢 供商信息</div></div>
+  <div class="card"><div class="form-grid">
+    <div class="form-group"><label>供商名称 *</label><input id="supName" placeholder="公司名称"></div>
+    <div class="form-group"><label>联系人</label><input id="supContact" placeholder="联系人"></div>
+    <div class="form-group"><label>电话</label><input id="supPhone" placeholder="电话"></div>
+    <div class="form-group span3"><label>地址</label><input id="supAddr" placeholder="地址"></div>
+  </div>
+  <div class="btn-row"><button class="btn btn-primary" onclick="addSupplier()">➕ 添加</button></div>
+  <div id="supMsg"></div></div>
+  <div class="card"><div id="supTable">${buildSupTable(sups)}</div></div>`;
+}
+function buildSupTable(sups) {
+  if (!sups.length) return `<div class="empty-state"><div class="ei">🏢</div><p>暂无供商</p></div>`;
+  return `<div class="table-wrap"><table><tr><th>名称</th><th>联系人</th><th>电话</th><th>地址</th><th>操作</th></tr>
+    ${sups.map(s=>`<tr><td class="fw700">${esc(s.name)}</td><td>${esc(s.contact||'-')}</td><td>${esc(s.phone||'-')}</td><td>${esc(s.address||'-')}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteSupplier(${s.id})">删除</button></td></tr>`).join('')}
+  </table></div>`;
+}
+window.addSupplier = function() {
+  const name=document.getElementById('supName')?.value?.trim(); if(!name){showMsg('supMsg','请填写名称','red');return;}
+  const sups=DB_get('suppliers')||[];
+  sups.push({id:newId(),name,contact:document.getElementById('supContact')?.value||'',phone:document.getElementById('supPhone')?.value||'',address:document.getElementById('supAddr')?.value||''});
+  DB_set('suppliers',sups); document.getElementById('supTable').innerHTML=buildSupTable(sups);
+  ['supName','supContact','supPhone','supAddr'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  showMsg('supMsg','✅ 已添加','green');
+};
+window.deleteSupplier = function(id) {
+  if(!confirm('确认删除？'))return;
+  DB_set('suppliers',(DB_get('suppliers')||[]).filter(s=>s.id!==id));
+  document.getElementById('supTable').innerHTML=buildSupTable(DB_get('suppliers')||[]);
+};
+
+function renderPurchaseAdd() {
+  const phones=DB_get('phones')||[], sups=DB_get('suppliers')||[];
+  const pOpts=phones.map(p=>`<option value="${p.id}">${esc(p.brand)} ${esc(p.model)}</option>`).join('');
+  const sOpts=sups.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  const purs=(DB_get('purchases')||[]).slice(-20).reverse();
+  return `<div class="page-header"><div class="page-title">🛒 采购登记</div></div>
+  <div class="card"><div class="form-grid">
+    <div class="form-group"><label>日期</label><input type="date" id="purDate" value="${today()}"></div>
+    <div class="form-group"><label>供商</label><select id="purSup">${sOpts||'<option>请先添加供商</option>'}</select></div>
+    <div class="form-group"><label>型号</label><select id="purPhone">${pOpts||'<option>请先添加型号</option>'}</select></div>
+    <div class="form-group"><label>数量</label><input id="purQty" type="number" min="1" value="1"></div>
+    <div class="form-group"><label>单价 ($)</label><input id="purPrice" type="number" placeholder="0.00" step="0.01"></div>
+    <div class="form-group"><label>备注</label><input id="purNote" placeholder="可选"></div>
+  </div>
+  <div class="btn-row"><button class="btn btn-primary" onclick="submitPurchase()">✅ 确认采购</button></div>
+  <div id="purMsg"></div></div>
+  <div class="card"><div class="card-title" style="margin-bottom:14px">采购记录</div>${buildPurchasesTable(purs)}</div>`;
+}
+function buildPurchasesTable(purs) {
+  if (!purs.length) return `<div class="empty-state"><div class="ei">🛒</div><p>暂无记录</p></div>`;
+  return `<div class="table-wrap"><table><tr><th>日期</th><th>供商</th><th>型号</th><th>数量</th><th>单价</th><th>总额</th></tr>
+    ${purs.map(p=>`<tr><td>${p.date}</td><td>${esc(p.supplier)}</td><td class="fw700">${esc(p.phone)}</td>
+      <td>${p.qty}台</td><td>${fmt(p.price)}</td><td class="fw700 text-green">${fmt(p.qty*p.price)}</td></tr>`).join('')}
+  </table></div>`;
+}
+window.submitPurchase = function() {
+  const phoneId=+(document.getElementById('purPhone')?.value||0), supId=+(document.getElementById('purSup')?.value||0);
+  const qty=+(document.getElementById('purQty')?.value||1), price=+(document.getElementById('purPrice')?.value||0);
+  const date=document.getElementById('purDate')?.value||today();
+  if(!qty||!price){showMsg('purMsg','请填写数量和单价','red');return;}
+  const phones=DB_get('phones')||[], sups=DB_get('suppliers')||[];
+  const pi=phones.findIndex(p=>p.id===phoneId), ph=phones[pi], sup=sups.find(s=>s.id===supId);
+  if(pi>=0){phones[pi].stock=(phones[pi].stock||0)+qty; DB_set('phones',phones);}
+  const purs=DB_get('purchases')||[];
+  purs.push({id:newId(),date,supplier:sup?.name||'',phone:ph?`${ph.brand} ${ph.model}`:'',qty,price});
+  DB_set('purchases',purs); showMsg('purMsg',`✅ 入库 ${qty} 台，库存已更新`,'green');
+  document.getElementById('purPrice').value=''; document.getElementById('purQty').value='1';
+};
+
+// ══════════════════════════════════════════════════════
+// EARLY PAYMENT 提前还款
+// ══════════════════════════════════════════════════════
+function renderEarlyPayment() {
+  const sales = (DB_get('sales')||[]).filter(s => s.status === '进行中');
+  const earlyList = (DB_get('earlyPayments')||[]).slice().reverse();
+  const opts = sales.map(s => {
+    const paidP = s.schedule.filter(p=>p.paid).reduce((a,p)=>a+(+p.paidPrincipal||0),0);
+    const remainP = +s.installmentAmount - paidP;
+    const remainI = s.schedule.filter(p=>!p.paid).reduce((a,p)=>a+(+p.interestDue),0);
+    return `<option value="${s.id}" data-remain-p="${remainP.toFixed(2)}" data-remain-i="${remainI.toFixed(2)}" data-customer="${esc(s.customer)}">#${s.id} — ${esc(s.customer)} (剩余本金${fmt(remainP)} 剩余利息${fmt(remainI)})</option>`;
+  }).join('');
+  return `
+  <div class="page-header">
+    <div class="page-title">⚡ 提前还款登记</div>
+    <div class="page-sub">客户协商提前结清合同，手动输入协商金额与实际利润</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="margin-bottom:16px">📋 录入提前还款</div>
+    ${sales.length === 0 ? '<div class="alert alert-blue">当前没有进行中的合同</div>' : ''}
+    <div class="form-grid">
+      <div class="form-group span3">
+        <label>选择合同 *</label>
+        <select id="epContract" onchange="calcEarlyProfit()">${opts||'<option>暂无进行中合同</option>'}</select>
+      </div>
+      <div class="form-group"><label>还款日期</label><input type="date" id="epDate" value="${today()}"></div>
+      <div class="form-group"><label>剩余本金 ($)</label><input id="epRemainP" readonly></div>
+      <div class="form-group"><label>原剩余利息 ($)</label><input id="epRemainI" readonly></div>
+    </div>
+
+    <div style="background:#fff8e1;border-radius:10px;padding:16px;margin-top:14px;border-left:4px solid var(--amber)">
+      <div style="font-size:12px;color:var(--amber);font-weight:700;margin-bottom:12px">⚡ 协商还款设置（核心）</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>客户协商还款总额 ($) *</label>
+          <input type="number" id="epNegotiated" placeholder="客户实际支付金额" step="0.01" oninput="calcEarlyProfit()">
+        </div>
+        <div class="form-group">
+          <label>自动计算利润 ($)</label>
+          <input id="epAutoProfit" readonly style="background:#fff8e1;color:var(--amber);font-weight:700">
+        </div>
+        <div class="form-group">
+          <label>✏️ 手动调整利润 ($)</label>
+          <input type="number" id="epManualProfit" placeholder="可手动修改利润" step="0.01" oninput="syncManualProfit()">
+        </div>
+      </div>
+      <div id="epProfitTip" style="font-size:12px;margin-top:8px;color:var(--muted)"></div>
+    </div>
+
+    <div class="form-grid" style="margin-top:14px">
+      <div class="form-group span3"><label>备注</label><input id="epNote" placeholder="协商详情（可选）"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-success" onclick="submitEarlyPayment()">✅ 确认提前结清</button>
+    </div>
+    <div id="epMsg"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="margin-bottom:14px">⚡ 提前还款记录（${earlyList.length} 笔）</div>
+    ${buildEarlyTable(earlyList)}
+  </div>`;
+}
+
+function buildEarlyTable(list) {
+  if (!list.length) return `<div class="empty-state"><div class="ei">⚡</div><p>暂无提前还款记录</p></div>`;
+  return `<div class="table-wrap"><table>
+    <tr><th>日期</th><th>客户</th><th>合同#</th><th>剩余本金</th><th>原剩余利息</th><th>协商还款额</th><th>实际利润</th><th>利润差异</th><th>备注</th></tr>
+    ${list.map(r => {
+      const diff = +r.actualProfit - +r.origRemainInterest;
+      return `<tr>
+        <td>${r.date}</td>
+        <td class="fw700">${esc(r.customer)}</td>
+        <td class="text-blue">#${r.contractId}</td>
+        <td>${fmt(r.remainPrincipal)}</td>
+        <td>${fmt(r.origRemainInterest)}</td>
+        <td class="fw700 text-amber">${fmt(r.negotiatedAmount)}</td>
+        <td class="fw700 text-green">${fmt(r.actualProfit)}</td>
+        <td class="${diff >= 0 ? 'text-green' : 'text-red'}">${diff >= 0 ? '+' : ''}${fmt(diff)}</td>
+        <td style="color:var(--muted);font-size:12px">${esc(r.note||'-')}</td>
+      </tr>`;
+    }).join('')}
+  </table></div>`;
+}
+
+window.calcEarlyProfit = function() {
+  const sel = document.getElementById('epContract');
+  const opt = sel?.selectedOptions[0];
+  if (!opt) return;
+  const remainP = +(opt.dataset.remainP || 0);
+  const remainI = +(opt.dataset.remainI || 0);
+  const rpEl = document.getElementById('epRemainP');
+  const riEl = document.getElementById('epRemainI');
+  if (rpEl) rpEl.value = remainP.toFixed(2);
+  if (riEl) riEl.value = remainI.toFixed(2);
+  // Auto calc profit = negotiated - remaining principal
+  const neg = +(document.getElementById('epNegotiated')?.value || 0);
+  if (neg > 0) {
+    const autoP = (neg - remainP).toFixed(2);
+    const apEl = document.getElementById('epAutoProfit');
+    const mpEl = document.getElementById('epManualProfit');
+    if (apEl) apEl.value = autoP;
+    if (mpEl && !mpEl._manuallyEdited) mpEl.value = autoP;
+    updateProfitTip(remainP, remainI, neg, +(mpEl?.value || autoP));
+  }
+};
+
+window.syncManualProfit = function() {
+  const mpEl = document.getElementById('epManualProfit');
+  if (mpEl) mpEl._manuallyEdited = true;
+  const remainP = +(document.getElementById('epRemainP')?.value || 0);
+  const remainI = +(document.getElementById('epRemainI')?.value || 0);
+  const neg = +(document.getElementById('epNegotiated')?.value || 0);
+  const mp = +(mpEl?.value || 0);
+  updateProfitTip(remainP, remainI, neg, mp);
+};
+
+function updateProfitTip(remainP, remainI, neg, actualProfit) {
+  const tip = document.getElementById('epProfitTip');
+  if (!tip) return;
+  const diff = actualProfit - remainI;
+  const pct = remainI > 0 ? ((actualProfit / remainI) * 100).toFixed(1) : 0;
+  tip.innerHTML = `
+    <span style="margin-right:16px">💰 协商收回：${fmt(neg)} &nbsp;=&nbsp; 本金 ${fmt(remainP)} &nbsp;+&nbsp; 实际利润 ${fmt(actualProfit)}</span>
+    <span style="margin-right:16px">📉 原应收利息：${fmt(remainI)}</span>
+    <span class="${diff >= 0 ? '' : 'text-red'}">利润变化：${diff >= 0 ? '+' : ''}${fmt(diff)}（实收利润占原利息 ${pct}%）</span>`;
+}
+
+window.submitEarlyPayment = function() {
+  const sel = document.getElementById('epContract');
+  const contractId = +(sel?.value || 0);
+  const opt = sel?.selectedOptions[0];
+  if (!contractId) { showMsg('epMsg', '请选择合同', 'red'); return; }
+  const neg = +(document.getElementById('epNegotiated')?.value || 0);
+  if (!neg) { showMsg('epMsg', '请填写协商还款金额', 'red'); return; }
+  const remainP = +(document.getElementById('epRemainP')?.value || 0);
+  const remainI = +(document.getElementById('epRemainI')?.value || 0);
+  const mpEl = document.getElementById('epManualProfit');
+  const autoProfit = (neg - remainP);
+  const actualProfit = mpEl?.value !== '' ? +(mpEl.value) : autoProfit;
+  const date = document.getElementById('epDate')?.value || today();
+  const note = document.getElementById('epNote')?.value || '';
+  const customer = opt?.dataset?.customer || '';
+
+  // Mark all remaining schedule items as paid (early)
+  const sales = DB_get('sales') || [];
+  const si = sales.findIndex(s => s.id === contractId);
+  if (si < 0) return;
+  const s = sales[si];
+  // Distribute negotiated amount across remaining periods proportionally
+  const unpaidPeriods = s.schedule.filter(p => !p.paid);
+  const totalUnpaidPrincipal = unpaidPeriods.reduce((a, p) => a + (+p.principalDue), 0);
+  s.schedule = s.schedule.map(p => {
+    if (p.paid) return p;
+    const pPrincipal = totalUnpaidPrincipal > 0 ? (+p.principalDue / totalUnpaidPrincipal) * remainP : +p.principalDue;
+    const pInterest = unpaidPeriods.length > 0 ? actualProfit / unpaidPeriods.length : 0;
+    return { ...p, paid: true, paidDate: date, paidPrincipal: +pPrincipal.toFixed(2), paidInterest: +pInterest.toFixed(2), earlySettled: true };
+  });
+  s.status = '提前结清';
+  sales[si] = s;
+  DB_set('sales', sales);
+
+  // Save early payment record
+  const earlyPayments = DB_get('earlyPayments') || [];
+  earlyPayments.push({
+    id: newId(), contractId, customer, date,
+    remainPrincipal: remainP, origRemainInterest: remainI,
+    negotiatedAmount: neg, actualProfit, autoProfit,
+    profitDiff: actualProfit - remainI, note
+  });
+  DB_set('earlyPayments', earlyPayments);
+
+  showMsg('epMsg', `✅ 提前结清成功！${customer} 协商还款 ${fmt(neg)}，实际利润 ${fmt(actualProfit)}（原应收利息 ${fmt(remainI)}，差异 ${fmt(actualProfit - remainI)}）`, 'green');
+
+  // Reset form
+  if (mpEl) { mpEl.value = ''; mpEl._manuallyEdited = false; }
+  ['epNegotiated', 'epNote', 'epAutoProfit', 'epRemainP', 'epRemainI'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('epProfitTip').innerHTML = '';
+  updateBadges();
+  setTimeout(() => nav('early-payment'), 600);
+};
+
+// ══════════════════════════════════════════════════════
+// FINANCE REPORT 月度财务报表
+// ══════════════════════════════════════════════════════
+function renderFinanceReport() {
+  const sales   = DB_get('sales')        || [];
+  const pays    = DB_get('payments')     || [];
+  const phones  = DB_get('phones')       || [];
+  const earlyPays = DB_get('earlyPayments') || [];
+  const expenses  = DB_get('expenses')   || [];
+  const td      = today();
+
+  // ── build month list ──
+  const monthSet = new Set();
+  sales.forEach(s  => monthSet.add(s.date.slice(0,7)));
+  pays.forEach(p   => monthSet.add(p.date.slice(0,7)));
+  earlyPays.forEach(r => monthSet.add(r.date.slice(0,7)));
+  expenses.forEach(e  => monthSet.add(e.date.slice(0,7)));
+  if (!monthSet.size) monthSet.add(td.slice(0,7));
+  const months = [...monthSet].sort().reverse();
+
+  // ── per-month calc ──
+  const rows = months.map(m => {
+    const mSales  = sales.filter(s => s.date.slice(0,7) === m);
+    const totalLoan = mSales.reduce((a,s) => a + (+s.installmentAmount), 0);
+    const orderCount = mSales.length;
+    const mPays  = pays.filter(p => p.date.slice(0,7) === m);
+    const mEarly = earlyPays.filter(r => r.date.slice(0,7) === m);
+    const totalRepay  = mPays.reduce((a,p)  => a + (+p.principal) + (+p.interest), 0)
+                      + mEarly.reduce((a,r) => a + (+r.negotiatedAmount), 0);
+    const mInterest    = mPays.reduce((a,p) => a + (+p.interest), 0);
+    const mEarlyProfit = mEarly.reduce((a,r) => a + (+r.actualProfit), 0);
+    const mGross = mSales.reduce((a,s) => {
+      const ph = phones.find(p => p.id === s.modelId);
+      return a + (+s.salePrice - (ph ? +ph.cost : 0));
+    }, 0);
+    const mExpenses = expenses.filter(e => e.date.slice(0,7) === m).reduce((a,e)=>a+(+e.amount),0);
+    const mProfit = mInterest + mEarlyProfit + mGross - mExpenses;
+    const mProfitBeforeExp = mInterest + mEarlyProfit + mGross;
+
+    const mDuePeriods   = sales.flatMap(s => s.schedule.filter(p => p.dueDate.slice(0,7) === m));
+    const mOverduePeriods = mDuePeriods.filter(p => !p.paid && p.dueDate < td);
+    const overdueRate   = mDuePeriods.length > 0
+      ? (mOverduePeriods.length / mDuePeriods.length * 100).toFixed(1) : '0.0';
+    const mDueBeforeToday  = mDuePeriods.filter(p => p.dueDate <= td);
+    const mDuePaid         = mDueBeforeToday.filter(p => p.paid);
+    const repayRate = mDueBeforeToday.length > 0
+      ? (mDuePaid.length / mDueBeforeToday.length * 100).toFixed(1) : '—';
+
+    return { m, orderCount, totalLoan, totalRepay, mProfit, mProfitBeforeExp, mExpenses, overdueRate, repayRate,
+             mDue: mDuePeriods.length, mOverdue: mOverduePeriods.length };
+  });
+
+  // ── totals ──
+  const totLoan    = rows.reduce((a,r) => a + r.totalLoan,  0);
+  const totRepay   = rows.reduce((a,r) => a + r.totalRepay, 0);
+  const totProfit  = rows.reduce((a,r) => a + r.mProfit,    0);
+  const totOrders  = rows.reduce((a,r) => a + r.orderCount, 0);
+  const totDue     = rows.reduce((a,r) => a + r.mDue,       0);
+  const totOverdue = rows.reduce((a,r) => a + r.mOverdue,   0);
+  const totExpenses = rows.reduce((a,r) => a + r.mExpenses, 0);
+  const avgOverdueRate = totDue > 0 ? (totOverdue / totDue * 100).toFixed(1) : '0.0';
+
+  // ── current month highlight ──
+  const cur = rows.find(r => r.m === td.slice(0,7)) || {};
+
+  return `
+  <div class="page-header">
+    <div class="page-title">📈 月度财务报表</div>
+    <div class="page-sub">月总放款 · 月总回款 · 月利润 · 月逾期率 · 月回款率 · 单量统计</div>
+  </div>
+
+  <!-- 当月核心指标 -->
+  <div style="margin-bottom:6px;font-size:12px;font-weight:600;color:var(--navy);letter-spacing:.5px">📅 本月（${td.slice(0,7)}）实时数据</div>
+  <div class="stats-grid" style="margin-bottom:20px">
+    <div class="stat-card blue">
+      <span class="stat-icon">💸</span>
+      <div class="stat-label">本月放款额</div>
+      <div class="stat-value">${fmt(cur.totalLoan||0)}</div>
+      <div class="stat-sub">${cur.orderCount||0} 笔新合同</div>
+    </div>
+    <div class="stat-card green">
+      <span class="stat-icon">💰</span>
+      <div class="stat-label">本月回款额</div>
+      <div class="stat-value">${fmt(cur.totalRepay||0)}</div>
+      <div class="stat-sub">回款率 ${cur.repayRate||'—'}%</div>
+    </div>
+    <div class="stat-card amber">
+      <span class="stat-icon">📈</span>
+      <div class="stat-label">本月净利润</div>
+      <div class="stat-value">${fmt(cur.mProfit||0)}</div>
+      <div class="stat-sub">扣除开支 ${fmt(cur.mExpenses||0)}</div>
+    </div>
+    <div class="stat-card red">
+      <span class="stat-icon">🧾</span>
+      <div class="stat-label">本月日常开支</div>
+      <div class="stat-value">${fmt(cur.mExpenses||0)}</div>
+      <div class="stat-sub">税前利润 ${fmt(cur.mProfitBeforeExp||0)}</div>
+    </div>
+  </div>
+
+  <!-- 累计汇总 -->
+  <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#0f2d5c,#1565c0);color:#fff">
+    <div class="card-title" style="color:rgba(255,255,255,.7);margin-bottom:14px;font-size:12px;letter-spacing:1px">📊 全期累计汇总</div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px">
+      ${[
+        ['总放款额',fmt(totLoan)],
+        ['总回款额',fmt(totRepay)],
+        ['总开支',fmt(totExpenses)],
+        ['总净利润',fmt(totProfit)],
+        ['总单量',totOrders+' 笔'],
+        ['综合逾期率',avgOverdueRate+'%'],
+      ].map(([l,v])=>`
+        <div style="text-align:center">
+          <div style="font-size:11px;color:rgba(255,255,255,.55);margin-bottom:4px">${l}</div>
+          <div style="font-size:18px;font-weight:700;color:#fff">${v}</div>
+        </div>`).join('')}
+    </div>
+  </div>
+
+  <!-- 月度明细表 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">月度明细数据</div>
+      <span style="font-size:12px;color:var(--muted)">逾期率 = 逾期期次 / 应还期次 &nbsp;·&nbsp; 回款率 = 已还期次 / 应还期次</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <tr>
+          <th>月份</th>
+          <th>新增单量</th>
+          <th>月总放款额</th>
+          <th>月总回款额</th>
+          <th>日常开支</th>
+          <th>月净利润</th>
+          <th>应还期次</th>
+          <th>已还期次</th>
+          <th>逾期期次</th>
+          <th>月回款率</th>
+          <th>月逾期率</th>
+        </tr>
+        ${rows.map((r,i) => {
+          const isCurrent = r.m === td.slice(0,7);
+          const repayNum  = parseFloat(r.repayRate);
+          const overdueNum = parseFloat(r.overdueRate);
+          const repayColor  = isNaN(repayNum)  ? '' : repayNum  >= 95 ? 'text-green' : repayNum  >= 80 ? 'text-amber' : 'text-red';
+          const overdueColor = overdueNum > 10 ? 'text-red' : overdueNum > 5 ? 'text-amber' : 'text-green';
+          return `<tr style="${isCurrent ? 'background:#f0f7ff;font-weight:500' : ''}">
+            <td><b>${r.m}</b>${isCurrent ? ' <span class="badge badge-blue" style="font-size:10px">本月</span>' : ''}</td>
+            <td>${r.orderCount} 笔</td>
+            <td class="text-blue fw700">${fmt(r.totalLoan)}</td>
+            <td class="text-green fw700">${fmt(r.totalRepay)}</td>
+            <td class="text-red">${r.mExpenses > 0 ? fmt(r.mExpenses) : '<span style="color:var(--muted)">—</span>'}</td>
+            <td class="fw700" style="color:${r.mProfit>=0?'var(--navy)':'var(--red)'}">${fmt(r.mProfit)}</td>
+            <td>${r.mDue}</td>
+            <td>${r.mDue - r.mOverdue}</td>
+            <td class="${r.mOverdue > 0 ? 'text-red' : ''}">${r.mOverdue}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:6px">
+                <div style="background:#e3f2fd;height:6px;border-radius:3px;width:60px;flex-shrink:0">
+                  <div style="background:${isNaN(repayNum)||repayNum>=95?'#2e7d32':repayNum>=80?'#f57c00':'#c62828'};height:6px;border-radius:3px;width:${isNaN(repayNum)?0:Math.min(repayNum,100)}%"></div>
+                </div>
+                <span class="${repayColor} fw700">${r.repayRate}%</span>
+              </div>
+            </td>
+            <td>
+              <span class="badge ${overdueNum>10?'badge-red':overdueNum>5?'badge-amber':'badge-green'}">${r.overdueRate}%</span>
+            </td>
+          </tr>`;
+        }).join('')}
+        <tr style="background:#f0f4f8;font-weight:700;border-top:2px solid var(--border)">
+          <td>合计</td>
+          <td>${totOrders} 笔</td>
+          <td class="text-blue">${fmt(totLoan)}</td>
+          <td class="text-green">${fmt(totRepay)}</td>
+          <td class="text-red">${fmt(totExpenses)}</td>
+          <td style="color:var(--navy)">${fmt(totProfit)}</td>
+          <td>${totDue}</td>
+          <td>${totDue - totOverdue}</td>
+          <td class="${totOverdue>0?'text-red':''}">${totOverdue}</td>
+          <td>—</td>
+          <td><span class="badge ${parseFloat(avgOverdueRate)>10?'badge-red':parseFloat(avgOverdueRate)>5?'badge-amber':'badge-green'}">${avgOverdueRate}%</span></td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 单量分析 -->
+  <div class="card">
+    <div class="card-title" style="margin-bottom:14px">📦 单量 & 期别分析</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+      ${[3,6,9,12].map(p => {
+        const cnt = sales.filter(s => s.periods === p).length;
+        const loan = sales.filter(s => s.periods === p).reduce((a,s) => a + (+s.installmentAmount), 0);
+        const pct = sales.length > 0 ? (cnt/sales.length*100).toFixed(0) : 0;
+        const cls = {3:'pt3',6:'pt6',9:'pt9',12:'pt12'}[p];
+        return `<div style="background:#f8faff;border-radius:8px;padding:14px;border-left:3px solid ${p===6?'#2e7d32':p===9?'#1565c0':p===12?'#6a1b9a':'#e65100'}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span class="${cls}">${p}期</span><span style="font-size:11px;color:var(--muted)">${pct}%</span>
+          </div>
+          <div style="font-size:22px;font-weight:700;color:var(--navy)">${cnt} 笔</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">放款 ${fmt(loan)}</div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="table-wrap">
+      <table>
+        <tr><th>期别</th><th>合同数</th><th>占比</th><th>放款总额</th><th>预期利息</th><th>已结清</th><th>提前结清</th><th>进行中</th></tr>
+        ${[3,6,9,12,18,24].map(p => {
+          const pSales = sales.filter(s => s.periods === p);
+          if (!pSales.length) return '';
+          const pct = (pSales.length/sales.length*100).toFixed(1);
+          const loan = pSales.reduce((a,s) => a+(+s.installmentAmount),0);
+          const interest = pSales.reduce((a,s) => a+(+s.totalInterest),0);
+          const done = pSales.filter(s => s.status==='已结清').length;
+          const early = pSales.filter(s => s.status==='提前结清').length;
+          const active = pSales.filter(s => s.status==='进行中').length;
+          const cls = {3:'pt3',6:'pt6',9:'pt9',12:'pt12',18:'pt9',24:'pt12'}[p]||'pt6';
+          return `<tr>
+            <td><span class="${cls}">${p}期</span></td>
+            <td class="fw700">${pSales.length}</td>
+            <td>${pct}%</td>
+            <td class="text-blue">${fmt(loan)}</td>
+            <td class="text-amber">${fmt(interest)}</td>
+            <td><span class="badge badge-green">${done}</span></td>
+            <td><span class="badge badge-amber">${early}</span></td>
+            <td><span class="badge badge-blue">${active}</span></td>
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// EXPENSES 日常开支
+// ══════════════════════════════════════════════════════
+const EXPENSE_CATS = ['房租','水电','员工工资','通讯费','交通费','餐饮','维修','广告推广','办公用品','税费','其他'];
+
+function renderExpenses() {
+  const expenses = (DB_get('expenses')||[]).slice().reverse();
+  const total = expenses.reduce((a,e)=>a+(+e.amount),0);
+  // Group by month
+  const byMonth = {};
+  expenses.forEach(e=>{
+    const m = e.date.slice(0,7);
+    if(!byMonth[m]) byMonth[m] = 0;
+    byMonth[m] += +e.amount;
+  });
+  return `
+  <div class="page-header">
+    <div class="page-title">🧾 日常开支管理</div>
+    <div class="page-sub">记录日常运营支出，自动纳入月度财务与利润统计</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="margin-bottom:16px">➕ 新增开支记录</div>
+    <div class="form-grid">
+      <div class="form-group"><label>日期 *</label><input type="date" id="exDate" value="${today()}"></div>
+      <div class="form-group"><label>开支类别 *</label>
+        <select id="exCat">
+          ${EXPENSE_CATS.map(c=>`<option value="${c}">${c}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>金额 ($) *</label><input type="number" id="exAmount" placeholder="0.00" step="0.01" min="0"></div>
+      <div class="form-group span2"><label>备注说明</label><input id="exNote" placeholder="详细描述（可选）"></div>
+      <div class="form-group"><label>经手人</label><input id="exPerson" placeholder="姓名（可选）"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="submitExpense()">✅ 保存开支</button>
+    </div>
+    <div id="exMsg"></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">开支记录（${expenses.length} 笔）</div>
+        <span class="text-red fw700">累计支出 ${fmt(total)}</span>
+      </div>
+      <div class="search-row">
+        <select id="exMonthFilter" onchange="filterExpenses()">
+          <option value="">全部月份</option>
+          ${[...new Set(expenses.map(e=>e.date.slice(0,7)))].sort().reverse().map(m=>`<option value="${m}">${m}</option>`).join('')}
+        </select>
+        <select id="exCatFilter" onchange="filterExpenses()">
+          <option value="">全部类别</option>
+          ${EXPENSE_CATS.map(c=>`<option value="${c}">${c}</option>`).join('')}
+        </select>
+      </div>
+      <div id="exTable">${buildExpenseTable(expenses)}</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:14px">📅 按月汇总</div>
+      ${Object.keys(byMonth).sort().reverse().length ? `
+      <div class="table-wrap"><table>
+        <tr><th>月份</th><th>支出合计</th></tr>
+        ${Object.entries(byMonth).sort((a,b)=>b[0].localeCompare(a[0])).map(([m,v])=>`
+          <tr>
+            <td class="fw700">${m}</td>
+            <td class="fw700 text-red">${fmt(v)}</td>
+          </tr>`).join('')}
+        <tr style="background:#fff5f5;font-weight:700;border-top:2px solid var(--border)">
+          <td>合计</td><td class="text-red">${fmt(total)}</td>
+        </tr>
+      </table></div>` : `<div class="empty-state"><div class="ei">🧾</div><p>暂无记录</p></div>`}
+    </div>
+  </div>`;
+}
+
+function buildExpenseTable(expenses) {
+  if (!expenses.length) return `<div class="empty-state"><div class="ei">🧾</div><p>暂无开支记录，点击上方添加</p></div>`;
+  const catColors = {'房租':'badge-red','员工工资':'badge-red','税费':'badge-red','水电':'badge-amber','通讯费':'badge-amber','交通费':'badge-amber','餐饮':'badge-blue','维修':'badge-amber','广告推广':'badge-purple','办公用品':'badge-blue','其他':'badge-gray'};
+  return `<div class="table-wrap"><table>
+    <tr><th>日期</th><th>类别</th><th>金额</th><th>说明</th><th>经手人</th><th>操作</th></tr>
+    ${expenses.map(e=>`<tr>
+      <td>${e.date}</td>
+      <td><span class="badge ${catColors[e.cat]||'badge-gray'}">${esc(e.cat)}</span></td>
+      <td class="fw700 text-red">${fmt(e.amount)}</td>
+      <td style="color:var(--muted);font-size:12px">${esc(e.note||'—')}</td>
+      <td style="font-size:12px">${esc(e.person||'—')}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.id})">删除</button></td>
+    </tr>`).join('')}
+  </table></div>`;
+}
+
+window.filterExpenses = function() {
+  const month = document.getElementById('exMonthFilter')?.value||'';
+  const cat   = document.getElementById('exCatFilter')?.value||'';
+  let list = DB_get('expenses')||[];
+  if (month) list = list.filter(e=>e.date.slice(0,7)===month);
+  if (cat)   list = list.filter(e=>e.cat===cat);
+  const wrap = document.getElementById('exTable');
+  if (wrap) wrap.innerHTML = buildExpenseTable(list.slice().reverse());
+};
+
+window.submitExpense = function() {
+  const date   = document.getElementById('exDate')?.value||today();
+  const cat    = document.getElementById('exCat')?.value||'其他';
+  const amount = +(document.getElementById('exAmount')?.value||0);
+  const note   = document.getElementById('exNote')?.value||'';
+  const person = document.getElementById('exPerson')?.value||'';
+  if (!amount || amount <= 0) { showMsg('exMsg','请填写有效金额','red'); return; }
+  const expenses = DB_get('expenses')||[];
+  expenses.push({ id: newId(), date, cat, amount, note, person });
+  DB_set('expenses', expenses);
+  showMsg('exMsg', `✅ 已记录 ${cat} 开支 ${fmt(amount)}`, 'green');
+  ['exAmount','exNote','exPerson'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  setTimeout(()=>nav('expenses'), 400);
+};
+
+window.deleteExpense = function(id) {
+  if (!confirm('确认删除该开支记录？')) return;
+  DB_set('expenses', (DB_get('expenses')||[]).filter(e=>e.id!==id));
+  nav('expenses');
+};
+
+function renderInventory() {
+  const phones=DB_get('phones')||[];
+  const totalStock=phones.reduce((a,p)=>a+p.stock,0), totalCost=phones.reduce((a,p)=>a+p.stock*p.cost,0);
+  return `<div class="page-header"><div class="page-title">📦 库存查看</div></div>
+  <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="stat-card blue"><div class="stat-label">型号种类</div><div class="stat-value">${phones.length}</div></div>
+    <div class="stat-card green"><div class="stat-label">库存总量</div><div class="stat-value">${totalStock} 台</div></div>
+    <div class="stat-card amber"><div class="stat-label">库存成本</div><div class="stat-value">${fmt(totalCost)}</div></div>
+  </div>
+  <div class="card"><div class="table-wrap"><table><tr><th>品牌</th><th>型号</th><th>进货价</th><th>售价</th><th>库存</th><th>库存状态</th></tr>
+    ${phones.length?phones.map(p=>`<tr><td class="fw700">${esc(p.brand)}</td><td>${esc(p.model)}</td>
+      <td>${fmt(p.cost)}</td><td>${fmt(p.price)}</td><td class="fw700">${p.stock}</td>
+      <td><span class="badge ${p.stock===0?'badge-red':p.stock<=3?'badge-amber':'badge-green'}">${p.stock===0?'❌缺货':p.stock<=3?'⚠️低库存':'✅充足'}</span></td></tr>`).join('')
+    :'<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--muted)">暂无数据</td></tr>'}
+  </table></div></div>`;
+}
+
+function renderCompany() {
+  const c=DB_get('company')||{};
+  return `<div class="page-header"><div class="page-title">⚙️ 单位信息</div></div>
+  <div class="card"><div class="form-grid">
+    <div class="form-group span2"><label>单位名称</label><input id="coName" value="${esc(c.name||'')}"></div>
+    <div class="form-group"><label>联系电话</label><input id="coPhone" value="${esc(c.phone||'')}"></div>
+    <div class="form-group span3"><label>地址</label><input id="coAddr" value="${esc(c.address||'')}"></div>
+    <div class="form-group span3"><label>备注</label><input id="coNote" value="${esc(c.note||'')}"></div>
+  </div>
+  <div class="btn-row"><button class="btn btn-success" onclick="saveCompany()">💾 保存</button></div>
+  <div id="coMsg"></div></div>
+  <div class="card" style="background:#f0f7ff"><div class="card-title">数据管理</div>
+  <div class="btn-row" style="margin-top:14px">
+    <button class="btn btn-outline" onclick="window.open('/api/backup')">📤 下载数据备份</button>
+  </div></div>`;
+}
+window.saveCompany = function() {
+  const name=document.getElementById('coName')?.value||'';
+  DB_set('company',{name,phone:document.getElementById('coPhone')?.value||'',address:document.getElementById('coAddr')?.value||'',note:document.getElementById('coNote')?.value||''});
+  document.getElementById('companyName').textContent=name||'MORODOK'; showMsg('coMsg','✅ 已保存','green');
+};
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+(async function() {
+  showLoading('正在连接服务器...');
+  try {
+    await loadDB();
+    hideLoading();
+    nav('home');
+    updateBadges();
+    setInterval(updateBadges, 60000);
+    // Date
+    const updateDate = () => { const el = document.getElementById('dateDisplay'); if(el) el.textContent = new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'short'}); };
+    updateDate(); setInterval(updateDate, 30000);
+  } catch(e) {
+    hideLoading();
+    document.getElementById('mainContent').innerHTML = `<div class="empty-state" style="margin-top:60px">
+      <div class="ei">❌</div><p style="font-size:16px;font-weight:700;color:var(--red)">无法连接服务器</p>
+      <p style="margin-top:8px">请确保 server.js 已启动，然后刷新页面</p>
+    </div>`;
+  }
+})();
+</script>
+</body>
+</html>
