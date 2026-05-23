@@ -383,13 +383,21 @@ function renderHome() {
 // ══════════════════════════════════════════════════════
 // SALE ADD
 // ══════════════════════════════════════════════════════
+const PERIOD_OPTS = [1,3,5,8,11,12];
+
+function periodSelect(id, defaultVal, onchange) {
+  return `<select id="${id}" onchange="${onchange}">
+    ${PERIOD_OPTS.map(p => `<option value="${p}" ${p===defaultVal?'selected':''}>${p}期</option>`).join('')}
+  </select>`;
+}
+
 function renderSaleAdd() {
   const phones = DB_get('phones') || [];
   const opts = phones.map(p => `<option value="${p.id}">${esc(p.brand)} ${esc(p.model)} — 库存${p.stock}台 (建议${fmt(p.price)})</option>`).join('');
   return `
   <div class="page-header"><div class="page-title">➕ 销售登记</div><div class="page-sub">新建手机分期合同，自动生成还款计划</div></div>
   <div class="card">
-    <div class="card-title" style="margin-bottom:16px">📝 合同信息</div>
+    <div class="card-title" style="margin-bottom:16px">📝 基本信息</div>
     <div class="form-grid">
       <div class="form-group"><label>合同日期</label><input type="date" id="sDate" value="${today()}"></div>
       <div class="form-group"><label>客户姓名 *</label><input id="sCust" placeholder="输入客户全名"></div>
@@ -397,26 +405,48 @@ function renderSaleAdd() {
       <div class="form-group span2"><label>手机型号 *</label><select id="sModel" onchange="calcInstall()">${opts || '<option>请先添加手机型号</option>'}</select></div>
       <div class="form-group"><label>销售价格 ($) *</label><input type="number" id="sSalePrice" placeholder="0.00" step="0.01" oninput="calcInstall()"></div>
       <div class="form-group"><label>首付金额 ($)</label><input type="number" id="sDeposit" value="0" step="0.01" oninput="calcInstall()"></div>
-      <div class="form-group"><label>分期期数</label>
-        <select id="sPeriods" onchange="calcInstall()">
-          <option value="3">3期</option><option value="6" selected>6期</option>
-          <option value="9">9期</option><option value="12">12期</option>
-          <option value="18">18期</option><option value="24">24期</option>
-        </select>
-      </div>
-      <div class="form-group"><label>月利率 (%)</label><input type="number" id="sRate" value="6" step="0.1" oninput="calcInstall()"></div>
+      <div class="form-group"><label>分期期数</label>${periodSelect('sPeriods', 3, 'calcInstall()')}</div>
       <div class="form-group"><label>首次还款日</label><input type="date" id="sFirstDue"></div>
     </div>
-    <div style="background:#f0f7ff;border-radius:8px;padding:14px;margin-top:14px">
-      <div style="font-size:12px;color:var(--sky);font-weight:600;margin-bottom:10px">📊 自动计算结果</div>
+
+    <div style="background:#e8f5e9;border-radius:8px;padding:14px;margin-top:14px;border-left:3px solid var(--green)">
+      <div style="font-size:12px;color:var(--green);font-weight:700;margin-bottom:12px">💰 利息设置</div>
       <div class="form-grid">
-        <div class="form-group"><label>分期本金 ($)</label><input id="sInstAmt" readonly></div>
-        <div class="form-group"><label>每期还款 ($)</label><input id="sMonthly" readonly></div>
-        <div class="form-group"><label>利息总额 ($)</label><input id="sTotalInt" readonly></div>
+        <div class="form-group"><label>利息月利率 (%)</label><input type="number" id="sInterestRate" value="0" step="0.01" placeholder="0.00" oninput="calcInstall()"></div>
+        <div class="form-group"><label>利息总额 ($)</label><input id="sTotalInt" readonly style="background:#f0faf0"></div>
+        <div class="form-group"><label>每期利息 ($)</label><input id="sMonthlyInt" readonly style="background:#f0faf0"></div>
       </div>
     </div>
-    <div class="form-grid" style="margin-top:14px">
-      <div class="form-group span3"><label>备注</label><input id="sNote" placeholder="可选"></div>
+
+    <div style="background:#fff8e1;border-radius:8px;padding:14px;margin-top:10px;border-left:3px solid var(--amber)">
+      <div style="font-size:12px;color:var(--amber);font-weight:700;margin-bottom:12px">🧾 手续费设置</div>
+      <div class="form-grid">
+        <div class="form-group"><label>手续费月利率 (%)</label><input type="number" id="sServiceRate" value="0" step="0.01" placeholder="0.00" oninput="calcInstall()"></div>
+        <div class="form-group"><label>手续费期数</label>${periodSelect('sServicePeriods', 3, 'calcInstall()')}</div>
+        <div class="form-group"><label>手续费总额 ($)</label><input id="sTotalService" readonly style="background:#fffbf0"></div>
+        <div class="form-group"><label>每期手续费 ($)</label><input id="sMonthlyService" readonly style="background:#fffbf0"></div>
+      </div>
+    </div>
+
+    <div style="background:#fce4ec;border-radius:8px;padding:14px;margin-top:10px;border-left:3px solid var(--red)">
+      <div style="font-size:12px;color:var(--red);font-weight:700;margin-bottom:12px">⚠️ 逾期 & 返点</div>
+      <div class="form-grid">
+        <div class="form-group"><label>每日滞纳金 ($)</label><input type="number" id="sDailyFee" value="0" step="0.01" placeholder="0.00"></div>
+        <div class="form-group"><label>店家返点 ($)</label><input type="number" id="sRebate" value="0" step="0.01" placeholder="0.00" oninput="calcInstall()"></div>
+      </div>
+    </div>
+
+    <div style="background:#f0f7ff;border-radius:8px;padding:14px;margin-top:10px;border-left:3px solid var(--sky)">
+      <div style="font-size:12px;color:var(--sky);font-weight:700;margin-bottom:12px">📊 汇总计算</div>
+      <div class="form-grid">
+        <div class="form-group"><label>分期本金 ($)</label><input id="sInstAmt" readonly></div>
+        <div class="form-group"><label>每期还款合计 ($)</label><input id="sMonthly" readonly style="background:#e3f2fd;font-weight:700"></div>
+        <div class="form-group"><label>预计净利润 ($)</label><input id="sNetProfit" readonly style="background:#e3f2fd;color:var(--green);font-weight:700"></div>
+      </div>
+    </div>
+
+    <div class="form-grid" style="margin-top:12px">
+      <div class="form-group span3"><label>备注</label><input id="sNote" placeholder="可选备注"></div>
     </div>
     <div class="btn-row">
       <button class="btn btn-primary" onclick="submitSale()">✅ 保存合同</button>
@@ -427,54 +457,110 @@ function renderSaleAdd() {
 }
 
 window.calcInstall = function() {
-  const price = +(document.getElementById('sSalePrice')?.value || 0);
-  const dep = +(document.getElementById('sDeposit')?.value || 0);
-  const periods = +(document.getElementById('sPeriods')?.value || 6);
-  const rate = +(document.getElementById('sRate')?.value || 6) / 100;
-  const principal = Math.max(0, price - dep);
-  const totalInt = principal * rate * periods;
-  const monthly = (principal + totalInt) / periods;
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v.toFixed(2); };
-  set('sInstAmt', principal); set('sMonthly', monthly); set('sTotalInt', totalInt);
+  const price       = +(document.getElementById('sSalePrice')?.value || 0);
+  const dep         = +(document.getElementById('sDeposit')?.value || 0);
+  const periods     = +(document.getElementById('sPeriods')?.value || 3);
+  const intRate     = +(document.getElementById('sInterestRate')?.value || 0) / 100;
+  const svcRate     = +(document.getElementById('sServiceRate')?.value || 0) / 100;
+  const svcPeriods  = +(document.getElementById('sServicePeriods')?.value || 3);
+  const rebate      = +(document.getElementById('sRebate')?.value || 0);
+  const principal   = Math.max(0, price - dep);
+
+  const totalInt    = principal * intRate * periods;
+  const totalSvc    = principal * svcRate * svcPeriods;
+  const monthlyInt  = periods > 0 ? totalInt / periods : 0;
+  const monthlySvc  = periods > 0 ? totalSvc / periods : 0;
+  const monthly     = periods > 0 ? (principal / periods) + monthlyInt + monthlySvc : 0;
+
+  // Net profit = interest + service fee - rebate (毛利在保存时用进货价计算)
+  const phones = DB_get('phones') || [];
+  const modelId = +(document.getElementById('sModel')?.value || 0);
+  const ph = phones.find(p => p.id === modelId);
+  const grossProfit = ph ? (price - ph.cost) : 0;
+  const netProfit = grossProfit + totalInt + totalSvc - rebate;
+
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = isNaN(v) ? '0.00' : v.toFixed(2); };
+  set('sInstAmt', principal);
+  set('sTotalInt', totalInt);
+  set('sMonthlyInt', monthlyInt);
+  set('sTotalService', totalSvc);
+  set('sMonthlyService', monthlySvc);
+  set('sMonthly', monthly);
+  set('sNetProfit', netProfit);
+  const npEl = document.getElementById('sNetProfit');
+  if (npEl) npEl.style.color = netProfit >= 0 ? 'var(--green)' : 'var(--red)';
 };
 
 window.submitSale = function() {
-  const cust = document.getElementById('sCust')?.value?.trim();
-  const custPhone = document.getElementById('sCustPhone')?.value?.trim() || '';
-  const price = +(document.getElementById('sSalePrice')?.value || 0);
-  const dep = +(document.getElementById('sDeposit')?.value || 0);
-  const periods = +(document.getElementById('sPeriods')?.value || 6);
-  const rate = +(document.getElementById('sRate')?.value || 6) / 100;
-  const firstDue = document.getElementById('sFirstDue')?.value || '';
-  const note = document.getElementById('sNote')?.value || '';
-  const modelId = +(document.getElementById('sModel')?.value || 0);
-  const sDate = document.getElementById('sDate')?.value || today();
-  if (!cust) { showMsg('saleMsg', '请填写客户姓名', 'red'); return; }
-  if (!price) { showMsg('saleMsg', '请填写销售价格', 'red'); return; }
+  const cust        = document.getElementById('sCust')?.value?.trim();
+  const custPhone   = document.getElementById('sCustPhone')?.value?.trim() || '';
+  const price       = +(document.getElementById('sSalePrice')?.value || 0);
+  const dep         = +(document.getElementById('sDeposit')?.value || 0);
+  const periods     = +(document.getElementById('sPeriods')?.value || 3);
+  const intRate     = +(document.getElementById('sInterestRate')?.value || 0) / 100;
+  const svcRate     = +(document.getElementById('sServiceRate')?.value || 0) / 100;
+  const svcPeriods  = +(document.getElementById('sServicePeriods')?.value || 3);
+  const dailyFee    = +(document.getElementById('sDailyFee')?.value || 0);
+  const rebate      = +(document.getElementById('sRebate')?.value || 0);
+  const firstDue    = document.getElementById('sFirstDue')?.value || '';
+  const note        = document.getElementById('sNote')?.value || '';
+  const modelId     = +(document.getElementById('sModel')?.value || 0);
+  const sDate       = document.getElementById('sDate')?.value || today();
+
+  if (!cust)    { showMsg('saleMsg', '请填写客户姓名', 'red'); return; }
+  if (!price)   { showMsg('saleMsg', '请填写销售价格', 'red'); return; }
   if (dep >= price) { showMsg('saleMsg', '首付不能超过售价', 'red'); return; }
-  if (!firstDue) { showMsg('saleMsg', '请选择首次还款日', 'red'); return; }
-  const phones = DB_get('phones') || [];
-  const ph = phones.find(p => p.id === modelId);
+  if (!firstDue){ showMsg('saleMsg', '请选择首次还款日', 'red'); return; }
+
+  const phones    = DB_get('phones') || [];
+  const ph        = phones.find(p => p.id === modelId);
   const principal = price - dep;
-  const totalInt = principal * rate * periods;
-  const monthly = (principal + totalInt) / periods;
+  const totalInt  = principal * intRate * periods;
+  const totalSvc  = principal * svcRate * svcPeriods;
+  const monthlyInt = periods > 0 ? totalInt / periods : 0;
+  const monthlySvc = periods > 0 ? totalSvc / periods : 0;
+  const monthly   = (principal / periods) + monthlyInt + monthlySvc;
+
+  // Generate schedule
   const schedule = [];
   for (let i = 0; i < periods; i++) {
     const d = new Date(firstDue); d.setMonth(d.getMonth() + i);
-    schedule.push({ period: i+1, dueDate: d.toISOString().slice(0,10),
-      principalDue: +(principal/periods).toFixed(2), interestDue: +(principal*rate).toFixed(2),
-      paid: false, paidDate: null, paidPrincipal: 0, paidInterest: 0, penalty: 0 });
+    const hasSvc = (i + 1) <= svcPeriods;
+    schedule.push({
+      period: i + 1,
+      dueDate: d.toISOString().slice(0, 10),
+      principalDue: +(principal / periods).toFixed(2),
+      interestDue:  +monthlyInt.toFixed(2),
+      serviceFeeDue: hasSvc ? +monthlySvc.toFixed(2) : 0,
+      totalDue: +((principal / periods) + monthlyInt + (hasSvc ? monthlySvc : 0)).toFixed(2),
+      paid: false, paidDate: null,
+      paidPrincipal: 0, paidInterest: 0, paidServiceFee: 0, penalty: 0
+    });
   }
-  const sale = { id: newId(), date: sDate, customer: cust, customerPhone: custPhone,
+
+  const sale = {
+    id: newId(), date: sDate, customer: cust, customerPhone: custPhone,
     modelId, modelName: ph ? `${ph.brand} ${ph.model}` : '',
     salePrice: price, deposit: dep, installmentAmount: principal,
-    periods, rate: rate*100, monthlyPayment: monthly, totalInterest: totalInt,
-    firstDue, note, schedule, status: '进行中' };
-  if (ph) { const idx = phones.findIndex(p => p.id === modelId); phones[idx].stock = Math.max(0, ph.stock - 1); DB_set('phones', phones); }
-  const sales = DB_get('sales') || []; sales.push(sale); DB_set('sales', sales);
+    periods, svcPeriods,
+    interestRate: intRate * 100, serviceFeeRate: svcRate * 100,
+    monthlyPayment: monthly,
+    totalInterest: totalInt, totalServiceFee: totalSvc,
+    dailyLateFee: dailyFee, storeRebate: rebate,
+    firstDue, note, schedule, status: '进行中'
+  };
+
+  if (ph) {
+    const idx = phones.findIndex(p => p.id === modelId);
+    phones[idx].stock = Math.max(0, ph.stock - 1);
+    DB_set('phones', phones);
+  }
+  const sales = DB_get('sales') || [];
+  sales.push(sale);
+  DB_set('sales', sales);
   showMsg('saleMsg', `✅ 合同 #${sale.id} 已保存！${cust}，${periods}期，每期 ${fmt(monthly)}`, 'green');
   ['sCust','sCustPhone','sSalePrice','sNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  document.getElementById('sDeposit').value = '0';
+  ['sDeposit','sInterestRate','sServiceRate','sDailyFee','sRebate'].forEach(id => { const el = document.getElementById(id); if (el) el.value = '0'; });
   calcInstall(); updateBadges();
 };
 
@@ -496,9 +582,9 @@ function renderSaleList() {
 
 function buildSalesTable(sales) {
   if (!sales.length) return `<div class="empty-state"><div class="ei">📭</div><p>暂无合同</p></div>`;
-  const pt = {3:'pt3',6:'pt6',9:'pt9',12:'pt12',18:'pt9',24:'pt12'};
+  const ptc = {1:'pt3',3:'pt3',5:'pt6',8:'pt9',11:'pt12',12:'pt12',6:'pt6',9:'pt9',18:'pt9',24:'pt12'};
   return `<div class="table-wrap"><table>
-    <tr><th>#</th><th>日期</th><th>客户</th><th>型号</th><th>售价</th><th>首付</th><th>分期本金</th><th>期数</th><th>每期</th><th>进度</th><th>状态</th><th>操作</th></tr>
+    <tr><th>#</th><th>日期</th><th>客户</th><th>型号</th><th>售价</th><th>首付</th><th>分期本金</th><th>期数</th><th>利息率</th><th>手续费率</th><th>每期还款</th><th>返点</th><th>进度</th><th>状态</th><th>操作</th></tr>
     ${sales.slice().reverse().map(s => {
       const paid = s.schedule.filter(p => p.paid).length;
       return `<tr>
@@ -506,15 +592,20 @@ function buildSalesTable(sales) {
         <td><div class="fw700">${esc(s.customer)}</div><div class="text-muted" style="font-size:11px">${esc(s.customerPhone||'')}</div></td>
         <td>${esc(s.modelName||'-')}</td><td>${fmt(s.salePrice)}</td><td>${fmt(s.deposit)}</td>
         <td class="fw700">${fmt(s.installmentAmount)}</td>
-        <td><span class="${pt[s.periods]||'pt6'}">${s.periods}期</span></td>
-        <td>${fmt(s.monthlyPayment)}</td>
+        <td><span class="${ptc[s.periods]||'pt6'}">${s.periods}期</span></td>
+        <td>${(+s.interestRate||0).toFixed(2)}%</td>
+        <td>${(+s.serviceFeeRate||0).toFixed(2)}%<span style="font-size:10px;color:var(--muted)">×${s.svcPeriods||s.periods}期</span></td>
+        <td class="fw700">${fmt(s.monthlyPayment)}</td>
+        <td class="${(+s.storeRebate||0)>0?'text-red':''}">${(+s.storeRebate||0)>0?'-'+fmt(s.storeRebate):'-'}</td>
         <td><span style="font-size:12px">${paid}/${s.periods}</span>
           <div style="background:#e3f2fd;height:4px;border-radius:2px;margin-top:4px;width:60px">
             <div style="background:var(--sky);height:4px;border-radius:2px;width:${Math.round(paid/s.periods*100)}%"></div>
           </div></td>
-        <td><span class="badge ${s.status==='已结清'?'badge-green':'badge-blue'}">${s.status}</span></td>
-        <td><button class="btn btn-outline btn-sm" onclick="viewSchedule(${s.id})">还款计划</button>
-            <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSale(${s.id})">删除</button></td>
+        <td><span class="badge ${s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':'badge-blue'}">${s.status}</span></td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-outline btn-sm" onclick="viewSchedule(${s.id})">还款计划</button>
+          <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSale(${s.id})">删除</button>
+        </td>
       </tr>`;}).join('')}
   </table></div>`;
 }
@@ -532,14 +623,27 @@ window.filterSales = function() {
 window.viewSchedule = function(id) {
   const s = (DB_get('sales')||[]).find(x => x.id === id); if (!s) return;
   showModal(`还款计划 — ${esc(s.customer)} (#${s.id})`,
-    `<div class="table-wrap"><table>
-      <tr><th>期次</th><th>到期日</th><th>本金</th><th>利息</th><th>合计</th><th>状态</th></tr>
+    `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+      利息月利率：${(+s.interestRate||0).toFixed(2)}% &nbsp;|&nbsp;
+      手续费月利率：${(+s.serviceFeeRate||0).toFixed(2)}%（前${s.svcPeriods||s.periods}期）&nbsp;|&nbsp;
+      每日滞纳金：${fmt(s.dailyLateFee||0)} &nbsp;|&nbsp;
+      店家返点：${fmt(s.storeRebate||0)}
+    </div>
+    <div class="table-wrap"><table>
+      <tr><th>期次</th><th>到期日</th><th>本金</th><th>利息</th><th>手续费</th><th>期合计</th><th>状态</th></tr>
       ${s.schedule.map(p => `<tr>
-        <td>第${p.period}期</td><td>${p.dueDate}</td><td>${fmt(p.principalDue)}</td><td>${fmt(p.interestDue)}</td>
-        <td class="fw700">${fmt((+p.principalDue)+(+p.interestDue))}</td>
+        <td>第${p.period}期</td><td>${p.dueDate}</td>
+        <td>${fmt(p.principalDue)}</td><td>${fmt(p.interestDue||0)}</td>
+        <td>${fmt(p.serviceFeeDue||0)}</td>
+        <td class="fw700">${fmt((+p.principalDue)+(+p.interestDue||0)+(+p.serviceFeeDue||0))}</td>
         <td><span class="badge ${p.paid?'badge-green':'badge-amber'}">${p.paid?'已还 '+p.paidDate:'待还'}</span></td>
       </tr>`).join('')}
-    </table></div>`);
+    </table></div>
+    <div style="margin-top:10px;font-size:12px;display:flex;gap:20px">
+      <span>利息总额：<b class="text-green">${fmt(s.totalInterest||0)}</b></span>
+      <span>手续费总额：<b class="text-amber">${fmt(s.totalServiceFee||0)}</b></span>
+      <span>店家返点：<b class="text-red">-${fmt(s.storeRebate||0)}</b></span>
+    </div>`);
 };
 
 window.deleteSale = function(id) {
@@ -657,32 +761,47 @@ function renderStatsProfit() {
   const expenses  = DB_get('expenses')||[];
 
   const normalSales = sales.filter(s => s.status !== '提前结清');
-  const tSale = sales.reduce((a,s)=>a+(+s.salePrice),0);
-  const tCost = sales.reduce((a,s)=>{const p=phones.find(ph=>ph.id===s.modelId);return a+(p?+p.cost:0);},0);
+  const tSale  = sales.reduce((a,s)=>a+(+s.salePrice),0);
+  const tCost  = sales.reduce((a,s)=>{const p=phones.find(ph=>ph.id===s.modelId);return a+(p?+p.cost:0);},0);
   const tGross = tSale - tCost;
-  const tNormalInterest = normalSales.reduce((a,s)=>a+(+s.totalInterest),0);
-  const tPaidNormalInt  = pays.reduce((a,p)=>a+(+p.interest),0);
-  const tEarlyProfit    = earlyPays.reduce((a,r)=>a+(+r.actualProfit),0);
-  const tEarlyOrigInt   = earlyPays.reduce((a,r)=>a+(+r.origRemainInterest),0);
-  const tEarlyDiff      = tEarlyProfit - tEarlyOrigInt;
-  const tExpenses       = expenses.reduce((a,e)=>a+(+e.amount),0);
-  const tProfitBeforeExp = tGross + tNormalInterest + tEarlyProfit;
-  const tNet            = tProfitBeforeExp - tExpenses;
 
-  // Expense breakdown by category
+  // Interest & service fee totals
+  const tInterest    = normalSales.reduce((a,s)=>a+(+s.totalInterest||0),0);
+  const tServiceFee  = normalSales.reduce((a,s)=>a+(+s.totalServiceFee||0),0);
+  const tRebate      = sales.reduce((a,s)=>a+(+s.storeRebate||0),0);
+  const tPenalty     = pays.reduce((a,p)=>a+(+p.penalty||0),0);
+
+  // Early repayment
+  const tEarlyProfit   = earlyPays.reduce((a,r)=>a+(+r.actualProfit),0);
+  const tEarlyOrigInt  = earlyPays.reduce((a,r)=>a+(+r.origRemainInterest),0);
+  const tEarlyDiff     = tEarlyProfit - tEarlyOrigInt;
+
+  // Expenses
+  const tExpenses = expenses.reduce((a,e)=>a+(+e.amount),0);
+
+  // Net profit = gross + interest + service fee + penalty + early profit - rebate - expenses
+  const tProfitBeforeExp = tGross + tInterest + tServiceFee + tPenalty + tEarlyProfit - tRebate;
+  const tNet = tProfitBeforeExp - tExpenses;
+
   const byCat = {};
   expenses.forEach(e => { byCat[e.cat] = (byCat[e.cat]||0) + (+e.amount); });
   const catEntries = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
 
   return `
-  <div class="page-header"><div class="page-title">💰 利润统计</div><div class="page-sub">含正常分期 + 提前还款 + 日常开支扣除</div></div>
+  <div class="page-header"><div class="page-title">💰 利润统计</div><div class="page-sub">含利息 + 手续费 + 提前还款 − 店家返点 − 日常开支</div></div>
 
-  <!-- 核心4指标 -->
   <div class="stats-grid">
-    <div class="stat-card green"><span class="stat-icon">🏆</span><div class="stat-label">最终净利润</div><div class="stat-value" style="font-size:${tNet<0?'20px':'26px'};color:${tNet>=0?'var(--green)':'var(--red)'}">${fmt(tNet)}</div><div class="stat-sub">已扣除全部开支</div></div>
-    <div class="stat-card blue"><span class="stat-icon">📈</span><div class="stat-label">税前利润</div><div class="stat-value">${fmt(tProfitBeforeExp)}</div><div class="stat-sub">毛利+利息（未扣开支）</div></div>
-    <div class="stat-card amber"><span class="stat-icon">💹</span><div class="stat-label">销售毛利</div><div class="stat-value">${fmt(tGross)}</div><div class="stat-sub">总售价 ${fmt(tSale)} − 成本 ${fmt(tCost)}</div></div>
-    <div class="stat-card red"><span class="stat-icon">🧾</span><div class="stat-label">累计日常开支</div><div class="stat-value">${fmt(tExpenses)}</div><div class="stat-sub">${expenses.length} 笔开支记录</div></div>
+    <div class="stat-card green"><span class="stat-icon">🏆</span><div class="stat-label">最终净利润</div>
+      <div class="stat-value" style="color:${tNet>=0?'var(--green)':'var(--red)'}">${fmt(tNet)}</div>
+      <div class="stat-sub">扣除返点+开支后</div></div>
+    <div class="stat-card blue"><span class="stat-icon">💹</span><div class="stat-label">利息+手续费收入</div>
+      <div class="stat-value">${fmt(tInterest+tServiceFee)}</div>
+      <div class="stat-sub">利息${fmt(tInterest)} + 手续费${fmt(tServiceFee)}</div></div>
+    <div class="stat-card amber"><span class="stat-icon">⚠️</span><div class="stat-label">滞纳金收入（已收）</div>
+      <div class="stat-value">${fmt(tPenalty)}</div>
+      <div class="stat-sub">实际收到的逾期罚款</div></div>
+    <div class="stat-card red"><span class="stat-icon">↩️</span><div class="stat-label">店家返点（成本）</div>
+      <div class="stat-value">${fmt(tRebate)}</div><div class="stat-sub">${sales.filter(s=>+s.storeRebate>0).length} 笔合同有返点</div></div>
   </div>
 
   <!-- 利润构成 -->
@@ -692,20 +811,26 @@ function renderStatsProfit() {
       <div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600">收入来源</div>
         ${[
-          ['销售毛利', tGross, 'var(--sky)'],
-          ['正常分期利息（预期）', tNormalInterest, 'var(--green)'],
-          ['提前还款实际利润', tEarlyProfit, 'var(--amber)'],
+          ['销售毛利（售价-成本）', tGross,      'var(--sky)'],
+          ['利息收入',             tInterest,    'var(--green)'],
+          ['手续费收入',           tServiceFee,  'var(--amber)'],
+          ['滞纳金收入（已收）',   tPenalty,     '#e91e63'],
+          ['提前还款实际利润',     tEarlyProfit, '#9c27b0'],
         ].map(([l,v,c])=>`
           <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eef2f7">
             <span style="font-size:13px">${l}</span>
             <span style="font-weight:700;color:${c}">${fmt(v)}</span>
           </div>`).join('')}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eef2f7">
+          <span style="font-size:13px">店家返点（扣除）</span>
+          <span style="font-weight:700;color:var(--red)">− ${fmt(tRebate)}</span>
+        </div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;font-weight:700">
-          <span>税前利润合计</span><span style="color:var(--navy)">${fmt(tProfitBeforeExp)}</span>
+          <span>税前利润</span><span style="color:var(--navy)">${fmt(tProfitBeforeExp)}</span>
         </div>
       </div>
       <div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600">开支扣除 ${catEntries.length > 0 ? `（${catEntries.length} 类）` : ''}</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600">开支扣除</div>
         ${catEntries.length ? catEntries.map(([cat,amt])=>`
           <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #eef2f7">
             <span style="font-size:13px">${esc(cat)}</span>
@@ -718,7 +843,7 @@ function renderStatsProfit() {
           <span>最终净利润</span>
           <span style="color:${tNet>=0?'var(--green)':'var(--red)'}">${fmt(tNet)}</span>
         </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:8px;padding:0 4px">
+        <div style="margin-top:8px">
           <button class="btn btn-outline btn-sm" onclick="nav('expenses')" style="font-size:11px">🧾 管理开支记录</button>
         </div>
       </div>
@@ -731,15 +856,8 @@ function renderStatsProfit() {
       <div class="card-title">⚡ 提前还款利润汇总</div>
       <span class="badge ${tEarlyDiff >= 0 ? 'badge-green' : 'badge-red'}">利润变化：${tEarlyDiff >= 0 ? '+' : ''}${fmt(tEarlyDiff)}</span>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
-      ${[['提前结清合同',earlyPays.length+'笔'],['原应收利息',fmt(tEarlyOrigInt)],['实际收到利润',fmt(tEarlyProfit)],['利润增减',(tEarlyDiff>=0?'+':'')+fmt(tEarlyDiff)]].map(([l,v],i)=>`
-        <div style="background:${i===3?(tEarlyDiff>=0?'#e8f5e9':'#ffebee'):(i===2?'#e8f5e9':'#fff8e1')};border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${l}</div>
-          <div style="font-size:20px;font-weight:700;color:${i===3?(tEarlyDiff>=0?'var(--green)':'var(--red)'):i===0?'var(--amber)':'var(--green)'}">${v}</div>
-        </div>`).join('')}
-    </div>
     <div class="table-wrap"><table>
-      <tr><th>日期</th><th>客户</th><th>合同#</th><th>协商还款额</th><th>原应收利息</th><th>实际利润</th><th>利润差异</th></tr>
+      <tr><th>日期</th><th>客户</th><th>合同#</th><th>协商还款额</th><th>原应收利息</th><th>实际利润</th><th>差异</th></tr>
       ${earlyPays.map(r=>{const diff=+r.actualProfit-+r.origRemainInterest;return`<tr>
         <td>${r.date}</td><td class="fw700">${esc(r.customer)}</td><td class="text-blue">#${r.contractId}</td>
         <td class="text-amber fw700">${fmt(r.negotiatedAmount)}</td><td>${fmt(r.origRemainInterest)}</td>
@@ -752,26 +870,32 @@ function renderStatsProfit() {
   <div class="card">
     <div class="card-title" style="margin-bottom:14px">各合同盈利明细</div>
     ${sales.length?`<div class="table-wrap"><table>
-      <tr><th>#</th><th>客户</th><th>型号</th><th>售价</th><th>成本</th><th>毛利</th><th>利息/利润</th><th>净利润</th><th>状态</th></tr>
+      <tr><th>#</th><th>客户</th><th>型号</th><th>售价</th><th>成本</th><th>毛利</th><th>利息</th><th>手续费</th><th>返点</th><th>净利润</th><th>状态</th></tr>
       ${sales.slice().reverse().map(s=>{
         const ph=phones.find(p=>p.id===s.modelId), cost=ph?+ph.cost:0;
         const gross=+s.salePrice-cost;
-        let interestVal, interestLabel;
+        let interestVal, svcVal, rebateVal, net;
         if (s.status === '提前结清') {
           const ep = earlyPays.find(r => r.contractId === s.id);
           interestVal = ep ? +ep.actualProfit : 0;
-          interestLabel = `<span class="badge badge-amber" style="font-size:10px">⚡提前</span> ${fmt(interestVal)}`;
+          svcVal = 0;
         } else {
-          interestVal = +s.totalInterest;
-          interestLabel = fmt(interestVal);
+          interestVal = +s.totalInterest||0;
+          svcVal = +s.totalServiceFee||0;
         }
-        const net = gross + interestVal;
+        rebateVal = +s.storeRebate||0;
+        net = gross + interestVal + svcVal - rebateVal;
         const statusBadge = s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':'badge-blue';
         return`<tr>
-          <td class="fw700 text-blue">#${s.id}</td><td class="fw700">${esc(s.customer)}</td>
-          <td>${esc(s.modelName||'-')}</td><td>${fmt(s.salePrice)}</td><td>${fmt(cost)}</td>
-          <td class="text-green">${fmt(gross)}</td><td>${interestLabel}</td>
-          <td><b style="color:var(--navy)">${fmt(net)}</b></td>
+          <td class="fw700 text-blue">#${s.id}</td>
+          <td class="fw700">${esc(s.customer)}</td>
+          <td>${esc(s.modelName||'-')}</td>
+          <td>${fmt(s.salePrice)}</td><td>${fmt(cost)}</td>
+          <td class="text-blue">${fmt(gross)}</td>
+          <td class="text-green">${s.status==='提前结清'?'<span class="badge badge-amber" style="font-size:10px">⚡提前</span> ':''} ${fmt(interestVal)}</td>
+          <td class="text-amber">${fmt(svcVal)}</td>
+          <td class="text-red">${rebateVal>0?'-'+fmt(rebateVal):'-'}</td>
+          <td><b style="color:${net>=0?'var(--navy)':'var(--red)'}">${fmt(net)}</b></td>
           <td><span class="badge ${statusBadge}">${s.status}</span></td>
         </tr>`;}).join('')}
     </table></div>`:`<div class="empty-state"><div class="ei">💰</div><p>暂无数据</p></div>`}
@@ -1168,9 +1292,12 @@ function renderFinanceReport() {
       const ph = phones.find(p => p.id === s.modelId);
       return a + (+s.salePrice - (ph ? +ph.cost : 0));
     }, 0);
+    const mServiceFee = mSales.reduce((a,s)=>a+(+s.totalServiceFee||0),0);
+    const mRebate     = mSales.reduce((a,s)=>a+(+s.storeRebate||0),0);
+    const mPenalty    = mPays.reduce((a,p)=>a+(+p.penalty||0),0);
     const mExpenses = expenses.filter(e => e.date.slice(0,7) === m).reduce((a,e)=>a+(+e.amount),0);
-    const mProfit = mInterest + mEarlyProfit + mGross - mExpenses;
-    const mProfitBeforeExp = mInterest + mEarlyProfit + mGross;
+    const mProfit = mInterest + mEarlyProfit + mGross + mServiceFee + mPenalty - mRebate - mExpenses;
+    const mProfitBeforeExp = mInterest + mEarlyProfit + mGross + mServiceFee + mPenalty - mRebate;
 
     const mDuePeriods   = sales.flatMap(s => s.schedule.filter(p => p.dueDate.slice(0,7) === m));
     const mOverduePeriods = mDuePeriods.filter(p => !p.paid && p.dueDate < td);
