@@ -10,10 +10,13 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.static(__dirname));
 
 // ── Supabase 初始化 ──
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
+const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim();
+const SUPABASE_KEY = (process.env.SUPABASE_KEY || '').trim();
+
+console.log('SUPABASE_URL:', SUPABASE_URL ? SUPABASE_URL.substring(0, 30) + '...' : '❌ 未设置');
+console.log('SUPABASE_KEY:', SUPABASE_KEY ? SUPABASE_KEY.substring(0, 20) + '...' : '❌ 未设置');
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ── 默认初始数据 ──
 function getInitData() {
@@ -41,23 +44,24 @@ async function loadData() {
       .from('appdata')
       .select('key, value');
 
-    if (error || !data || data.length === 0) {
-      console.log('数据库为空，使用初始数据');
+    if (error) {
+      console.error('❌ 读取数据库失败:', error.message, error.code);
       return getInitData();
     }
 
+    if (!data || data.length === 0) {
+      console.log('📭 数据库为空，返回初始数据');
+      return getInitData();
+    }
+
+    console.log(`✅ 成功读取 ${data.length} 条记录`);
     const result = {};
     data.forEach(row => { result[row.key] = row.value; });
-
-    // 补充缺失的字段
     const init = getInitData();
-    Object.keys(init).forEach(k => {
-      if (result[k] === undefined) result[k] = init[k];
-    });
-
+    Object.keys(init).forEach(k => { if (result[k] === undefined) result[k] = init[k]; });
     return result;
   } catch (e) {
-    console.error('读取数据失败:', e.message);
+    console.error('❌ loadData 异常:', e.message);
     return getInitData();
   }
 }
@@ -68,50 +72,64 @@ async function saveData(dbData) {
   const { error } = await supabase
     .from('appdata')
     .upsert(rows, { onConflict: 'key' });
-  if (error) throw error;
+  if (error) {
+    console.error('❌ 保存数据失败:', error.message, error.code);
+    throw error;
+  }
+  console.log(`✅ 成功保存 ${rows.length} 条记录`);
 }
 
 // ── API 路由 ──
-
-// 获取所有数据
 app.get('/api/data', async (req, res) => {
   try {
     const data = await loadData();
     res.json(data);
   } catch (e) {
+    console.error('GET /api/data 失败:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
 
-// 保存所有数据
 app.post('/api/data', async (req, res) => {
   try {
     await saveData(req.body);
     res.json({ ok: true });
   } catch (e) {
+    console.error('POST /api/data 失败:', e.message);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-// 单独更新某个集合
 app.post('/api/:collection', async (req, res) => {
   try {
     const { collection } = req.params;
     const allowed = ['sales','payments','phones','suppliers','purchases','company','nextId','earlyPayments','expenses'];
-    if (!allowed.includes(collection)) return res.status(400).json({ ok: false });
-
+    if (!allowed.includes(collection)) return res.status(400).json({ ok: false, error: '不允许的集合' });
     const { error } = await supabase
       .from('appdata')
       .upsert([{ key: collection, value: req.body.value }], { onConflict: 'key' });
-
-    if (error) throw error;
+    if (error) {
+      console.error(`❌ 保存 ${collection} 失败:`, error.message, error.code);
+      throw error;
+    }
+    console.log(`✅ 保存 ${collection} 成功`);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-// 数据备份下载
+// 数据库连接测试
+app.get('/api/test', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('appdata').select('key').limit(1);
+    if (error) return res.json({ ok: false, error: error.message, code: error.code });
+    res.json({ ok: true, message: '数据库连接正常', rows: data?.length || 0 });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
 app.get('/api/backup', async (req, res) => {
   try {
     const data = await loadData();
@@ -123,7 +141,6 @@ app.get('/api/backup', async (req, res) => {
   }
 });
 
-// 健康检查
 app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
 // ── 启动 ──
@@ -131,11 +148,10 @@ app.listen(PORT, '0.0.0.0', () => {
   const interfaces = os.networkInterfaces();
   let localIP = 'localhost';
   Object.values(interfaces).forEach(iface => {
-    (iface||[]).forEach(addr => {
+    (iface || []).forEach(addr => {
       if (addr.family === 'IPv4' && !addr.internal) localIP = addr.address;
     });
   });
-
   console.log('\n╔══════════════════════════════════════════════╗');
   console.log('║   📱 MORODOK 手机分期管理系统 — 云端版        ║');
   console.log('╠══════════════════════════════════════════════╣');
