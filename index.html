@@ -326,12 +326,22 @@ function updateBadges() {
   if (b) { b.style.display = cnt > 0 ? '' : 'none'; b.textContent = cnt; }
 }
 
-// Auto-refresh every 30s so all users see latest data
+// Auto-refresh every 30s — 用户正在输入或在表单页面时跳过，不打断操作
+function userIsTyping() {
+  const a = document.activeElement;
+  return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
+}
+const FORM_PAGES = ['sale-add','payment-add','early-payment','phones','suppliers','purchase-add','company','expenses'];
 setInterval(async () => {
-  if (!_dirty) {
-    await loadDB();
-    const page = document.querySelector('.nav-item.active')?.dataset?.page;
-    if (page && PAGES[page]) { document.getElementById('mainContent').innerHTML = PAGES[page](); initPage(page); updateBadges(); }
+  if (_dirty) return;
+  if (userIsTyping()) return;
+  const page = document.querySelector('.nav-item.active')?.dataset?.page;
+  if (FORM_PAGES.includes(page)) return;
+  await loadDB();
+  if (page && PAGES[page]) {
+    document.getElementById('mainContent').innerHTML = PAGES[page]();
+    initPage(page);
+    updateBadges();
   }
 }, 30000);
 
