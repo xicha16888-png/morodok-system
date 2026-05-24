@@ -2473,25 +2473,62 @@ window.saveCompany = function() {
   buildSidebar();
   buildMobileNav('home');
   showLoading(t('loading'));
-  try {
-    await loadDB();
-    hideLoading();
-    nav('home');
-    updateBadges();
-    setInterval(updateBadges, 60000);
-    const updateDate = () => {
-      const el = document.getElementById('dateDisplay');
-      if (el) el.textContent = new Date().toLocaleDateString(_lang==='zh'?'zh-CN':'en-US',{month:'long',day:'numeric',weekday:'short'});
-    };
-    updateDate(); setInterval(updateDate, 30000);
-  } catch(e) {
-    hideLoading();
-    document.getElementById('mainContent').innerHTML = `<div class="empty-state" style="margin-top:60px">
-      <div class="ei">❌</div>
-      <p style="font-size:16px;font-weight:700;color:var(--red)">${_lang==='zh'?'无法连接服务器':'Cannot connect to server'}</p>
-      <p style="margin-top:8px">${_lang==='zh'?'请刷新页面重试':'Please refresh the page to retry'}</p>
-    </div>`;
+
+  // Auto-retry — handles Render free-tier sleep (wake-up takes 30-50s)
+  let retryCount = 0;
+  const MAX_RETRY = 8;
+
+  function startDateClock() {
+    const upd = () => { const el = document.getElementById('dateDisplay'); if (el) el.textContent = new Date().toLocaleDateString(_lang==='zh'?'zh-CN':'en-US',{month:'long',day:'numeric',weekday:'short'}); };
+    upd(); setInterval(upd, 30000);
   }
+
+  async function tryConnect() {
+    const lo = document.getElementById('loadingText');
+    if (retryCount > 0 && lo) {
+      lo.textContent = _lang==='km' ? `កំពុងព្យាយាម ${retryCount}/${MAX_RETRY}...` :
+                       _lang==='en' ? `Connecting... attempt ${retryCount}/${MAX_RETRY}` :
+                       `正在连接... 第${retryCount}次`;
+    }
+    const ok = await loadDB();
+    if (ok) {
+      hideLoading();
+      nav('home');
+      updateBadges();
+      setInterval(updateBadges, 60000);
+      startDateClock();
+    } else {
+      retryCount++;
+      if (retryCount <= MAX_RETRY) {
+        let sec = 7;
+        const cd = setInterval(() => {
+          if (lo) lo.textContent = _lang==='km' ? `ម៉ាស៊ីនកំពុងដើរ... ${sec}s` :
+                                   _lang==='en' ? `Server waking up... retry in ${sec}s` :
+                                   `服务器启动中，${sec}秒后重试...`;
+          sec--;
+          if (sec < 0) { clearInterval(cd); tryConnect(); }
+        }, 1000);
+      } else {
+        hideLoading();
+        document.getElementById('mainContent').innerHTML = `
+          <div class="empty-state" style="margin-top:60px;padding:24px">
+            <div class="ei">❌</div>
+            <p style="font-size:16px;font-weight:700;color:var(--red)">
+              ${_lang==='km'?'មិនអាចភ្ជាប់ម៉ាស៊ីន':_lang==='en'?'Cannot connect to server':'无法连接服务器'}
+            </p>
+            <p style="margin-top:8px;color:var(--muted);font-size:13px">
+              ${_lang==='km'?'សូមចុចប៊ូតុងខាងក្រោម':_lang==='en'?'Please tap the button below':'请点击下方按钮刷新'}
+            </p>
+            <button onclick="location.reload()"
+              style="margin-top:24px;padding:14px 40px;border-radius:10px;background:var(--sky);color:#fff;border:none;font-size:16px;font-weight:600;cursor:pointer;font-family:inherit;width:100%;max-width:280px">
+              ${_lang==='km'?'ផ្ទុកឡើងវិញ':_lang==='en'?'Refresh Page':'刷新重试'}
+            </button>
+          </div>`;
+      }
+    }
+  }
+
+  tryConnect();
 })();
 </script>
 </body>
