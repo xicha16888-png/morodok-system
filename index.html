@@ -272,7 +272,7 @@ const I18N = {
     preTaxProfit: '税前利润', expenseDeduct: '开支扣除',
     expenseTotal: '开支合计', managExpenses: '🧾 管理开支记录',
     earlyRepayTitle: '⚡ 提前还款利润汇总', profitChange: '利润变化',
-    contractDetails: '各合同盈利明细',
+    contractDetails: '${t("contractDetails")}',
     colCost: '成本', colGross: '毛利', colInterest: '利息/利润',
     colServiceFee: '手续费', colRebateCol: '返点', colNetProfit: '净利润',
     // Finance report
@@ -282,16 +282,16 @@ const I18N = {
     monthRepay: '本月回款额', repayRate: '回款率',
     monthProfit: '本月净利润', deductedExp: '扣除开支',
     monthExpense: '本月日常开支', preTaxProfitMonth: '税前利润',
-    cumulativeSummary: '📊 全期累计汇总',
+    cumulativeSummary: '${t('cumulativeSummary')}',
     totalLoan: '总放款额', totalRepay: '总回款额', totalExpense: '总开支',
     totalNetProfit: '总净利润', totalOrders: '总单量', avgOverdueRate: '综合逾期率',
-    monthlyDetail: '月度明细数据',
-    overdueRateNote: '逾期率 = 逾期期次 / 应还期次 · 回款率 = 已还期次 / 应还期次',
+    monthlyDetail: '${t('monthlyDetail')}',
+    overdueRateNote: '${t('overdueRateNote')}',
     colNewOrders: '新增单量', colMonthLoan: '月总放款额', colMonthRepay: '月总回款额',
     colMonthExp: '日常开支', colMonthNet: '月净利润',
     colDuePeriods: '应还期次', colPaidPeriods: '已还期次', colOverduePeriods: '逾期期次',
     colRepayRate: '月回款率', colOverdueRate: '月逾期率', totalRow: '合计',
-    orderAnalysis: '📦 单量 & 期别分析',
+    orderAnalysis: '${t('orderAnalysis')}',
     // Expenses
     expensesTitle: '日常开支管理', expensesSub: '记录日常运营支出，自动纳入月度财务与利润统计',
     addExpense: '➕ 新增开支记录', expenseDate: '日期 *', expenseCategory: '开支类别 *',
@@ -337,7 +337,10 @@ const I18N = {
     msgFillContract: '请选择合同', msgPeriodPaid: '该期已登记',
     msgSelectContract: '请选择合同',
     saved: '已保存', added: '已添加',
-  },
+    pending: '待还', viewNow: '立即查看',
+    basicInfo: '基本信息', noOverdueGood: '暂无逾期 👍',
+    contractDetails2: '${t("contractDetails")}',
+    
   en: {
     // System
     systemTitle: 'Phone Installment Management System', systemSub: 'Management System',
@@ -485,7 +488,10 @@ const I18N = {
     msgFillContract: 'Please select a contract', msgPeriodPaid: 'This period already recorded',
     msgSelectContract: 'Please select a contract',
     saved: 'Saved successfully', added: 'Added successfully',
-  },
+    pending: 'Pending', viewNow: 'View Now',
+    basicInfo: 'Basic Information', noOverdueGood: 'No overdue 👍',
+    contractDetails2: 'Contract Profit Details',
+    
 
   // ── ភាសាខ្មែរ (Khmer) ──
   km: {
@@ -635,6 +641,9 @@ const I18N = {
     msgFillContract: 'សូមជ្រើសរើសកិច្ចសន្យា', msgPeriodPaid: 'ខែនេះបានចុះឈ្មោះហើយ',
     msgSelectContract: 'សូមជ្រើសរើសកិច្ចសន្យា',
     saved: 'បានរក្សាទុកដោយជោគជ័យ', added: 'បានបន្ថែមដោយជោគជ័យ',
+    pending: 'រង់ចាំ', viewNow: 'មើលឥឡូវ',
+    basicInfo: 'ព័ត៌មានមូលដ្ឋាន', noOverdueGood: 'គ្មានការហួសកំណត់ 👍',
+    contractDetails2: 'ព័ត៌មានលម្អិតប្រាក់ចំណេញ',
   }
 };
 
@@ -892,13 +901,13 @@ function renderHome() {
     <div class="stat-card amber"><span class="stat-icon">⏳</span><div class="stat-label">${t('pendingPrincipal')}</div><div class="stat-value">${fmt(pending)}</div></div>
     <div class="stat-card red"><span class="stat-icon">🚨</span><div class="stat-label">${t('overdueOrders')}</div><div class="stat-value">${overdue.length}</div></div>
   </div>
-  ${overdue.length > 0 ? `<div class="alert alert-red">⚠️ ${overdue.length} ${_lang==='zh'?'笔逾期账单，合计':'overdue orders, total'} ${fmt(overdue.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}<button class="btn btn-danger btn-sm" style="margin-left:12px" onclick="nav('reminder-overdue')">${_lang==='zh'?'立即查看':'View Now'}</button></div>` : ''}
+  ${overdue.length > 0 ? `<div class="alert alert-red">⚠️ ${overdue.length} ${_lang==='zh'?'' +:'overdue orders, total'} ${fmt(overdue.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}<button class="btn btn-danger btn-sm" style="margin-left:12px" onclick="nav('reminder-overdue')">${_lang==='zh'?'立即查看':t("viewNow")}</button></div>` : ''}
   <div class="home-grid">
-    ${[['➕',t('saleAdd'),t('newContractSub').slice(0,10),'sale-add'],['💳',t('paymentAdd'),_lang==='zh'?'录入收款记录':'Record payment','payment-add'],
-       ['📊',t('statsCollection'),_lang==='zh'?'月度汇总':'Monthly summary','stats-collection'],['💰',t('statsProfit'),_lang==='zh'?'盈利分析':'Profit analysis','stats-profit'],
-       ['📈',t('financeReport'),_lang==='zh'?'放款/回款/利润':'Loans/Collections','finance-report'],['⚡',t('earlyPayment'),_lang==='zh'?'协商结清':'Early settlement','early-payment'],
-       ['🔍',t('saleList'),_lang==='zh'?'合同检索':'Contract search','sale-list'],['⏰',t('reminderTomorrow'),_lang==='zh'?'明日到期':'Due tomorrow','reminder-tomorrow'],
-       ['🚨',t('reminderOverdue'),_lang==='zh'?'催收列表':'Overdue list','reminder-overdue'],['📋',t('paymentQuery'),_lang==='zh'?'30天计划':'30-day plan','payment-query']
+    ${[['➕',t('saleAdd'),t('newContractSub').slice(0,10),'sale-add'],['💳',t('paymentAdd'),_lang==='km'?'ចុះបង្ហាញការទូទាត់':_lang==='zh'?'录入收款记录':'Record payment','payment-add'],
+       ['📊',t('statsCollection'),_lang==='km'?'សង្ខេបប្រចាំខែ':_lang==='zh'?'月度汇总':'Monthly summary','stats-collection'],['💰',t('statsProfit'),_lang==='km'?'វិភាគប្រាក់ចំណេញ':_lang==='zh'?'盈利分析':'Profit analysis','stats-profit'],
+       ['📈',t('financeReport'),_lang==='km'?'ផ្ដល់/ប្រមូល/ចំណេញ':_lang==='zh'?'放款/回款/利润':'Loans/Collections','finance-report'],['⚡',t('earlyPayment'),_lang==='km'?'ទូទាត់ចរចា':_lang==='zh'?'协商结清':'Early settlement','early-payment'],
+       ['🔍',t('saleList'),_lang==='km'?'ស្វែងរកកិច្ចសន្យា':_lang==='zh'?'合同检索':'Contract search','sale-list'],['⏰',t('reminderTomorrow'),_lang==='km'?'ដល់កំណត់ស្អែក':_lang==='zh'?'明日到期':'Due tomorrow','reminder-tomorrow'],
+       ['🚨',t('reminderOverdue'),_lang==='km'?'បញ្ជីហួសកំណត់':_lang==='zh'?'催收列表':'Overdue list','reminder-overdue'],['📋',t('paymentQuery'),_lang==='km'?'ផែនការ30ថ្ងៃ':_lang==='zh'?'30天计划':'30-day plan','payment-query']
     ].map(([i,l,s,p]) => `<div class="home-card" onclick="nav('${p}')"><div class="icon">${i}</div><div class="label">${l}</div><div class="sublabel">${s}</div></div>`).join('')}
   </div>
   <div class="card"><div class="card-header"><div class="card-title">${t('quickEntry')}</div></div>
@@ -915,7 +924,7 @@ const PERIOD_OPTS = [1,3,5,8,11,12];
 
 function periodSelect(id, defaultVal, onchange) {
   return `<select id="${id}" onchange="${onchange}">
-    ${PERIOD_OPTS.map(p => `<option value="${p}" ${p===defaultVal?'selected':''}>${p}期</option>`).join('')}
+    ${PERIOD_OPTS.map(p => `<option value="${p}" ${p===defaultVal?'selected':''}>${p} ${t('period')}</option>`).join('')}
   </select>`;
 }
 
@@ -925,12 +934,12 @@ function renderSaleAdd() {
   return `
   <div class="page-header"><div class="page-title">➕ ${t('newContract')}</div><div class="page-sub">${t('newContractSub')}</div></div>
   <div class="card">
-    <div class="card-title" style="margin-bottom:16px">📝 ${_lang==='zh'?'基本信息':'Basic Information'}</div>
+    <div class="card-title" style="margin-bottom:16px">📝 ${t('basicInfo')}</div>
     <div class="form-grid">
       <div class="form-group"><label>${t('contractDate')}</label><input type="date" id="sDate" value="${today()}"></div>
-      <div class="form-group"><label>${t('customerName')}</label><input id="sCust" placeholder="${_lang==='zh'?'输入客户全名':'Enter full name'}"></div>
-      <div class="form-group"><label>${t('customerPhone')}</label><input id="sCustPhone" placeholder="${_lang==='zh'?'联系电话':'Contact number'}"></div>
-      <div class="form-group span2"><label>${t('phoneModel')}</label><select id="sModel" onchange="calcInstall()">${opts || `<option>${_lang==='zh'?'请先添加手机型号':'Please add phone models first'}</option>`}</select></div>
+      <div class="form-group"><label>${t('customerName')}</label><input id="sCust" placeholder="${_lang==='km'?'វាយឈ្មោះ':_lang==='zh'?'输入客户全名':'Enter full name'}"></div>
+      <div class="form-group"><label>${t('customerPhone')}</label><input id="sCustPhone" placeholder="${_lang==='km'?'លេខទូរស័ព្ទ':_lang==='zh'?'联系电话':'Contact number'}"></div>
+      <div class="form-group span2"><label>${t('phoneModel')}</label><select id="sModel" onchange="calcInstall()">${opts || `<option>${_lang==='km'?'សូមបន្ថែមគំរូ':_lang==='zh'?'请先添加手机型号':'Please add phone models first'}</option>`}</select></div>
       <div class="form-group"><label>${t('salePrice')}</label><input type="number" id="sSalePrice" placeholder="0.00" step="0.01" oninput="calcInstall()"></div>
       <div class="form-group"><label>${t('deposit')}</label><input type="number" id="sDeposit" value="0" step="0.01" oninput="calcInstall()"></div>
       <div class="form-group"><label>${t('installPeriods')}</label>${periodSelect('sPeriods', 3, 'calcInstall()')}</div>
@@ -1035,10 +1044,10 @@ window.submitSale = function() {
   const modelId     = +(document.getElementById('sModel')?.value || 0);
   const sDate       = document.getElementById('sDate')?.value || today();
 
-  if (!cust)    { showMsg('saleMsg', '请填写客户姓名', 'red'); return; }
-  if (!price)   { showMsg('saleMsg', '请填写销售价格', 'red'); return; }
-  if (dep >= price) { showMsg('saleMsg', '首付不能超过售价', 'red'); return; }
-  if (!firstDue){ showMsg('saleMsg', '请选择首次还款日', 'red'); return; }
+  if (!cust)    { showMsg('saleMsg', t('msgFillCustomer'), 'red'); return; }
+  if (!price)   { showMsg('saleMsg', t('msgFillPrice'), 'red'); return; }
+  if (dep >= price) { showMsg('saleMsg', t('msgDepositOver'), 'red'); return; }
+  if (!firstDue){ showMsg('saleMsg', t('msgFillDue'), 'red'); return; }
 
   const phones    = DB_get('phones') || [];
   const ph        = phones.find(p => p.id === modelId);
@@ -1086,7 +1095,7 @@ window.submitSale = function() {
   const sales = DB_get('sales') || [];
   sales.push(sale);
   DB_set('sales', sales);
-  showMsg('saleMsg', `✅ 合同 #${sale.id} 已保存！${cust}，${periods}期，每期 ${fmt(monthly)}`, 'green');
+  showMsg('saleMsg', `✅ ${t('saved')} #${sale.id} — ${cust}，${periods}${t('period')}，${fmt(monthly)}/${t('period')}`, 'green');
   ['sCust','sCustPhone','sSalePrice','sNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   ['sDeposit','sInterestRate','sServiceRate','sDailyFee','sRebate'].forEach(id => { const el = document.getElementById(id); if (el) el.value = '0'; });
   calcInstall(); updateBadges();
@@ -1097,22 +1106,22 @@ window.submitSale = function() {
 // ══════════════════════════════════════════════════════
 function renderSaleList() {
   return `
-  <div class="page-header"><div class="page-title">🔍 销售查询</div></div>
+  <div class="page-header"><div class="page-title">🔍 ${t('saleListTitle')}</div></div>
   <div class="card">
     <div class="search-row">
-      <input id="saleSearch" placeholder="搜索客户姓名 / 合同号 / 手机型号..." oninput="filterSales()">
-      <select id="saleStatusFilter" onchange="filterSales()"><option value="">全部状态</option><option value="进行中">进行中</option><option value="已结清">已结清</option></select>
-      <button class="btn btn-primary btn-sm" onclick="nav('sale-add')">➕ 新建合同</button>
+      <input id="saleSearch" placeholder="${t('searchPlaceholder')}" oninput="filterSales()">
+      <select id="saleStatusFilter" onchange="filterSales()"><option value="">${t('allStatus')}</option><option value="进行中">${t('active')}</option><option value="已结清">${t('settled')}</option></select>
+      <button class="btn btn-primary btn-sm" onclick="nav('sale-add')">${t('newContractBtn')}</button>
     </div>
     <div id="saleTableWrap">${buildSalesTable(DB_get('sales') || [])}</div>
   </div>`;
 }
 
 function buildSalesTable(sales) {
-  if (!sales.length) return `<div class="empty-state"><div class="ei">📭</div><p>暂无合同</p></div>`;
+  if (!sales.length) return ``<div class="empty-state"><div class="ei">📭</div><p>${t('noContract')}</p></div>``;
   const ptc = {1:'pt3',3:'pt3',5:'pt6',8:'pt9',11:'pt12',12:'pt12',6:'pt6',9:'pt9',18:'pt9',24:'pt12'};
   return `<div class="table-wrap"><table>
-    <tr><th>#</th><th>日期</th><th>客户</th><th>型号</th><th>售价</th><th>首付</th><th>分期本金</th><th>期数</th><th>利息率</th><th>手续费率</th><th>每期还款</th><th>返点</th><th>进度</th><th>状态</th><th>操作</th></tr>
+    <tr><th>${t("colNo")}</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colDeposit")}</th><th>${t("colPrincipal")}</th><th>${t("colPeriods")}</th><th>${t("colIntRate")}</th><th>${t("colSvcRate")}</th><th>${t("colMonthly")}</th><th>${t("colRebate")}</th><th>${t("colProgress")}</th><th>${t("colStatus")}</th><th>${t("colAction")}</th></tr>
     ${sales.slice().reverse().map(s => {
       const paid = s.schedule.filter(p => p.paid).length;
       return `<tr>
@@ -1120,9 +1129,9 @@ function buildSalesTable(sales) {
         <td><div class="fw700">${esc(s.customer)}</div><div class="text-muted" style="font-size:11px">${esc(s.customerPhone||'')}</div></td>
         <td>${esc(s.modelName||'-')}</td><td>${fmt(s.salePrice)}</td><td>${fmt(s.deposit)}</td>
         <td class="fw700">${fmt(s.installmentAmount)}</td>
-        <td><span class="${ptc[s.periods]||'pt6'}">${s.periods}期</span></td>
+        <td><span class="${ptc[s.periods]||'pt6'}">${s.periods}${t('period')}</span></td>
         <td>${(+s.interestRate||0).toFixed(2)}%</td>
-        <td>${(+s.serviceFeeRate||0).toFixed(2)}%<span style="font-size:10px;color:var(--muted)">×${s.svcPeriods||s.periods}期</span></td>
+        <td>${(+s.serviceFeeRate||0).toFixed(2)}%<span style="font-size:10px;color:var(--muted)">×${s.svcPeriods||s.periods}${t("period")}</span></td>
         <td class="fw700">${fmt(s.monthlyPayment)}</td>
         <td class="${(+s.storeRebate||0)>0?'text-red':''}">${(+s.storeRebate||0)>0?'-'+fmt(s.storeRebate):'-'}</td>
         <td><span style="font-size:12px">${paid}/${s.periods}</span>
@@ -1131,8 +1140,8 @@ function buildSalesTable(sales) {
           </div></td>
         <td><span class="badge ${s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':'badge-blue'}">${s.status}</span></td>
         <td style="white-space:nowrap">
-          <button class="btn btn-outline btn-sm" onclick="viewSchedule(${s.id})">还款计划</button>
-          <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSale(${s.id})">删除</button>
+          <button class="btn btn-outline btn-sm" onclick="viewSchedule(${s.id})">${t('repaySchedule')}</button>
+          <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSale(${s.id})">${t('deleteBtn')}</button>
         </td>
       </tr>`;}).join('')}
   </table></div>`;
@@ -1150,34 +1159,34 @@ window.filterSales = function() {
 
 window.viewSchedule = function(id) {
   const s = (DB_get('sales')||[]).find(x => x.id === id); if (!s) return;
-  showModal(`还款计划 — ${esc(s.customer)} (#${s.id})`,
+  showModal(`${t('repaySchedule')} — ${esc(s.customer)} (#${s.id})`,
     `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">
-      利息月利率：${(+s.interestRate||0).toFixed(2)}% &nbsp;|&nbsp;
-      手续费月利率：${(+s.serviceFeeRate||0).toFixed(2)}%（前${s.svcPeriods||s.periods}期）&nbsp;|&nbsp;
-      每日滞纳金：${fmt(s.dailyLateFee||0)} &nbsp;|&nbsp;
-      店家返点：${fmt(s.storeRebate||0)}
+      ${t("interestMonthRate")}：${(+s.interestRate||0).toFixed(2)}% &nbsp;|&nbsp;
+      ${t("svcFeeMonthRate")}：${(+s.serviceFeeRate||0).toFixed(2)}% (${s.svcPeriods||s.periods}${t("period")}) &nbsp;|&nbsp;
+      ${t("dailyLateFee")}：${fmt(s.dailyLateFee||0)} &nbsp;|&nbsp;
+      ${t("storeRebate")}：${fmt(s.storeRebate||0)}
     </div>
     <div class="table-wrap"><table>
-      <tr><th>期次</th><th>到期日</th><th>本金</th><th>利息</th><th>手续费</th><th>期合计</th><th>状态</th></tr>
+      <tr><th>${t('period')}</th><th>${t('colDate')}</th><th>${t('colPrincipalPaid')}</th><th>${t('colInterestPaid')}</th><th>${t('colServiceFee')}</th><th>${t('colTotal')}</th><th>${t('colStatus')}</th></tr>
       ${s.schedule.map(p => `<tr>
-        <td>第${p.period}期</td><td>${p.dueDate}</td>
+        <td>${p.period} ${t("period")}</td><td>${p.dueDate}</td>
         <td>${fmt(p.principalDue)}</td><td>${fmt(p.interestDue||0)}</td>
         <td>${fmt(p.serviceFeeDue||0)}</td>
         <td class="fw700">${fmt((+p.principalDue)+(+p.interestDue||0)+(+p.serviceFeeDue||0))}</td>
-        <td><span class="badge ${p.paid?'badge-green':'badge-amber'}">${p.paid?'已还 '+p.paidDate:'待还'}</span></td>
+        <td><span class="badge ${p.paid?'badge-green':'badge-amber'}">${p.paid?t('settled')+' '+p.paidDate:t('pending')}</span></td>
       </tr>`).join('')}
     </table></div>
     <div style="margin-top:10px;font-size:12px;display:flex;gap:20px">
-      <span>利息总额：<b class="text-green">${fmt(s.totalInterest||0)}</b></span>
-      <span>手续费总额：<b class="text-amber">${fmt(s.totalServiceFee||0)}</b></span>
-      <span>店家返点：<b class="text-red">-${fmt(s.storeRebate||0)}</b></span>
+      <span>${t("totalInterest")}：<b class="text-green">${fmt(s.totalInterest||0)}</b></span>
+      <span>${t("totalServiceFee")}：<b class="text-amber">${fmt(s.totalServiceFee||0)}</b></span>
+      <span>${t("storeRebate")}：<b class="text-red">-${fmt(s.storeRebate||0)}</b></span>
     </div>`);
 };
 
 window.deleteSale = function(id) {
   const s = (DB_get('sales')||[]).find(x => x.id === id);
   if (!s) return;
-  if (!confirm(`确认删除合同 #${s.id}（${s.customer}）？\n⚠️ 相关收款记录不会自动删除，删除后不可恢复！`)) return;
+  if (!confirm(`${t('deleteBtn')} #${s.id} — ${s.customer}?`)) return;
   DB_set('sales', (DB_get('sales')||[]).filter(x => x.id !== id));
   // Also remove early payment records for this contract
   DB_set('earlyPayments', (DB_get('earlyPayments')||[]).filter(r => r.contractId !== id));
@@ -1189,31 +1198,31 @@ function renderPaymentAdd() {
   const opts = sales.map(s => `<option value="${s.id}">#${s.id} — ${esc(s.customer)} (${s.periods}期 每期${fmt(s.monthlyPayment)})</option>`).join('');
   const pays = (DB_get('payments')||[]).slice(-15).reverse();
   return `
-  <div class="page-header"><div class="page-title">💳 还款登记</div></div>
+  <div class="page-header"><div class="page-title">💳 ${t('paymentTitle')}</div></div>
   <div class="card">
     <div class="form-grid">
-      <div class="form-group span3"><label>选择合同 *</label><select id="pContract" onchange="loadContractPeriods()">${opts||'<option>暂无进行中合同</option>'}</select></div>
-      <div class="form-group"><label>还款日期</label><input type="date" id="pDate" value="${today()}"></div>
-      <div class="form-group"><label>还款期次</label><select id="pPeriod" onchange="autoFillPayment()"></select></div>
-      <div class="form-group"><label>实收本金 ($)</label><input type="number" id="pPrincipal" placeholder="0.00" step="0.01"></div>
-      <div class="form-group"><label>实收利息 ($)</label><input type="number" id="pInterest" placeholder="0.00" step="0.01"></div>
-      <div class="form-group"><label>滞纳金 ($)</label><input type="number" id="pPenalty" value="0" step="0.01"></div>
+      <div class="form-group span3"><label>${t('selectContract')}</label><select id="pContract" onchange="loadContractPeriods()">${opts||'<option>t('noContract')</option>'}</select></div>
+      <div class="form-group"><label>${t("paymentDate")}</label><input type="date" id="pDate" value="${today()}"></div>
+      <div class="form-group"><label>${t("payPeriod")}</label><select id="pPeriod" onchange="autoFillPayment()"></select></div>
+      <div class="form-group"><label>${t("paidPrincipal")}</label><input type="number" id="pPrincipal" placeholder="0.00" step="0.01"></div>
+      <div class="form-group"><label>${t("paidInterest")}</label><input type="number" id="pInterest" placeholder="0.00" step="0.01"></div>
+      <div class="form-group"><label>${t("penalty")}</label><input type="number" id="pPenalty" value="0" step="0.01"></div>
       <div class="form-group"><label>备注</label><input id="pNote" placeholder="可选"></div>
     </div>
     <div class="btn-row">
-      <button class="btn btn-success" onclick="submitPayment()">✅ 确认收款</button>
-      <button class="btn btn-outline" onclick="loadContractPeriods()">🔄 刷新</button>
+      <button class="btn btn-success" onclick="submitPayment()">${t("confirmPayment")}</button>
+      <button class="btn btn-outline" onclick="loadContractPeriods()">${t("refresh")}</button>
     </div>
     <div id="payMsg"></div>
   </div>
-  <div class="card"><div class="card-title" style="margin-bottom:14px">最近收款记录</div>${buildPayTable(pays)}</div>`;
+  <div class="card"><div class="card-title" style="margin-bottom:14px">${t("recentPayments")}</div>${buildPayTable(pays)}</div>`;
 }
 
 window.loadContractPeriods = function() {
   const id = +(document.getElementById('pContract')?.value||0);
   const s = (DB_get('sales')||[]).find(x => x.id === id);
   const sel = document.getElementById('pPeriod'); if (!s||!sel) return;
-  sel.innerHTML = s.schedule.filter(p => !p.paid).map(p => `<option value="${p.period}">第${p.period}期 (到期:${p.dueDate})</option>`).join('');
+  sel.innerHTML = s.schedule.filter(p => !p.paid).map(p => `<option value="${p.period}">${p.period} ${t("period")} (到期:${p.dueDate})</option>`).join('');
   autoFillPayment();
 };
 window.autoFillPayment = function() {
@@ -1231,28 +1240,28 @@ window.submitPayment = function() {
   const principal = +(document.getElementById('pPrincipal')?.value||0);
   const interest = +(document.getElementById('pInterest')?.value||0);
   const penalty = +(document.getElementById('pPenalty')?.value||0);
-  if (!contractId) { showMsg('payMsg','请选择合同','red'); return; }
-  if (!principal&&!interest) { showMsg('payMsg','请填写金额','red'); return; }
+  if (!contractId) { showMsg('payMsg',t('msgFillContract'),'red'); return; }
+  if (!principal&&!interest) { showMsg('payMsg',t('msgFillAmounts'),'red'); return; }
   const sales = DB_get('sales')||[];
   const si = sales.findIndex(s => s.id === contractId); if (si < 0) return;
   const s = sales[si];
   const pi = s.schedule.findIndex(p => p.period === periodNo); if (pi < 0) return;
-  if (s.schedule[pi].paid) { showMsg('payMsg','该期已登记','amber'); return; }
+  if (s.schedule[pi].paid) { showMsg('payMsg',t('msgPeriodPaid'),'amber'); return; }
   s.schedule[pi] = {...s.schedule[pi], paid:true, paidDate:pDate, paidPrincipal:principal, paidInterest:interest, penalty};
   if (s.schedule.every(p => p.paid)) s.status = '已结清';
   sales[si] = s; DB_set('sales', sales);
   const pays = DB_get('payments')||[];
   pays.push({id:newId(), contractId, customer:s.customer, period:periodNo, date:pDate, principal, interest, penalty});
   DB_set('payments', pays);
-  showMsg('payMsg', `✅ 收款成功！${s.customer} 第${periodNo}期，合计 ${fmt(principal+interest+penalty)}`, 'green');
+  showMsg('payMsg', `✅ ${s.customer} — ${t('period')} ${periodNo}：${fmt(principal+interest+penalty)}`, 'green');
   ['pPenalty','pNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = id==='pPenalty'?'0':''; });
   loadContractPeriods(); updateBadges();
 };
 function buildPayTable(pays) {
   if (!pays.length) return `<div class="empty-state"><div class="ei">📝</div><p>暂无记录</p></div>`;
-  return `<div class="table-wrap"><table><tr><th>日期</th><th>客户</th><th>合同</th><th>期次</th><th>本金</th><th>利息</th><th>合计</th></tr>
+  return `<div class="table-wrap"><table><tr><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>#</th><th>${t("period")}</th><th>${t("colPrincipalPaid")}</th><th>${t("colInterestPaid")}</th><th>${t("colTotal")}</th></tr>
     ${pays.map(p => `<tr><td>${p.date}</td><td class="fw700">${esc(p.customer)}</td><td class="text-blue">#${p.contractId}</td>
-      <td>第${p.period}期</td><td>${fmt(p.principal)}</td><td>${fmt(p.interest)}</td>
+      <td>${p.period} ${t("period")}</td><td>${fmt(p.principal)}</td><td>${fmt(p.interest)}</td>
       <td class="fw700 text-green">${fmt((+p.principal)+(+p.interest)+(+p.penalty||0))}</td></tr>`).join('')}
   </table></div>`;
 }
@@ -1269,17 +1278,17 @@ function renderStatsCollection() {
   const tP = pays.reduce((a,p)=>a+(+p.principal),0), tI = pays.reduce((a,p)=>a+(+p.interest),0);
   const pending = sales.reduce((a,s)=>{const paid=s.schedule.filter(p=>p.paid).reduce((x,p)=>x+(+p.paidPrincipal||0),0);return a+(+s.installmentAmount-paid);},0);
   return `
-  <div class="page-header"><div class="page-title">📊 收款统计</div></div>
+  <div class="page-header"><div class="page-title">📊 ${t('collectionTitle')}</div></div>
   <div class="stats-grid">
-    <div class="stat-card green"><div class="stat-label">累计收款总额</div><div class="stat-value">${fmt(tP+tI)}</div><div class="stat-sub">共 ${pays.length} 笔</div></div>
-    <div class="stat-card blue"><div class="stat-label">收回本金</div><div class="stat-value">${fmt(tP)}</div></div>
-    <div class="stat-card amber"><div class="stat-label">收回利息</div><div class="stat-value">${fmt(tI)}</div></div>
-    <div class="stat-card red"><div class="stat-label">待回收本金</div><div class="stat-value">${fmt(pending)}</div></div>
+    <div class="stat-card green"><div class="stat-label">${t("totalCollected")}</div><div class="stat-value">${fmt(tP+tI)}</div><div class="stat-sub">共 ${pays.length} 笔</div></div>
+    <div class="stat-card blue"><div class="stat-label">${t("principalCollected")}</div><div class="stat-value">${fmt(tP)}</div></div>
+    <div class="stat-card amber"><div class="stat-label">${t("interestCollected")}</div><div class="stat-value">${fmt(tI)}</div></div>
+    <div class="stat-card red"><div class="stat-label">${t("pendingPrincipalStat")}</div><div class="stat-value">${fmt(pending)}</div></div>
   </div>
-  <div class="card"><div class="card-title" style="margin-bottom:14px">按月收款</div>
-    ${months.length?`<div class="table-wrap"><table><tr><th>月份</th><th>笔数</th><th>本金</th><th>利息</th><th>合计</th></tr>
+  <div class="card"><div class="card-title" style="margin-bottom:14px">${t("monthlyCollection")}</div>
+    ${months.length?`<div class="table-wrap"><table><tr><th>${t("colMonth")}</th><th>${t("colCount")}</th><th>${t("colPrincipalPaid")}</th><th>${t("colInterestPaid")}</th><th>${t("colTotal")}</th></tr>
       ${months.map(m=>`<tr><td class="fw700">${m}</td><td>${byMonth[m].count}</td><td>${fmt(byMonth[m].principal)}</td><td>${fmt(byMonth[m].interest)}</td><td class="fw700 text-green">${fmt(byMonth[m].principal+byMonth[m].interest)}</td></tr>`).join('')}
-    </table></div>`:`<div class="empty-state"><div class="ei">📊</div><p>暂无记录</p></div>`}
+    </table></div>`:`<div class="empty-state"><div class="ei">📊</div><p>${t("noRecord")}</p></div>`}
   </div>`;
 }
 
@@ -1319,16 +1328,16 @@ function renderStatsProfit() {
   <div class="page-header"><div class="page-title">💰 利润统计</div><div class="page-sub">含利息 + 手续费 + 提前还款 − 店家返点 − 日常开支</div></div>
 
   <div class="stats-grid">
-    <div class="stat-card green"><span class="stat-icon">🏆</span><div class="stat-label">最终净利润</div>
+    <div class="stat-card green"><span class="stat-icon">🏆</span><div class="stat-label">${t("netProfit")}</div>
       <div class="stat-value" style="color:${tNet>=0?'var(--green)':'var(--red)'}">${fmt(tNet)}</div>
       <div class="stat-sub">扣除返点+开支后</div></div>
-    <div class="stat-card blue"><span class="stat-icon">💹</span><div class="stat-label">利息+手续费收入</div>
+    <div class="stat-card blue"><span class="stat-icon">💹</span><div class="stat-label">${t("interestAndFee")}</div>
       <div class="stat-value">${fmt(tInterest+tServiceFee)}</div>
       <div class="stat-sub">利息${fmt(tInterest)} + 手续费${fmt(tServiceFee)}</div></div>
-    <div class="stat-card amber"><span class="stat-icon">⚠️</span><div class="stat-label">滞纳金收入（已收）</div>
+    <div class="stat-card amber"><span class="stat-icon">⚠️</span><div class="stat-label">${t("penaltyIncome")}</div>
       <div class="stat-value">${fmt(tPenalty)}</div>
       <div class="stat-sub">实际收到的逾期罚款</div></div>
-    <div class="stat-card red"><span class="stat-icon">↩️</span><div class="stat-label">店家返点（成本）</div>
+    <div class="stat-card red"><span class="stat-icon">↩️</span><div class="stat-label">${t("storeRebateCost")}</div>
       <div class="stat-value">${fmt(tRebate)}</div><div class="stat-sub">${sales.filter(s=>+s.storeRebate>0).length} 笔合同有返点</div></div>
   </div>
 
@@ -1396,9 +1405,9 @@ function renderStatsProfit() {
   </div>` : ''}
 
   <div class="card">
-    <div class="card-title" style="margin-bottom:14px">各合同盈利明细</div>
+    <div class="card-title" style="margin-bottom:14px">${t("contractDetails")}</div>
     ${sales.length?`<div class="table-wrap"><table>
-      <tr><th>#</th><th>客户</th><th>型号</th><th>售价</th><th>成本</th><th>毛利</th><th>利息</th><th>手续费</th><th>返点</th><th>净利润</th><th>状态</th></tr>
+      <tr><th>${t("colNo")}</th><th>${t("colCustomer")}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colCost")}</th><th>${t("colGross")}</th><th>${t("colInterest")}</th><th>${t("colServiceFee")}</th><th>${t("colRebateCol")}</th><th>${t("colNetProfit")}</th><th>${t("colStatus")}</th></tr>
       ${sales.slice().reverse().map(s=>{
         const ph=phones.find(p=>p.id===s.modelId), cost=ph?+ph.cost:0;
         const gross=+s.salePrice-cost;
@@ -1426,7 +1435,7 @@ function renderStatsProfit() {
           <td><b style="color:${net>=0?'var(--navy)':'var(--red)'}">${fmt(net)}</b></td>
           <td><span class="badge ${statusBadge}">${s.status}</span></td>
         </tr>`;}).join('')}
-    </table></div>`:`<div class="empty-state"><div class="ei">💰</div><p>暂无数据</p></div>`}
+    </table></div>`:`<div class="empty-state"><div class="ei">💰</div><p>${t("noData")}</p></div>`}
   </div>`;
 }
 
@@ -1438,14 +1447,14 @@ function renderReminderTomorrow() {
   sales.forEach(s => s.schedule.forEach(p => { if (!p.paid && p.dueDate === tomorrow) items.push({s,p}); }));
   const total = items.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0);
   return `
-  <div class="page-header"><div class="page-title">⏰ 明日还款提醒</div><div class="page-sub">明日（${tomorrow}）到期账单</div></div>
-  ${items.length?`<div class="alert alert-blue">📅 明日共 ${items.length} 笔到期，应收合计 ${fmt(total)}</div>`:`<div class="alert alert-green">🎉 明日无到期账单</div>`}
+  <div class="page-header"><div class="page-title">⏰ ${t('tomorrowTitle')}</div><div class="page-sub">${tomorrow} · ${t('tomorrowDue')}</div></div>
+  ${items.length?`<div class="alert alert-blue">📅 ${items.length} ${t("tomorrowDue")} — ${fmt(total)}</div>`:`<div class="alert alert-green">🎉 明日无到期账单</div>`}
   <div class="card">${items.map(({s,p})=>`
     <div class="reminder-item info">
       <div><div class="fw700">${esc(s.customer)} <span class="text-muted" style="font-weight:400;font-size:12px">${esc(s.customerPhone||'')}</span></div>
-        <div style="font-size:12px;color:var(--muted)">#${s.id} · 第${p.period}/${s.periods}期</div></div>
+        <div style="font-size:12px;color:var(--muted)">#${s.id} · ${p.period}/${s.periods} ${t("period")}</div></div>
       <div style="text-align:right"><div class="fw700 text-blue" style="font-size:15px">${fmt((+p.principalDue)+(+p.interestDue))}</div>
-        <button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="nav('payment-add')">登记收款</button></div>
+        <button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="nav('payment-add')">${t('registerPayment')}</button></div>
     </div>`).join('')||`<div class="empty-state"><div class="ei">😌</div><p>无到期账单</p></div>`}
   </div>`;
 }
@@ -1455,16 +1464,16 @@ function renderReminderOverdue() {
   sales.forEach(s => s.schedule.forEach(p => { if (!p.paid && p.dueDate < td) { const days = Math.floor((new Date(td)-new Date(p.dueDate))/86400000); items.push({s,p,days}); }}));
   items.sort((a,b) => b.days-a.days);
   return `
-  <div class="page-header"><div class="page-title">🚨 逾期未还款提醒</div></div>
-  ${items.length?`<div class="alert alert-red">⚠️ 共 ${items.length} 笔逾期，合计 ${fmt(items.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}！</div>`:`<div class="alert alert-green">✅ 暂无逾期账单</div>`}
+  <div class="page-header"><div class="page-title">🚨 ${t('overdueTitle')}</div></div>
+  ${items.length?`<div class="alert alert-red">⚠️ ${items.length} — ${fmt(items.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}</div>`:`<div class="alert alert-green">✅ ${t('noOverdue')}</div>`}
   <div class="card">${items.map(({s,p,days})=>`
     <div class="reminder-item ${days>30?'overdue':'warn'}">
       <div><div class="fw700">${esc(s.customer)} <span class="text-muted" style="font-weight:400;font-size:12px">${esc(s.customerPhone||'')}</span></div>
-        <div style="font-size:12px;color:var(--muted)">#${s.id} · 第${p.period}/${s.periods}期 · 到期日：${p.dueDate}</div></div>
+        <div style="font-size:12px;color:var(--muted)">#${s.id} · ${p.period}/${s.periods} ${t("period")} · 到期日：${p.dueDate}</div></div>
       <div style="text-align:right"><div class="fw700 text-red" style="font-size:15px">${fmt((+p.principalDue)+(+p.interestDue))}</div>
-        <span class="badge badge-red">逾期 ${days} 天</span><br>
-        <button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="nav('payment-add')">登记收款</button></div>
-    </div>`).join('')||`<div class="empty-state"><div class="ei">🏅</div><p>暂无逾期</p></div>`}
+        <span class="badge badge-red">${t("daysOverdue")} ${days} ${t("days")}</span><br>
+        <button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="nav('payment-add')">${t('registerPayment')}</button></div>
+    </div>`).join('')||`<div class="empty-state"><div class="ei">🏅</div><p>${t('noOverdue')}</p></div>`}
   </div>`;
 }
 
@@ -1473,16 +1482,16 @@ function renderPaymentQuery() {
   sales.forEach(s => s.schedule.forEach(p => { if (!p.paid && p.dueDate >= td && p.dueDate <= nd) items.push({s,p}); }));
   items.sort((a,b) => a.p.dueDate.localeCompare(b.p.dueDate));
   return `
-  <div class="page-header"><div class="page-title">📋 需还款查询</div><div class="page-sub">未来30天（${td} 至 ${nd}）</div></div>
+  <div class="page-header"><div class="page-title">📋 ${t('queryTitle')}</div><div class="page-sub">${td} → ${nd} · ${t('next30days')}</div></div>
   ${items.length?`<div class="alert alert-amber">📅 未来30天共 ${items.length} 笔，应收合计 ${fmt(items.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}</div>`:''}
   <div class="card">${items.map(({s,p})=>{const dl=Math.floor((new Date(p.dueDate)-new Date(td))/86400000);return`
     <div class="reminder-item ${dl<=3?'warn':'info'}">
       <div><div class="fw700">${esc(s.customer)}</div>
-        <div style="font-size:12px;color:var(--muted)">#${s.id} · 第${p.period}期 · 到期：${p.dueDate}</div></div>
+        <div style="font-size:12px;color:var(--muted)">#${s.id} · ${t("period")} ${p.period} · 到期：${p.dueDate}</div></div>
       <div style="text-align:right"><div class="fw700" style="font-size:15px">${fmt((+p.principalDue)+(+p.interestDue))}</div>
-        <div style="font-size:11px;color:var(--muted)">还剩 ${dl} 天</div>
-        <button class="btn btn-primary btn-sm" style="margin-top:4px" onclick="nav('payment-add')">登记收款</button></div>
-    </div>`;}).join('')||`<div class="empty-state"><div class="ei">📭</div><p>未来30天无到期账单</p></div>`}
+        <div style="font-size:11px;color:var(--muted)">${t("daysLeft")} ${dl} ${t("days")}</div>
+        <button class="btn btn-primary btn-sm" style="margin-top:4px" onclick="nav('payment-add')">${t('registerPayment')}</button></div>
+    </div>`;}).join('')||`<div class="empty-state"><div class="ei">📭</div><p>${t("noRecord")}</p></div>`}
   </div>`;
 }
 
@@ -1491,32 +1500,32 @@ function renderPaymentQuery() {
 // ══════════════════════════════════════════════════════
 function renderPhones() {
   const phones = DB_get('phones')||[];
-  return `<div class="page-header"><div class="page-title">📱 手机型号管理</div></div>
-  <div class="card"><div class="card-title" style="margin-bottom:14px">添加新型号</div>
+  return `<div class="page-header"><div class="page-title">📱 ${t('phonesTitle')}</div></div>
+  <div class="card"><div class="card-title" style="margin-bottom:14px">${t("addPhone")}</div>
     <div class="form-grid">
-      <div class="form-group"><label>品牌</label><input id="phBrand" placeholder="Apple"></div>
-      <div class="form-group"><label>型号</label><input id="phModel" placeholder="iPhone 16 Pro"></div>
-      <div class="form-group"><label>进货价 ($)</label><input id="phCost" type="number" placeholder="0.00" step="0.01"></div>
-      <div class="form-group"><label>建议售价 ($)</label><input id="phPrice" type="number" placeholder="0.00" step="0.01"></div>
-      <div class="form-group"><label>初始库存</label><input id="phStock" type="number" value="0" min="0"></div>
+      <div class="form-group"><label>${t("phoneBrand")}</label><input id="phBrand" placeholder="Apple"></div>
+      <div class="form-group"><label>${t("phoneModelName")}</label><input id="phModel" placeholder="iPhone 16 Pro"></div>
+      <div class="form-group"><label>${t("phoneCost")}</label><input id="phCost" type="number" placeholder="0.00" step="0.01"></div>
+      <div class="form-group"><label>${t("phonePrice")}</label><input id="phPrice" type="number" placeholder="0.00" step="0.01"></div>
+      <div class="form-group"><label>${t("phoneStock")}</label><input id="phStock" type="number" value="0" min="0"></div>
     </div>
-    <div class="btn-row"><button class="btn btn-primary" onclick="addPhone()">➕ 添加型号</button></div>
+    <div class="btn-row"><button class="btn btn-primary" onclick="addPhone()">${t('addPhoneBtn')}</button></div>
     <div id="phoneMsg"></div>
   </div>
-  <div class="card"><div class="card-title" style="margin-bottom:14px">型号列表</div><div id="phoneTable">${buildPhonesTable(phones)}</div></div>`;
+  <div class="card"><div class="card-title" style="margin-bottom:14px">${t("phoneList")} (${phones.length})</div><div id="phoneTable">${buildPhonesTable(phones)}</div></div>`;
 }
 function buildPhonesTable(phones) {
   if (!phones.length) return `<div class="empty-state"><div class="ei">📱</div><p>暂无型号</p></div>`;
-  return `<div class="table-wrap"><table><tr><th>品牌</th><th>型号</th><th>进货价</th><th>售价</th><th>利润/台</th><th>库存</th><th>操作</th></tr>
+  return `<div class="table-wrap"><table><tr><th>${t("colBrand")}</th><th>${t("colPhoneModel")}</th><th>${t("colCostPrice")}</th><th>${t("colSellPrice")}</th><th>${t("colProfitPerUnit")}</th><th>${t("colStock")}</th><th>${t("colAction")}</th></tr>
     ${phones.map(p=>`<tr><td class="fw700">${esc(p.brand)}</td><td>${esc(p.model)}</td><td>${fmt(p.cost)}</td><td>${fmt(p.price)}</td>
       <td class="text-green">${fmt(+p.price-+p.cost)}</td>
       <td><span class="badge ${p.stock===0?'badge-red':p.stock<=2?'badge-amber':'badge-green'}">${p.stock} 台</span></td>
-      <td><button class="btn btn-danger btn-sm" onclick="deletePhone(${p.id})">删除</button></td></tr>`).join('')}
+      <td><button class="btn btn-danger btn-sm" onclick="deletePhone(${p.id})">${t('deleteBtn')}</button></td></tr>`).join('')}
   </table></div>`;
 }
 window.addPhone = function() {
   const brand = document.getElementById('phBrand')?.value?.trim(), model = document.getElementById('phModel')?.value?.trim();
-  if (!brand||!model) { showMsg('phoneMsg','请填写品牌和型号','red'); return; }
+  if (!brand||!model) { showMsg('phoneMsg',t('msgFillName'),'red'); return; }
   const phones = DB_get('phones')||[];
   phones.push({id:newId(),brand,model,cost:+(document.getElementById('phCost')?.value||0),price:+(document.getElementById('phPrice')?.value||0),stock:+(document.getElementById('phStock')?.value||0)});
   DB_set('phones',phones); document.getElementById('phoneTable').innerHTML=buildPhonesTable(phones);
@@ -1531,22 +1540,22 @@ window.deletePhone = function(id) {
 
 function renderSuppliers() {
   const sups = DB_get('suppliers')||[];
-  return `<div class="page-header"><div class="page-title">🏢 供商信息</div></div>
+  return `<div class="page-header"><div class="page-title">🏢 ${t('suppliersTitle')}</div></div>
   <div class="card"><div class="form-grid">
-    <div class="form-group"><label>供商名称 *</label><input id="supName" placeholder="公司名称"></div>
-    <div class="form-group"><label>联系人</label><input id="supContact" placeholder="联系人"></div>
-    <div class="form-group"><label>电话</label><input id="supPhone" placeholder="电话"></div>
-    <div class="form-group span3"><label>地址</label><input id="supAddr" placeholder="地址"></div>
+    <div class="form-group"><label>${t("supplierName")}</label><input id="supName" placeholder="公司名称"></div>
+    <div class="form-group"><label>${t("supplierContact")}</label><input id="supContact" placeholder="联系人"></div>
+    <div class="form-group"><label>${t("supplierPhone")}</label><input id="supPhone" placeholder="电话"></div>
+    <div class="form-group span3"><label>${t("supplierAddr")}</label><input id="supAddr" placeholder="地址"></div>
   </div>
-  <div class="btn-row"><button class="btn btn-primary" onclick="addSupplier()">➕ 添加</button></div>
+  <div class="btn-row"><button class="btn btn-primary" onclick="addSupplier()">${t('addSupplierBtn')}</button></div>
   <div id="supMsg"></div></div>
   <div class="card"><div id="supTable">${buildSupTable(sups)}</div></div>`;
 }
 function buildSupTable(sups) {
   if (!sups.length) return `<div class="empty-state"><div class="ei">🏢</div><p>暂无供商</p></div>`;
-  return `<div class="table-wrap"><table><tr><th>名称</th><th>联系人</th><th>电话</th><th>地址</th><th>操作</th></tr>
+  return `<div class="table-wrap"><table><tr><th>${t("colName")}</th><th>${t("colContact")}</th><th>${t("colPhone")}</th><th>${t("colAddr")}</th><th>${t("colAction")}</th></tr>
     ${sups.map(s=>`<tr><td class="fw700">${esc(s.name)}</td><td>${esc(s.contact||'-')}</td><td>${esc(s.phone||'-')}</td><td>${esc(s.address||'-')}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteSupplier(${s.id})">删除</button></td></tr>`).join('')}
+      <td><button class="btn btn-danger btn-sm" onclick="deleteSupplier(${s.id})">${t('deleteBtn')}</button></td></tr>`).join('')}
   </table></div>`;
 }
 window.addSupplier = function() {
@@ -1568,22 +1577,22 @@ function renderPurchaseAdd() {
   const pOpts=phones.map(p=>`<option value="${p.id}">${esc(p.brand)} ${esc(p.model)}</option>`).join('');
   const sOpts=sups.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
   const purs=(DB_get('purchases')||[]).slice(-20).reverse();
-  return `<div class="page-header"><div class="page-title">🛒 采购登记</div></div>
+  return `<div class="page-header"><div class="page-title">🛒 ${t('purchaseTitle')}</div></div>
   <div class="card"><div class="form-grid">
-    <div class="form-group"><label>日期</label><input type="date" id="purDate" value="${today()}"></div>
-    <div class="form-group"><label>供商</label><select id="purSup">${sOpts||'<option>请先添加供商</option>'}</select></div>
-    <div class="form-group"><label>型号</label><select id="purPhone">${pOpts||'<option>请先添加型号</option>'}</select></div>
-    <div class="form-group"><label>数量</label><input id="purQty" type="number" min="1" value="1"></div>
-    <div class="form-group"><label>单价 ($)</label><input id="purPrice" type="number" placeholder="0.00" step="0.01"></div>
+    <div class="form-group"><label>${t("purchaseDate")}</label><input type="date" id="purDate" value="${today()}"></div>
+    <div class="form-group"><label>${t("purchaseSupplier")}</label><select id="purSup">${sOpts||'<option>请先添加供商</option>'}</select></div>
+    <div class="form-group"><label>${t("purchaseModel")}</label><select id="purPhone">${pOpts||'<option>请先添加型号</option>'}</select></div>
+    <div class="form-group"><label>${t("purchaseQty")}</label><input id="purQty" type="number" min="1" value="1"></div>
+    <div class="form-group"><label>${t("purchasePrice")}</label><input id="purPrice" type="number" placeholder="0.00" step="0.01"></div>
     <div class="form-group"><label>备注</label><input id="purNote" placeholder="可选"></div>
   </div>
-  <div class="btn-row"><button class="btn btn-primary" onclick="submitPurchase()">✅ 确认采购</button></div>
+  <div class="btn-row"><button class="btn btn-primary" onclick="submitPurchase()">${t("confirmPurchase")}</button></div>
   <div id="purMsg"></div></div>
-  <div class="card"><div class="card-title" style="margin-bottom:14px">采购记录</div>${buildPurchasesTable(purs)}</div>`;
+  <div class="card"><div class="card-title" style="margin-bottom:14px">${t("purchaseRecords")}</div>${buildPurchasesTable(purs)}</div>`;
 }
 function buildPurchasesTable(purs) {
-  if (!purs.length) return `<div class="empty-state"><div class="ei">🛒</div><p>暂无记录</p></div>`;
-  return `<div class="table-wrap"><table><tr><th>日期</th><th>供商</th><th>型号</th><th>数量</th><th>单价</th><th>总额</th></tr>
+  if (!purs.length) return `<div class="empty-state"><div class="ei">🛒</div><p>${t("noRecord")}</p></div>`;
+  return `<div class="table-wrap"><table><tr><th>${t("colDate")}</th><th>${t("colName")}</th><th>${t("colModel")}</th><th>${t("colQty")}</th><th>${t("colUnitPrice")}</th><th>${t("colTotalAmt")}</th></tr>
     ${purs.map(p=>`<tr><td>${p.date}</td><td>${esc(p.supplier)}</td><td class="fw700">${esc(p.phone)}</td>
       <td>${p.qty}台</td><td>${fmt(p.price)}</td><td class="fw700 text-green">${fmt(p.qty*p.price)}</td></tr>`).join('')}
   </table></div>`;
@@ -1592,7 +1601,7 @@ window.submitPurchase = function() {
   const phoneId=+(document.getElementById('purPhone')?.value||0), supId=+(document.getElementById('purSup')?.value||0);
   const qty=+(document.getElementById('purQty')?.value||1), price=+(document.getElementById('purPrice')?.value||0);
   const date=document.getElementById('purDate')?.value||today();
-  if(!qty||!price){showMsg('purMsg','请填写数量和单价','red');return;}
+  if(!qty||!price){showMsg('purMsg',t('msgFillAmount'),'red');return;}
   const phones=DB_get('phones')||[], sups=DB_get('suppliers')||[];
   const pi=phones.findIndex(p=>p.id===phoneId), ph=phones[pi], sup=sups.find(s=>s.id===supId);
   if(pi>=0){phones[pi].stock=(phones[pi].stock||0)+qty; DB_set('phones',phones);}
@@ -1616,7 +1625,7 @@ function renderEarlyPayment() {
   }).join('');
   return `
   <div class="page-header">
-    <div class="page-title">⚡ 提前还款登记</div>
+    <div class="page-title">⚡ ${t('earlyTitle')}</div>
     <div class="page-sub">客户协商提前结清合同，手动输入协商金额与实际利润</div>
   </div>
 
@@ -1625,27 +1634,27 @@ function renderEarlyPayment() {
     ${sales.length === 0 ? '<div class="alert alert-blue">当前没有进行中的合同</div>' : ''}
     <div class="form-grid">
       <div class="form-group span3">
-        <label>选择合同 *</label>
-        <select id="epContract" onchange="calcEarlyProfit()">${opts||'<option>暂无进行中合同</option>'}</select>
+        <label>${t('selectContract')}</label>
+        <select id="epContract" onchange="calcEarlyProfit()">${opts||'<option>t('noContract')</option>'}</select>
       </div>
-      <div class="form-group"><label>还款日期</label><input type="date" id="epDate" value="${today()}"></div>
-      <div class="form-group"><label>剩余本金 ($)</label><input id="epRemainP" readonly></div>
-      <div class="form-group"><label>原剩余利息 ($)</label><input id="epRemainI" readonly></div>
+      <div class="form-group"><label>${t("paymentDate")}</label><input type="date" id="epDate" value="${today()}"></div>
+      <div class="form-group"><label>${t("remainPrincipal")}</label><input id="epRemainP" readonly></div>
+      <div class="form-group"><label>${t("origRemainInterest")}</label><input id="epRemainI" readonly></div>
     </div>
 
     <div style="background:#fff8e1;border-radius:10px;padding:16px;margin-top:14px;border-left:4px solid var(--amber)">
       <div style="font-size:12px;color:var(--amber);font-weight:700;margin-bottom:12px">⚡ 协商还款设置（核心）</div>
       <div class="form-grid">
         <div class="form-group">
-          <label>客户协商还款总额 ($) *</label>
+          <label>${t("negotiatedAmount")}</label>
           <input type="number" id="epNegotiated" placeholder="客户实际支付金额" step="0.01" oninput="calcEarlyProfit()">
         </div>
         <div class="form-group">
-          <label>自动计算利润 ($)</label>
+          <label>${t("autoProfit")}</label>
           <input id="epAutoProfit" readonly style="background:#fff8e1;color:var(--amber);font-weight:700">
         </div>
         <div class="form-group">
-          <label>✏️ 手动调整利润 ($)</label>
+          <label>${t("manualProfit")}</label>
           <input type="number" id="epManualProfit" placeholder="可手动修改利润" step="0.01" oninput="syncManualProfit()">
         </div>
       </div>
@@ -1656,21 +1665,21 @@ function renderEarlyPayment() {
       <div class="form-group span3"><label>备注</label><input id="epNote" placeholder="协商详情（可选）"></div>
     </div>
     <div class="btn-row">
-      <button class="btn btn-success" onclick="submitEarlyPayment()">✅ 确认提前结清</button>
+      <button class="btn btn-success" onclick="submitEarlyPayment()">${t("confirmEarly")}</button>
     </div>
     <div id="epMsg"></div>
   </div>
 
   <div class="card">
-    <div class="card-title" style="margin-bottom:14px">⚡ 提前还款记录（${earlyList.length} 笔）</div>
+    <div class="card-title" style="margin-bottom:14px">${t("earlyRecords")}（${earlyList.length} 笔）</div>
     ${buildEarlyTable(earlyList)}
   </div>`;
 }
 
 function buildEarlyTable(list) {
-  if (!list.length) return `<div class="empty-state"><div class="ei">⚡</div><p>暂无提前还款记录</p></div>`;
+  if (!list.length) return `<div class="empty-state"><div class="ei">⚡</div><p>${t("noRecord")}</p></div>`;
   return `<div class="table-wrap"><table>
-    <tr><th>日期</th><th>客户</th><th>合同#</th><th>剩余本金</th><th>原剩余利息</th><th>协商还款额</th><th>实际利润</th><th>利润差异</th><th>备注</th></tr>
+    <tr><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>#</th><th>${t("remainPrincipal")}</th><th>${t("origRemainInterest")}</th><th>${t("negotiatedAmount").replace(" *","")}</th><th>${t("netProfit")}</th><th>${t("profitChange")}</th><th>${t("remarks")}</th></tr>
     ${list.map(r => {
       const diff = +r.actualProfit - +r.origRemainInterest;
       return `<tr>
@@ -1735,9 +1744,9 @@ window.submitEarlyPayment = function() {
   const sel = document.getElementById('epContract');
   const contractId = +(sel?.value || 0);
   const opt = sel?.selectedOptions[0];
-  if (!contractId) { showMsg('epMsg', '请选择合同', 'red'); return; }
+  if (!contractId) { showMsg('epMsg', t('msgFillContract'), 'red'); return; }
   const neg = +(document.getElementById('epNegotiated')?.value || 0);
-  if (!neg) { showMsg('epMsg', '请填写协商还款金额', 'red'); return; }
+  if (!neg) { showMsg('epMsg', t('msgFillAmount'), 'red'); return; }
   const remainP = +(document.getElementById('epRemainP')?.value || 0);
   const remainI = +(document.getElementById('epRemainI')?.value || 0);
   const mpEl = document.getElementById('epManualProfit');
@@ -1864,25 +1873,25 @@ function renderFinanceReport() {
   <div class="stats-grid" style="margin-bottom:20px">
     <div class="stat-card blue">
       <span class="stat-icon">💸</span>
-      <div class="stat-label">本月放款额</div>
+      <div class="stat-label">${t("monthLoan")}</div>
       <div class="stat-value">${fmt(cur.totalLoan||0)}</div>
       <div class="stat-sub">${cur.orderCount||0} 笔新合同</div>
     </div>
     <div class="stat-card green">
       <span class="stat-icon">💰</span>
-      <div class="stat-label">本月回款额</div>
+      <div class="stat-label">${t("monthRepay")}</div>
       <div class="stat-value">${fmt(cur.totalRepay||0)}</div>
       <div class="stat-sub">回款率 ${cur.repayRate||'—'}%</div>
     </div>
     <div class="stat-card amber">
       <span class="stat-icon">📈</span>
-      <div class="stat-label">本月净利润</div>
+      <div class="stat-label">${t("monthProfit")}</div>
       <div class="stat-value">${fmt(cur.mProfit||0)}</div>
       <div class="stat-sub">扣除开支 ${fmt(cur.mExpenses||0)}</div>
     </div>
     <div class="stat-card red">
       <span class="stat-icon">🧾</span>
-      <div class="stat-label">本月日常开支</div>
+      <div class="stat-label">${t("monthExpense")}</div>
       <div class="stat-value">${fmt(cur.mExpenses||0)}</div>
       <div class="stat-sub">税前利润 ${fmt(cur.mProfitBeforeExp||0)}</div>
     </div>
@@ -1890,7 +1899,7 @@ function renderFinanceReport() {
 
   <!-- 累计汇总 -->
   <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#0f2d5c,#1565c0);color:#fff">
-    <div class="card-title" style="color:rgba(255,255,255,.7);margin-bottom:14px;font-size:12px;letter-spacing:1px">📊 全期累计汇总</div>
+    <div class="card-title" style="color:rgba(255,255,255,.7);margin-bottom:14px;font-size:12px;letter-spacing:1px">${t('cumulativeSummary')}</div>
     <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px">
       ${[
         ['总放款额',fmt(totLoan)],
@@ -1910,7 +1919,7 @@ function renderFinanceReport() {
   <!-- 月度明细表 -->
   <div class="card">
     <div class="card-header">
-      <div class="card-title">月度明细数据</div>
+      <div class="card-title">${t('monthlyDetail')}</div>
       <span style="font-size:12px;color:var(--muted)">逾期率 = 逾期期次 / 应还期次 &nbsp;·&nbsp; 回款率 = 已还期次 / 应还期次</span>
     </div>
     <div class="table-wrap">
@@ -1935,7 +1944,7 @@ function renderFinanceReport() {
           const repayColor  = isNaN(repayNum)  ? '' : repayNum  >= 95 ? 'text-green' : repayNum  >= 80 ? 'text-amber' : 'text-red';
           const overdueColor = overdueNum > 10 ? 'text-red' : overdueNum > 5 ? 'text-amber' : 'text-green';
           return `<tr style="${isCurrent ? 'background:#f0f7ff;font-weight:500' : ''}">
-            <td><b>${r.m}</b>${isCurrent ? ' <span class="badge badge-blue" style="font-size:10px">本月</span>' : ''}</td>
+            <td><b>${r.m}</b>${isCurrent ? ' <span class="badge badge-blue" style="font-size:10px">${t("thisMonth")}</span>' : ''}</td>
             <td>${r.orderCount} 笔</td>
             <td class="text-blue fw700">${fmt(r.totalLoan)}</td>
             <td class="text-green fw700">${fmt(r.totalRepay)}</td>
@@ -1958,7 +1967,7 @@ function renderFinanceReport() {
           </tr>`;
         }).join('')}
         <tr style="background:#f0f4f8;font-weight:700;border-top:2px solid var(--border)">
-          <td>合计</td>
+          <td>${t("totalRow")}</td>
           <td>${totOrders} 笔</td>
           <td class="text-blue">${fmt(totLoan)}</td>
           <td class="text-green">${fmt(totRepay)}</td>
@@ -1976,7 +1985,7 @@ function renderFinanceReport() {
 
   <!-- 单量分析 -->
   <div class="card">
-    <div class="card-title" style="margin-bottom:14px">📦 单量 & 期别分析</div>
+    <div class="card-title" style="margin-bottom:14px">${t('orderAnalysis')}</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
       ${[3,6,9,12].map(p => {
         const cnt = sales.filter(s => s.periods === p).length;
@@ -1988,7 +1997,7 @@ function renderFinanceReport() {
             <span class="${cls}">${p}期</span><span style="font-size:11px;color:var(--muted)">${pct}%</span>
           </div>
           <div style="font-size:22px;font-weight:700;color:var(--navy)">${cnt} 笔</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">放款 ${fmt(loan)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${t('totalLoan')} ${fmt(loan)}</div>
         </div>`;
       }).join('')}
     </div>
@@ -2038,25 +2047,25 @@ function renderExpenses() {
   });
   return `
   <div class="page-header">
-    <div class="page-title">🧾 日常开支管理</div>
+    <div class="page-title">🧾 ${t('expensesTitle')}</div>
     <div class="page-sub">记录日常运营支出，自动纳入月度财务与利润统计</div>
   </div>
 
   <div class="card">
-    <div class="card-title" style="margin-bottom:16px">➕ 新增开支记录</div>
+    <div class="card-title" style="margin-bottom:16px">${t("addExpense")}</div>
     <div class="form-grid">
-      <div class="form-group"><label>日期 *</label><input type="date" id="exDate" value="${today()}"></div>
-      <div class="form-group"><label>开支类别 *</label>
+      <div class="form-group"><label>${t("expenseDate")}</label><input type="date" id="exDate" value="${today()}"></div>
+      <div class="form-group"><label>${t("expenseCategory")}</label>
         <select id="exCat">
           ${EXPENSE_CATS.map(c=>`<option value="${c}">${c}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group"><label>金额 ($) *</label><input type="number" id="exAmount" placeholder="0.00" step="0.01" min="0"></div>
-      <div class="form-group span2"><label>备注说明</label><input id="exNote" placeholder="详细描述（可选）"></div>
-      <div class="form-group"><label>经手人</label><input id="exPerson" placeholder="姓名（可选）"></div>
+      <div class="form-group"><label>${t("expenseAmount")}</label><input type="number" id="exAmount" placeholder="0.00" step="0.01" min="0"></div>
+      <div class="form-group span2"><label>${t("expenseNote")}</label><input id="exNote" placeholder="详细描述（可选）"></div>
+      <div class="form-group"><label>${t("expensePerson")}</label><input id="exPerson" placeholder="姓名（可选）"></div>
     </div>
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="submitExpense()">✅ 保存开支</button>
+      <button class="btn btn-primary" onclick="submitExpense()">${t("saveExpense")}</button>
     </div>
     <div id="exMsg"></div>
   </div>
@@ -2065,7 +2074,7 @@ function renderExpenses() {
     <div class="card">
       <div class="card-header">
         <div class="card-title">开支记录（${expenses.length} 笔）</div>
-        <span class="text-red fw700">累计支出 ${fmt(total)}</span>
+        <span class="text-red fw700">${t('totalExpStr')} ${fmt(total)}</span>
       </div>
       <div class="search-row">
         <select id="exMonthFilter" onchange="filterExpenses()">
@@ -2081,7 +2090,7 @@ function renderExpenses() {
     </div>
 
     <div class="card">
-      <div class="card-title" style="margin-bottom:14px">📅 按月汇总</div>
+      <div class="card-title" style="margin-bottom:14px">${t("monthSummary")}</div>
       ${Object.keys(byMonth).sort().reverse().length ? `
       <div class="table-wrap"><table>
         <tr><th>月份</th><th>支出合计</th></tr>
@@ -2091,15 +2100,15 @@ function renderExpenses() {
             <td class="fw700 text-red">${fmt(v)}</td>
           </tr>`).join('')}
         <tr style="background:#fff5f5;font-weight:700;border-top:2px solid var(--border)">
-          <td>合计</td><td class="text-red">${fmt(total)}</td>
+          <td>${t("totalRow")}</td><td class="text-red">${fmt(total)}</td>
         </tr>
-      </table></div>` : `<div class="empty-state"><div class="ei">🧾</div><p>暂无记录</p></div>`}
+      </table></div>` : `<div class="empty-state"><div class="ei">🧾</div><p>${t("noRecord")}</p></div>`}
     </div>
   </div>`;
 }
 
 function buildExpenseTable(expenses) {
-  if (!expenses.length) return `<div class="empty-state"><div class="ei">🧾</div><p>暂无开支记录，点击上方添加</p></div>`;
+  if (!expenses.length) return `<div class="empty-state"><div class="ei">🧾</div><p>${t("noRecord")}</p></div>`;
   const catColors = {'房租':'badge-red','员工工资':'badge-red','税费':'badge-red','水电':'badge-amber','通讯费':'badge-amber','交通费':'badge-amber','餐饮':'badge-blue','维修':'badge-amber','广告推广':'badge-purple','办公用品':'badge-blue','其他':'badge-gray'};
   return `<div class="table-wrap"><table>
     <tr><th>日期</th><th>类别</th><th>金额</th><th>说明</th><th>经手人</th><th>操作</th></tr>
@@ -2109,7 +2118,7 @@ function buildExpenseTable(expenses) {
       <td class="fw700 text-red">${fmt(e.amount)}</td>
       <td style="color:var(--muted);font-size:12px">${esc(e.note||'—')}</td>
       <td style="font-size:12px">${esc(e.person||'—')}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.id})">删除</button></td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.id})">${t('deleteBtn')}</button></td>
     </tr>`).join('')}
   </table></div>`;
 }
@@ -2130,11 +2139,11 @@ window.submitExpense = function() {
   const amount = +(document.getElementById('exAmount')?.value||0);
   const note   = document.getElementById('exNote')?.value||'';
   const person = document.getElementById('exPerson')?.value||'';
-  if (!amount || amount <= 0) { showMsg('exMsg','请填写有效金额','red'); return; }
+  if (!amount || amount <= 0) { showMsg('exMsg',t('msgFillAmount'),'red'); return; }
   const expenses = DB_get('expenses')||[];
   expenses.push({ id: newId(), date, cat, amount, note, person });
   DB_set('expenses', expenses);
-  showMsg('exMsg', `✅ 已记录 ${cat} 开支 ${fmt(amount)}`, 'green');
+  showMsg('exMsg', `✅ ${cat} ${fmt(amount)}`, 'green');
   ['exAmount','exNote','exPerson'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   setTimeout(()=>nav('expenses'), 400);
 };
@@ -2148,41 +2157,41 @@ window.deleteExpense = function(id) {
 function renderInventory() {
   const phones=DB_get('phones')||[];
   const totalStock=phones.reduce((a,p)=>a+p.stock,0), totalCost=phones.reduce((a,p)=>a+p.stock*p.cost,0);
-  return `<div class="page-header"><div class="page-title">📦 库存查看</div></div>
+  return `<div class="page-header"><div class="page-title">📦 ${t('inventoryTitle')}</div></div>
   <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
-    <div class="stat-card blue"><div class="stat-label">型号种类</div><div class="stat-value">${phones.length}</div></div>
-    <div class="stat-card green"><div class="stat-label">库存总量</div><div class="stat-value">${totalStock} 台</div></div>
-    <div class="stat-card amber"><div class="stat-label">库存成本</div><div class="stat-value">${fmt(totalCost)}</div></div>
+    <div class="stat-card blue"><div class="stat-label">${t("phoneTypes")}</div><div class="stat-value">${phones.length}</div></div>
+    <div class="stat-card green"><div class="stat-label">${t("totalStock")}</div><div class="stat-value">${totalStock} 台</div></div>
+    <div class="stat-card amber"><div class="stat-label">${t("stockCost")}</div><div class="stat-value">${fmt(totalCost)}</div></div>
   </div>
-  <div class="card"><div class="table-wrap"><table><tr><th>品牌</th><th>型号</th><th>进货价</th><th>售价</th><th>库存</th><th>库存状态</th></tr>
+  <div class="card"><div class="table-wrap"><table><tr><th>${t("colBrand")}</th><th>${t("colPhoneModel")}</th><th>${t("colCostPrice")}</th><th>${t("colSellPrice")}</th><th>${t("colStock")}</th><th>${t("colStockStatus")}</th></tr>
     ${phones.length?phones.map(p=>`<tr><td class="fw700">${esc(p.brand)}</td><td>${esc(p.model)}</td>
       <td>${fmt(p.cost)}</td><td>${fmt(p.price)}</td><td class="fw700">${p.stock}</td>
-      <td><span class="badge ${p.stock===0?'badge-red':p.stock<=3?'badge-amber':'badge-green'}">${p.stock===0?'❌缺货':p.stock<=3?'⚠️低库存':'✅充足'}</span></td></tr>`).join('')
+      <td><span class="badge ${p.stock===0?'badge-red':p.stock<=3?'badge-amber':'badge-green'}">${p.stock===0?t('outStock'):p.stock<=3?t('lowStock'):t('inStock')}</span></td></tr>`).join('')
     :'<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--muted)">暂无数据</td></tr>'}
   </table></div></div>`;
 }
 
 function renderCompany() {
   const c=DB_get('company')||{};
-  return `<div class="page-header"><div class="page-title">⚙️ 单位信息</div></div>
+  return `<div class="page-header"><div class="page-title">⚙️ ${t('companyTitle')}</div></div>
   <div class="card"><div class="form-grid">
-    <div class="form-group span2"><label>单位名称</label><input id="coName" value="${esc(c.name||'')}"></div>
-    <div class="form-group"><label>联系电话</label><input id="coPhone" value="${esc(c.phone||'')}"></div>
-    <div class="form-group span3"><label>地址</label><input id="coAddr" value="${esc(c.address||'')}"></div>
-    <div class="form-group span3"><label>备注</label><input id="coNote" value="${esc(c.note||'')}"></div>
+    <div class="form-group span2"><label>${t("companyName")}</label><input id="coName" value="${esc(c.name||'')}"></div>
+    <div class="form-group"><label>${t("companyPhone")}</label><input id="coPhone" value="${esc(c.phone||'')}"></div>
+    <div class="form-group span3"><label>${t("companyAddr")}</label><input id="coAddr" value="${esc(c.address||'')}"></div>
+    <div class="form-group span3"><label>${t("companyNote")}</label><input id="coNote" value="${esc(c.note||'')}"></div>
   </div>
-  <div class="btn-row"><button class="btn btn-success" onclick="saveCompany()">💾 保存</button></div>
+  <div class="btn-row"><button class="btn btn-success" onclick="saveCompany()">${t('saveInfo')}</button></div>
   <div id="coMsg"></div></div>
-  <div class="card" style="background:#f0f7ff"><div class="card-title">数据管理</div>
+  <div class="card" style="background:#f0f7ff"><div class="card-title">${t("dataMgmt")}</div>
   <div class="btn-row" style="margin-top:14px">
-    <button class="btn btn-outline" onclick="window.open('/api/backup')">📤 下载数据备份</button>
+    <button class="btn btn-outline" onclick="window.open('/api/backup')">${t('downloadBackup')}</button>
   </div></div>`;
 }
 window.saveCompany = function() {
   const name=document.getElementById('coName')?.value||'';
   DB_set('company',{name,phone:document.getElementById('coPhone')?.value||'',address:document.getElementById('coAddr')?.value||'',note:document.getElementById('coNote')?.value||''});
   document.getElementById('companyName').textContent=name||'MORODOK';
-  showMsg('coMsg',`✅ ${t('saved')}`, 'green');
+  showMsg('coMsg','✅ '+t('saved'), 'green');
 };
 
 // ══════════════════════════════════════════════════════
