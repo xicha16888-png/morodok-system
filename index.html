@@ -301,10 +301,10 @@ const I18N = {
     personPlaceholder: '姓名（可选）',
     // Phones
     phonesTitle: '手机型号管理', addPhone: '添加新型号', phoneBrand: '品牌',
-    phoneModelName: '型号名称', phoneCost: '进货价 ($)', phonePrice: '建议售价 ($)',
+    phoneModelName: '型号名称', phoneCost: '内存大小', phonePrice: '建议售价 ($)',
     phoneStock: '初始库存（台）', addPhoneBtn: '➕ 添加型号', phoneList: '型号列表',
-    colBrand: '品牌', colPhoneModel: '型号', colCostPrice: '进货价', colSellPrice: '售价',
-    colProfitPerUnit: '利润/台', colStock: '库存', colStockValue: '库存成本', colStockStatus: '库存状态',
+    colBrand: '品牌', colPhoneModel: '型号', colCostPrice: '内存', colSellPrice: '售价',
+    colProfitPerUnit: '参考售价', colStock: '库存', colStockValue: '库存成本', colStockStatus: '库存状态',
     inStock: '✅ 充足', lowStock: '⚠️ 低库存', outStock: '❌ 缺货',
     // Suppliers
     suppliersTitle: '供商信息', addSupplier: '添加供商', supplierName: '供商名称 *',
@@ -453,10 +453,10 @@ const I18N = {
     personPlaceholder: 'Name (optional)',
     // Phones
     phonesTitle: 'Phone Model Management', addPhone: 'Add New Model', phoneBrand: 'Brand',
-    phoneModelName: 'Model Name', phoneCost: 'Cost Price ($)', phonePrice: 'Suggested Price ($)',
+    phoneModelName: 'Model Name', phoneCost: 'Storage', phonePrice: 'Suggested Price ($)',
     phoneStock: 'Initial Stock (units)', addPhoneBtn: '➕ Add Model', phoneList: 'Model List',
-    colBrand: 'Brand', colPhoneModel: 'Model', colCostPrice: 'Cost', colSellPrice: 'Price',
-    colProfitPerUnit: 'Profit/Unit', colStock: 'Stock', colStockValue: 'Stock Value', colStockStatus: 'Status',
+    colBrand: 'Brand', colPhoneModel: 'Model', colCostPrice: 'Storage', colSellPrice: 'Price',
+    colProfitPerUnit: 'Ref. Price', colStock: 'Stock', colStockValue: 'Stock Value', colStockStatus: 'Status',
     inStock: '✅ In Stock', lowStock: '⚠️ Low Stock', outStock: '❌ Out of Stock',
     // Suppliers
     suppliersTitle: 'Supplier Information', addSupplier: 'Add Supplier', supplierName: 'Supplier Name *',
@@ -606,10 +606,10 @@ const I18N = {
     personPlaceholder: 'ឈ្មោះ (ស្រេចចិត្ត)',
     // Phones
     phonesTitle: 'ការគ្រប់គ្រងគំរូទូរសព្ទ', addPhone: 'បន្ថែមគំរូថ្មី', phoneBrand: 'ម៉ាក',
-    phoneModelName: 'ឈ្មោះគំរូ', phoneCost: 'តម្លៃដើម ($)', phonePrice: 'តម្លៃលក់ ($)',
+    phoneModelName: 'ឈ្មោះគំរូ', phoneCost: 'ទំហំផ្ទុក', phonePrice: 'តម្លៃលក់ ($)',
     phoneStock: 'ស្តុកដំបូង', addPhoneBtn: '➕ បន្ថែមគំរូ', phoneList: 'បញ្ជីគំរូ',
-    colBrand: 'ម៉ាក', colPhoneModel: 'គំរូ', colCostPrice: 'តម្លៃដើម', colSellPrice: 'តម្លៃលក់',
-    colProfitPerUnit: 'ចំណេញ/គ្រឿង', colStock: 'ស្តុក', colStockValue: 'តម្លៃស្តុក', colStockStatus: 'ស្ថានភាព',
+    colBrand: 'ម៉ាក', colPhoneModel: 'គំរូ', colCostPrice: 'ទំហំ', colSellPrice: 'តម្លៃលក់',
+    colProfitPerUnit: 'តម្លៃ', colStock: 'ស្តុក', colStockValue: 'តម្លៃស្តុក', colStockStatus: 'ស្ថានភាព',
     inStock: '✅ គ្រប់គ្រាន់', lowStock: '⚠️ ស្តុកទាប', outStock: '❌ អស់ស្តុក',
     // Suppliers
     suppliersTitle: 'ព័ត៌មានអ្នកផ្គត់ផ្គង់', addSupplier: 'បន្ថែមអ្នកផ្គត់ផ្គង់', supplierName: 'ឈ្មោះអ្នកផ្គត់ផ្គង់ *',
@@ -1080,11 +1080,7 @@ window.calcInstall = function() {
   const monthly     = periods > 0 ? (principal / periods) + monthlyInt + monthlySvc : 0;
 
   // Net profit = interest + service fee - rebate (毛利在保存时用进货价计算)
-  const phones = DB_get('phones') || [];
-  const modelId = +(document.getElementById('sModel')?.value || 0);
-  const ph = phones.find(p => p.id === modelId);
-  const grossProfit = ph ? (price - ph.cost) : 0;
-  const netProfit = grossProfit + totalInt + totalSvc - rebate;
+  const netProfit = totalInt + totalSvc - rebate;
 
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = isNaN(v) ? '0.00' : v.toFixed(2); };
   set('sInstAmt', principal);
@@ -1368,10 +1364,6 @@ function renderStatsProfit() {
   const expenses  = DB_get('expenses')||[];
 
   const normalSales = sales.filter(s => s.status !== '提前结清');
-  const tSale  = sales.reduce((a,s)=>a+(+s.salePrice),0);
-  const tCost  = sales.reduce((a,s)=>{const p=phones.find(ph=>ph.id===s.modelId);return a+(p?+p.cost:0);},0);
-  const tGross = tSale - tCost;
-
   // Interest & service fee totals
   const tInterest    = normalSales.reduce((a,s)=>a+(+s.totalInterest||0),0);
   const tServiceFee  = normalSales.reduce((a,s)=>a+(+s.totalServiceFee||0),0);
@@ -1387,7 +1379,7 @@ function renderStatsProfit() {
   const tExpenses = expenses.reduce((a,e)=>a+(+e.amount),0);
 
   // Net profit = gross + interest + service fee + penalty + early profit - rebate - expenses
-  const tProfitBeforeExp = tGross + tInterest + tServiceFee + tPenalty + tEarlyProfit - tRebate;
+  const tProfitBeforeExp = tInterest + tServiceFee + tPenalty + tEarlyProfit - tRebate;
   const tNet = tProfitBeforeExp - tExpenses;
 
   const byCat = {};
@@ -1418,7 +1410,6 @@ function renderStatsProfit() {
       <div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600">${t("incomeSource")}</div>
         ${[
-          ['销售毛利（售价-成本）', tGross,      'var(--sky)'],
           ['利息收入',             tInterest,    'var(--green)'],
           ['手续费收入',           tServiceFee,  'var(--amber)'],
           ['滞纳金收入（已收）',   tPenalty,     '#e91e63'],
@@ -1477,10 +1468,8 @@ function renderStatsProfit() {
   <div class="card">
     <div class="card-title" style="margin-bottom:14px">${t("contractDetails")}</div>
     ${sales.length?`<div class="table-wrap"><table>
-      <tr><th>${t("colNo")}</th><th>${t("colCustomer")}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colCost")}</th><th>${t("colGross")}</th><th>${t("colInterest")}</th><th>${t("colServiceFee")}</th><th>${t("colRebateCol")}</th><th>${t("colNetProfit")}</th><th>${t("colStatus")}</th></tr>
+      <tr><th>${t("colNo")}</th><th>${t("colCustomer")}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colInterest")}</th><th>${t("colServiceFee")}</th><th>${t("colRebateCol")}</th><th>${t("colNetProfit")}</th><th>${t("colStatus")}</th></tr>
       ${sales.slice().reverse().map(s=>{
-        const ph=phones.find(p=>p.id===s.modelId), cost=ph?+ph.cost:0;
-        const gross=+s.salePrice-cost;
         let interestVal, svcVal, rebateVal, net;
         if (s.status === '提前结清') {
           const ep = earlyPays.find(r => r.contractId === s.id);
@@ -1497,8 +1486,7 @@ function renderStatsProfit() {
           <td class="fw700 text-blue">#${s.id}</td>
           <td class="fw700">${esc(s.customer)}</td>
           <td>${esc(s.modelName||'-')}</td>
-          <td>${fmt(s.salePrice)}</td><td>${fmt(cost)}</td>
-          <td class="text-blue">${fmt(gross)}</td>
+          <td>${fmt(s.salePrice)}</td>
           <td class="text-green">${s.status==='提前结清'?'<span class="badge badge-amber" style="font-size:10px">⚡'+t('earlySettled')+'</span> ':''} ${fmt(interestVal)}</td>
           <td class="text-amber">${fmt(svcVal)}</td>
           <td class="text-red">${rebateVal>0?'-'+fmt(rebateVal):'-'}</td>
@@ -1575,7 +1563,15 @@ function renderPhones() {
     <div class="form-grid">
       <div class="form-group"><label>${t("phoneBrand")}</label><input id="phBrand" placeholder="Apple"></div>
       <div class="form-group"><label>${t("phoneModelName")}</label><input id="phModel" placeholder="iPhone 16 Pro"></div>
-      <div class="form-group"><label>${t("phoneCost")}</label><input id="phCost" type="number" placeholder="0.00" step="0.01"></div>
+      <div class="form-group"><label>${t("phoneCost")}</label>
+        <select id="phStorage">
+          <option value="64G">64G</option>
+          <option value="128G" selected>128G</option>
+          <option value="256G">256G</option>
+          <option value="512G">512G</option>
+          <option value="1TB">1TB</option>
+        </select>
+      </div>
       <div class="form-group"><label>${t("phonePrice")}</label><input id="phPrice" type="number" placeholder="0.00" step="0.01"></div>
       <div class="form-group"><label>${t("phoneStock")}</label><input id="phStock" type="number" value="0" min="0"></div>
     </div>
@@ -1586,21 +1582,23 @@ function renderPhones() {
 }
 function buildPhonesTable(phones) {
   if (!phones.length) return `<div class="empty-state"><div class="ei">📱</div><p>暂无型号</p></div>`;
-  return `<div class="table-wrap"><table><tr><th>${t("colBrand")}</th><th>${t("colPhoneModel")}</th><th>${t("colCostPrice")}</th><th>${t("colSellPrice")}</th><th>${t("colProfitPerUnit")}</th><th>${t("colStock")}</th><th>${t("colAction")}</th></tr>
-    ${phones.map(p=>`<tr><td class="fw700">${esc(p.brand)}</td><td>${esc(p.model)}</td><td>${fmt(p.cost)}</td><td>${fmt(p.price)}</td>
-      <td class="text-green">${fmt(+p.price-+p.cost)}</td>
-      <td><span class="badge ${p.stock===0?'badge-red':p.stock<=2?'badge-amber':'badge-green'}">${p.stock} 台</span></td>
+  return `<div class="table-wrap"><table><tr><th>${t("colBrand")}</th><th>${t("colPhoneModel")}</th><th>${t("colCostPrice")}</th><th>${t("colSellPrice")}</th><th>${t("colStock")}</th><th>${t("colAction")}</th></tr>
+    ${phones.map(p=>`<tr><td class="fw700">${esc(p.brand)}</td><td>${esc(p.model)}</td>
+      <td><span class="badge badge-blue">${esc(p.storage||p.cost||'-')}</span></td>
+      <td>${fmt(p.price)}</td>
+      <td><span class="badge ${p.stock===0?'badge-red':p.stock<=2?'badge-amber':'badge-green'}">${p.stock} ${_lang==='km'?'គ្រឿង':_lang==='en'?'pcs':'台'}</span></td>
       <td><button class="btn btn-danger btn-sm" onclick="deletePhone(${p.id})">${t('deleteBtn')}</button></td></tr>`).join('')}
   </table></div>`;
 }
 window.addPhone = function() {
   const brand = document.getElementById('phBrand')?.value?.trim(), model = document.getElementById('phModel')?.value?.trim();
   if (!brand||!model) { showMsg('phoneMsg',t('msgFillName'),'red'); return; }
+  const storage = document.getElementById('phStorage')?.value||'128G';
   const phones = DB_get('phones')||[];
-  phones.push({id:newId(),brand,model,cost:+(document.getElementById('phCost')?.value||0),price:+(document.getElementById('phPrice')?.value||0),stock:+(document.getElementById('phStock')?.value||0)});
+  phones.push({id:newId(),brand,model,storage,cost:0,price:+(document.getElementById('phPrice')?.value||0),stock:+(document.getElementById('phStock')?.value||0)});
   DB_set('phones',phones); document.getElementById('phoneTable').innerHTML=buildPhonesTable(phones);
-  ['phBrand','phModel','phCost','phPrice'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  document.getElementById('phStock').value='0'; showMsg('phoneMsg','✅ 已添加','green');
+  ['phBrand','phModel','phPrice'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('phStock').value='0'; showMsg('phoneMsg','✅ '+t('added'),'green');
 };
 window.deletePhone = function(id) {
   if (!confirm('确认删除？')) return;
@@ -1895,16 +1893,12 @@ function renderFinanceReport() {
                       + mEarly.reduce((a,r) => a + (+r.negotiatedAmount), 0);
     const mInterest    = mPays.reduce((a,p) => a + (+p.interest), 0);
     const mEarlyProfit = mEarly.reduce((a,r) => a + (+r.actualProfit), 0);
-    const mGross = mSales.reduce((a,s) => {
-      const ph = phones.find(p => p.id === s.modelId);
-      return a + (+s.salePrice - (ph ? +ph.cost : 0));
-    }, 0);
     const mServiceFee = mSales.reduce((a,s)=>a+(+s.totalServiceFee||0),0);
     const mRebate     = mSales.reduce((a,s)=>a+(+s.storeRebate||0),0);
     const mPenalty    = mPays.reduce((a,p)=>a+(+p.penalty||0),0);
     const mExpenses = expenses.filter(e => e.date.slice(0,7) === m).reduce((a,e)=>a+(+e.amount),0);
-    const mProfit = mInterest + mEarlyProfit + mGross + mServiceFee + mPenalty - mRebate - mExpenses;
-    const mProfitBeforeExp = mInterest + mEarlyProfit + mGross + mServiceFee + mPenalty - mRebate;
+    const mProfit = mInterest + mEarlyProfit + mServiceFee + mPenalty - mRebate - mExpenses;
+    const mProfitBeforeExp = mInterest + mEarlyProfit + mServiceFee + mPenalty - mRebate;
 
     const mDuePeriods   = sales.flatMap(s => s.schedule.filter(p => p.dueDate.slice(0,7) === m));
     const mOverduePeriods = mDuePeriods.filter(p => !p.paid && p.dueDate < td);
