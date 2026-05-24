@@ -922,17 +922,13 @@ let _dbReady = false; // 🔒 数据安全锁：只有从Supabase成功加载后
 
 async function loadDB() {
   try {
-    const res = await fetch('/api/data');
-    if (!res.ok) {
-      console.warn('⚠️ 服务器返回错误:', res.status);
-      return false;
-    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+    const res = await fetch('/api/data', {cache:'no-store', signal: controller.signal});
+    clearTimeout(timer);
+    if (!res.ok) return {ok:false, reason:`HTTP ${res.status}`};
     const data = await res.json();
-    if (!data || typeof data !== 'object') {
-      console.warn('⚠️ 数据格式无效');
-      return false;
-    }
-    // 自动修正缺失的数组字段
+    if (!data || typeof data !== 'object') return {ok:false, reason:'Invalid JSON'};
     if (!Array.isArray(data.sales))        data.sales = [];
     if (!Array.isArray(data.payments))     data.payments = [];
     if (!Array.isArray(data.phones))       data.phones = [];
@@ -942,18 +938,12 @@ async function loadDB() {
     if (!Array.isArray(data.expenses))     data.expenses = [];
     if (!data.nextId)                      data.nextId = 1001;
     if (!data.company)                     data.company = {name:'MORODOK',address:'',phone:'',note:''};
-
     _db = data;
     _dbReady = true;
-    // 安全更新公司名（不抛异常）
-    try {
-      const el = document.getElementById('companyName');
-      if (el && data.company?.name) el.textContent = data.company.name;
-    } catch(e2) {}
-    return true;
+    try { const el=document.getElementById('companyName'); if(el&&data.company?.name) el.textContent=data.company.name; } catch(e2){}
+    return {ok:true};
   } catch(e) {
-    console.warn('⚠️ loadDB 失败:', e.message);
-    return false;
+    return {ok:false, reason: e.name==='AbortError'?'Timeout 20s':e.message};
   }
 }
 
@@ -2524,8 +2514,8 @@ window.saveCompany = function() {
   }
 
   async function tryConnect() {
-    const ok = await loadDB();
-    if (ok) {
+    const result = await loadDB();
+    if (result.ok) {
       hideLoading();
       nav('home');
       updateBadges();
@@ -2533,36 +2523,32 @@ window.saveCompany = function() {
       startDateClock();
       return;
     }
+    const lastErr = result.reason || 'Unknown';
     retryCount++;
     if (retryCount === 1) showWakingUp();
     if (retryCount > MAX_RETRY) {
-      // Give up, show final error with reload button
       const lo = document.getElementById('loadingOverlay');
       if (lo) {
         lo.innerHTML = `
-          <div style="background:#fff;border-radius:16px;padding:32px;max-width:300px;width:90%;text-align:center">
+          <div style="background:#fff;border-radius:16px;padding:32px;max-width:320px;width:90%;text-align:center">
             <div style="font-size:40px;margin-bottom:12px">❌</div>
-            <p style="font-size:15px;font-weight:700;color:#c62828;margin-bottom:8px">
-              ${_lang==='km'?'មិនអាចភ្ជាប់':_lang==='en'?'Connection failed':'连接失败'}
-            </p>
-            <p style="font-size:13px;color:#78909c;margin-bottom:20px">
-              ${_lang==='km'?'សូមរង់ចាំ 1 នាទីហើយព្យាយាមម្ដងទៀត':_lang==='en'?'Wait 1 min then try again':'请等待1分钟后重试'}
+            <p style="font-size:15px;font-weight:700;color:#c62828;margin-bottom:8px">连接失败</p>
+            <p style="font-size:12px;color:#78909c;margin-bottom:8px">错误：${lastErr}</p>
+            <p style="font-size:12px;color:#78909c;margin-bottom:20px">
+              请截图发给管理员，或点击下方刷新
             </p>
             <button onclick="location.reload()" style="width:100%;padding:14px;border-radius:10px;background:#1e88e5;color:#fff;border:none;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit">
-              ${_lang==='km'?'ព្យាយាមម្ដងទៀត':_lang==='en'?'Try Again':'重新连接'}
+              重新连接
             </button>
           </div>`;
       }
       return;
     }
-    // Update progress bar and message
     const pct = Math.round((retryCount / MAX_RETRY) * 100);
     const prog = document.getElementById('wakeProgress');
     if (prog) prog.style.width = pct + '%';
     const msg = document.getElementById('wakeMsg');
-    if (msg) msg.textContent = _lang==='km' ? `ព្យាយាម ${retryCount}/${MAX_RETRY} — ${RETRY_SEC*(MAX_RETRY-retryCount)}s...` :
-                               _lang==='en' ? `Attempt ${retryCount}/${MAX_RETRY} — ~${RETRY_SEC*(MAX_RETRY-retryCount)}s left` :
-                               `第${retryCount}/${MAX_RETRY}次 — 约${RETRY_SEC*(MAX_RETRY-retryCount)}秒`;
+    if (msg) msg.textContent = `第${retryCount}/${MAX_RETRY}次 (${lastErr}) — ${RETRY_SEC*(MAX_RETRY-retryCount)}s后重试`;
     setTimeout(tryConnect, RETRY_SEC * 1000);
   }
 
