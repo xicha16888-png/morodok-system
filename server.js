@@ -46,12 +46,16 @@ async function loadData() {
 
     if (error) {
       console.error('❌ 读取数据库失败:', error.message, error.code);
-      return getInitData();
+      throw new Error('DB_READ_ERROR: ' + error.message);
     }
 
     if (!data || data.length === 0) {
-      console.log('📭 数据库为空，返回初始数据');
-      return getInitData();
+      console.log('📭 数据库为空，初始化默认数据');
+      const init = getInitData();
+      // 自动写入初始数据到Supabase
+      const rows = Object.entries(init).map(([key, value]) => ({ key, value }));
+      await supabase.from('appdata').upsert(rows, { onConflict: 'key' });
+      return init;
     }
 
     console.log(`✅ 成功读取 ${data.length} 条记录`);
@@ -62,7 +66,7 @@ async function loadData() {
     return result;
   } catch (e) {
     console.error('❌ loadData 异常:', e.message);
-    return getInitData();
+    throw e; // 向上抛出，让路由返回500
   }
 }
 
@@ -83,10 +87,15 @@ async function saveData(dbData) {
 app.get('/api/data', async (req, res) => {
   try {
     const data = await loadData();
+    // 验证数据完整性后才返回
+    if (!data || typeof data !== 'object' || !Array.isArray(data.sales)) {
+      return res.status(500).json({ error: 'DATA_INVALID', message: '数据格式无效' });
+    }
     res.json(data);
   } catch (e) {
     console.error('GET /api/data 失败:', e.message);
-    res.status(500).json({ error: e.message });
+    // 返回500，让前端知道数据未就绪，禁止保存操作
+    res.status(500).json({ error: 'DB_ERROR', message: e.message });
   }
 });
 
