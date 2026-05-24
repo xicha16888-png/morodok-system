@@ -96,14 +96,19 @@ async function saveData(dbData) {
 app.get('/api/data', async (req, res) => {
   try {
     const data = await loadData();
-    // 验证数据完整性后才返回
-    if (!data || typeof data !== 'object' || !Array.isArray(data.sales)) {
+    if (!data || typeof data !== 'object') {
       return res.status(500).json({ error: 'DATA_INVALID', message: '数据格式无效' });
+    }
+    // 自动修正 null 字段，防止前端崩溃
+    const arrKeys = ['sales','payments','phones','suppliers','purchases','earlyPayments','expenses'];
+    arrKeys.forEach(k => { if (!Array.isArray(data[k])) data[k] = []; });
+    if (!data.nextId) data.nextId = 1001;
+    if (!data.company || typeof data.company !== 'object') {
+      data.company = {name:'MORODOK',address:'',phone:'',note:''};
     }
     res.json(data);
   } catch (e) {
     console.error('GET /api/data 失败:', e.message);
-    // 返回500，让前端知道数据未就绪，禁止保存操作
     res.status(500).json({ error: 'DB_ERROR', message: e.message });
   }
 });
