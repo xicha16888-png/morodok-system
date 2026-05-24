@@ -271,14 +271,14 @@ const I18N = {
     earlyRepayProfit: '提前还款实际利润', storeRebateDeduct: '店家返点（扣除）',
     preTaxProfit: '税前利润', expenseDeduct: '开支扣除',
     expenseTotal: '开支合计', managExpenses: '🧾 管理开支记录',
-    earlyRepayTitle: '⚡ 提前还款利润汇总', profitChange: '利润变化',
+    earlyRepayTitle: '${t("earlyRepayTitle")}', profitChange: '利润变化',
     contractDetails: '${t("contractDetails")}',
     colCost: '成本', colGross: '毛利', colInterest: '利息/利润',
     colServiceFee: '手续费', colRebateCol: '返点', colNetProfit: '净利润',
     // Finance report
     financeTitle: '月度财务报表', financeSub: '月总放款 · 月总回款 · 月利润 · 月逾期率 · 月回款率 · 单量统计',
     thisMonth: '本月', realtime: '实时数据',
-    monthLoan: '本月放款额', newContracts: '笔新合同',
+    monthLoan: '本月放款额', newContracts: '${t("newContracts")}',
     monthRepay: '本月回款额', repayRate: '回款率',
     monthProfit: '本月净利润', deductedExp: '扣除开支',
     monthExpense: '本月日常开支', preTaxProfitMonth: '税前利润',
@@ -1118,7 +1118,7 @@ function renderSaleList() {
 }
 
 function buildSalesTable(sales) {
-  if (!sales.length) return ``<div class="empty-state"><div class="ei">📭</div><p>${t('noContract')}</p></div>``;
+  if (!sales.length) return `<div class="empty-state"><div class="ei">📭</div><p>${t('noContract')}</p></div>`;
   const ptc = {1:'pt3',3:'pt3',5:'pt6',8:'pt9',11:'pt12',12:'pt12',6:'pt6',9:'pt9',18:'pt9',24:'pt12'};
   return `<div class="table-wrap"><table>
     <tr><th>${t("colNo")}</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colDeposit")}</th><th>${t("colPrincipal")}</th><th>${t("colPeriods")}</th><th>${t("colIntRate")}</th><th>${t("colSvcRate")}</th><th>${t("colMonthly")}</th><th>${t("colRebate")}</th><th>${t("colProgress")}</th><th>${t("colStatus")}</th><th>${t("colAction")}</th></tr>
@@ -1201,7 +1201,7 @@ function renderPaymentAdd() {
   <div class="page-header"><div class="page-title">💳 ${t('paymentTitle')}</div></div>
   <div class="card">
     <div class="form-grid">
-      <div class="form-group span3"><label>${t('selectContract')}</label><select id="pContract" onchange="loadContractPeriods()">${opts||'<option>t('noContract')</option>'}</select></div>
+      <div class="form-group span3"><label>${t('selectContract')}</label><select id="pContract" onchange="loadContractPeriods()">${opts||'<option>—</option>'}</select></div>
       <div class="form-group"><label>${t("paymentDate")}</label><input type="date" id="pDate" value="${today()}"></div>
       <div class="form-group"><label>${t("payPeriod")}</label><select id="pPeriod" onchange="autoFillPayment()"></select></div>
       <div class="form-group"><label>${t("paidPrincipal")}</label><input type="number" id="pPrincipal" placeholder="0.00" step="0.01"></div>
@@ -1325,7 +1325,7 @@ function renderStatsProfit() {
   const catEntries = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
 
   return `
-  <div class="page-header"><div class="page-title">💰 利润统计</div><div class="page-sub">含利息 + 手续费 + 提前还款 − 店家返点 − 日常开支</div></div>
+  <div class="page-header"><div class="page-title">💰 ${t("profitTitle")}</div><div class="page-sub">含利息 + 手续费 + 提前还款 − 店家返点 − 日常开支</div></div>
 
   <div class="stats-grid">
     <div class="stat-card green"><span class="stat-icon">🏆</span><div class="stat-label">${t("netProfit")}</div>
@@ -1343,10 +1343,10 @@ function renderStatsProfit() {
 
   <!-- 利润构成 -->
   <div class="card" style="margin-bottom:14px">
-    <div class="card-title" style="margin-bottom:14px">💡 利润构成分析</div>
+    <div class="card-title" style="margin-bottom:14px">${t("profitBreakdown")}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600">收入来源</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600">${t("incomeSource")}</div>
         ${[
           ['销售毛利（售价-成本）', tGross,      'var(--sky)'],
           ['利息收入',             tInterest,    'var(--green)'],
@@ -1367,21 +1367,21 @@ function renderStatsProfit() {
         </div>
       </div>
       <div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600">开支扣除</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600">${t("expenseDeduct")}</div>
         ${catEntries.length ? catEntries.map(([cat,amt])=>`
           <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #eef2f7">
             <span style="font-size:13px">${esc(cat)}</span>
             <span style="font-weight:600;color:var(--red)">− ${fmt(amt)}</span>
           </div>`).join('') : '<div style="color:var(--muted);font-size:13px;padding:8px 0">暂无开支记录</div>'}
         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:2px solid var(--border);font-weight:700">
-          <span>开支合计</span><span style="color:var(--red)">− ${fmt(tExpenses)}</span>
+          <span>${t("expenseTotal")}</span><span style="color:var(--red)">− ${fmt(tExpenses)}</span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:${tNet>=0?'#e8f5e9':'#ffebee'};border-radius:8px;margin-top:6px;font-weight:700;font-size:15px">
-          <span>最终净利润</span>
+          <span>${t("netProfit")}</span>
           <span style="color:${tNet>=0?'var(--green)':'var(--red)'}">${fmt(tNet)}</span>
         </div>
         <div style="margin-top:8px">
-          <button class="btn btn-outline btn-sm" onclick="nav('expenses')" style="font-size:11px">🧾 管理开支记录</button>
+          <button class="btn btn-outline btn-sm" onclick="nav('expenses')" style="font-size:11px">${t("managExpenses")}</button>
         </div>
       </div>
     </div>
@@ -1390,11 +1390,11 @@ function renderStatsProfit() {
   ${earlyPays.length > 0 ? `
   <div class="card" style="border-left:4px solid var(--amber)">
     <div class="card-header">
-      <div class="card-title">⚡ 提前还款利润汇总</div>
+      <div class="card-title">${t("earlyRepayTitle")}</div>
       <span class="badge ${tEarlyDiff >= 0 ? 'badge-green' : 'badge-red'}">利润变化：${tEarlyDiff >= 0 ? '+' : ''}${fmt(tEarlyDiff)}</span>
     </div>
     <div class="table-wrap"><table>
-      <tr><th>日期</th><th>客户</th><th>合同#</th><th>协商还款额</th><th>原应收利息</th><th>实际利润</th><th>差异</th></tr>
+      <tr><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>#</th><th>${t("negotiatedAmount").replace(" *","")}</th><th>${t("origRemainInterest")}</th><th>${t("netProfit")}</th><th>${t("profitChange")}</th></tr>
       ${earlyPays.map(r=>{const diff=+r.actualProfit-+r.origRemainInterest;return`<tr>
         <td>${r.date}</td><td class="fw700">${esc(r.customer)}</td><td class="text-blue">#${r.contractId}</td>
         <td class="text-amber fw700">${fmt(r.negotiatedAmount)}</td><td>${fmt(r.origRemainInterest)}</td>
@@ -1429,7 +1429,7 @@ function renderStatsProfit() {
           <td>${esc(s.modelName||'-')}</td>
           <td>${fmt(s.salePrice)}</td><td>${fmt(cost)}</td>
           <td class="text-blue">${fmt(gross)}</td>
-          <td class="text-green">${s.status==='提前结清'?'<span class="badge badge-amber" style="font-size:10px">⚡提前</span> ':''} ${fmt(interestVal)}</td>
+          <td class="text-green">${s.status==='提前结清'?'<span class="badge badge-amber" style="font-size:10px">⚡'+t('earlySettled')+'</span> ':''} ${fmt(interestVal)}</td>
           <td class="text-amber">${fmt(svcVal)}</td>
           <td class="text-red">${rebateVal>0?'-'+fmt(rebateVal):'-'}</td>
           <td><b style="color:${net>=0?'var(--navy)':'var(--red)'}">${fmt(net)}</b></td>
@@ -1607,7 +1607,7 @@ window.submitPurchase = function() {
   if(pi>=0){phones[pi].stock=(phones[pi].stock||0)+qty; DB_set('phones',phones);}
   const purs=DB_get('purchases')||[];
   purs.push({id:newId(),date,supplier:sup?.name||'',phone:ph?`${ph.brand} ${ph.model}`:'',qty,price});
-  DB_set('purchases',purs); showMsg('purMsg',`✅ 入库 ${qty} 台，库存已更新`,'green');
+  DB_set('purchases',purs); showMsg('purMsg',`✅ +${qty} ${t('phoneStock')}`,'green');
   document.getElementById('purPrice').value=''; document.getElementById('purQty').value='1';
 };
 
@@ -1621,21 +1621,21 @@ function renderEarlyPayment() {
     const paidP = s.schedule.filter(p=>p.paid).reduce((a,p)=>a+(+p.paidPrincipal||0),0);
     const remainP = +s.installmentAmount - paidP;
     const remainI = s.schedule.filter(p=>!p.paid).reduce((a,p)=>a+(+p.interestDue),0);
-    return `<option value="${s.id}" data-remain-p="${remainP.toFixed(2)}" data-remain-i="${remainI.toFixed(2)}" data-customer="${esc(s.customer)}">#${s.id} — ${esc(s.customer)} (剩余本金${fmt(remainP)} 剩余利息${fmt(remainI)})</option>`;
+    return `<option value="${s.id}" data-remain-p="${remainP.toFixed(2)}" data-remain-i="${remainI.toFixed(2)}" data-customer="${esc(s.customer)}">#${s.id} — ${esc(s.customer)} (${t("remainPrincipal")} ${fmt(remainP)} / ${t("origRemainInterest")} ${fmt(remainI)})</option>`;
   }).join('');
   return `
   <div class="page-header">
     <div class="page-title">⚡ ${t('earlyTitle')}</div>
-    <div class="page-sub">客户协商提前结清合同，手动输入协商金额与实际利润</div>
+    <div class="page-sub">${t("earlySub")}</div>
   </div>
 
   <div class="card">
-    <div class="card-title" style="margin-bottom:16px">📋 录入提前还款</div>
-    ${sales.length === 0 ? '<div class="alert alert-blue">当前没有进行中的合同</div>' : ''}
+    <div class="card-title" style="margin-bottom:16px">📋 ${t("earlyTitle")}</div>
+    ${sales.length === 0 ? '<div class="alert alert-blue">' + t("noContract") + '</div>' : ''}
     <div class="form-grid">
       <div class="form-group span3">
         <label>${t('selectContract')}</label>
-        <select id="epContract" onchange="calcEarlyProfit()">${opts||'<option>t('noContract')</option>'}</select>
+        <select id="epContract" onchange="calcEarlyProfit()">${opts||'<option>—</option>'}</select>
       </div>
       <div class="form-group"><label>${t("paymentDate")}</label><input type="date" id="epDate" value="${today()}"></div>
       <div class="form-group"><label>${t("remainPrincipal")}</label><input id="epRemainP" readonly></div>
@@ -1643,11 +1643,11 @@ function renderEarlyPayment() {
     </div>
 
     <div style="background:#fff8e1;border-radius:10px;padding:16px;margin-top:14px;border-left:4px solid var(--amber)">
-      <div style="font-size:12px;color:var(--amber);font-weight:700;margin-bottom:12px">⚡ 协商还款设置（核心）</div>
+      <div style="font-size:12px;color:var(--amber);font-weight:700;margin-bottom:12px">⚡ ${t("negotiationSection")}</div>
       <div class="form-grid">
         <div class="form-group">
           <label>${t("negotiatedAmount")}</label>
-          <input type="number" id="epNegotiated" placeholder="客户实际支付金额" step="0.01" oninput="calcEarlyProfit()">
+          <input type="number" id="epNegotiated" placeholder="0.00" step="0.01" oninput="calcEarlyProfit()">
         </div>
         <div class="form-group">
           <label>${t("autoProfit")}</label>
@@ -1864,7 +1864,7 @@ function renderFinanceReport() {
 
   return `
   <div class="page-header">
-    <div class="page-title">📈 月度财务报表</div>
+    <div class="page-title">📈 ${t("financeTitle")}</div>
     <div class="page-sub">月总放款 · 月总回款 · 月利润 · 月逾期率 · 月回款率 · 单量统计</div>
   </div>
 
@@ -1875,25 +1875,25 @@ function renderFinanceReport() {
       <span class="stat-icon">💸</span>
       <div class="stat-label">${t("monthLoan")}</div>
       <div class="stat-value">${fmt(cur.totalLoan||0)}</div>
-      <div class="stat-sub">${cur.orderCount||0} 笔新合同</div>
+      <div class="stat-sub">${cur.orderCount||0} ${t("newContracts")}</div>
     </div>
     <div class="stat-card green">
       <span class="stat-icon">💰</span>
       <div class="stat-label">${t("monthRepay")}</div>
       <div class="stat-value">${fmt(cur.totalRepay||0)}</div>
-      <div class="stat-sub">回款率 ${cur.repayRate||'—'}%</div>
+      <div class="stat-sub">${t("repayRate")} ${cur.repayRate||'—'}%</div>
     </div>
     <div class="stat-card amber">
       <span class="stat-icon">📈</span>
       <div class="stat-label">${t("monthProfit")}</div>
       <div class="stat-value">${fmt(cur.mProfit||0)}</div>
-      <div class="stat-sub">扣除开支 ${fmt(cur.mExpenses||0)}</div>
+      <div class="stat-sub">${t("deductedExp")} ${fmt(cur.mExpenses||0)}</div>
     </div>
     <div class="stat-card red">
       <span class="stat-icon">🧾</span>
       <div class="stat-label">${t("monthExpense")}</div>
       <div class="stat-value">${fmt(cur.mExpenses||0)}</div>
-      <div class="stat-sub">税前利润 ${fmt(cur.mProfitBeforeExp||0)}</div>
+      <div class="stat-sub">${t("preTaxProfitMonth")} ${fmt(cur.mProfitBeforeExp||0)}</div>
     </div>
   </div>
 
@@ -2191,7 +2191,7 @@ window.saveCompany = function() {
   const name=document.getElementById('coName')?.value||'';
   DB_set('company',{name,phone:document.getElementById('coPhone')?.value||'',address:document.getElementById('coAddr')?.value||'',note:document.getElementById('coNote')?.value||''});
   document.getElementById('companyName').textContent=name||'MORODOK';
-  showMsg('coMsg','✅ '+t('saved'), 'green');
+  showMsg('coMsg','✅ '+t('saved'), 'green', 'green');
 };
 
 // ══════════════════════════════════════════════════════
