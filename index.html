@@ -282,16 +282,16 @@ const I18N = {
     monthRepay: '本月回款额', repayRate: '回款率',
     monthProfit: '本月净利润', deductedExp: '扣除开支',
     monthExpense: '本月日常开支', preTaxProfitMonth: '税前利润',
-    cumulativeSummary: '${t('cumulativeSummary')}',
+    cumulativeSummary: '📊 全期累计汇总',
     totalLoan: '总放款额', totalRepay: '总回款额', totalExpense: '总开支',
     totalNetProfit: '总净利润', totalOrders: '总单量', avgOverdueRate: '综合逾期率',
-    monthlyDetail: '${t('monthlyDetail')}',
-    overdueRateNote: '${t('overdueRateNote')}',
+    monthlyDetail: '月度明细数据',
+    overdueRateNote: '逾期率 = 逾期期次 / 应还期次 · 回款率 = 已还期次 / 应还期次',
     colNewOrders: '新增单量', colMonthLoan: '月总放款额', colMonthRepay: '月总回款额',
     colMonthExp: '日常开支', colMonthNet: '月净利润',
     colDuePeriods: '应还期次', colPaidPeriods: '已还期次', colOverduePeriods: '逾期期次',
     colRepayRate: '月回款率', colOverdueRate: '月逾期率', totalRow: '合计',
-    orderAnalysis: '${t('orderAnalysis')}',
+    orderAnalysis: '📦 单量 & 期别分析',
     // Expenses
     expensesTitle: '日常开支管理', expensesSub: '记录日常运营支出，自动纳入月度财务与利润统计',
     addExpense: '➕ 新增开支记录', expenseDate: '日期 *', expenseCategory: '开支类别 *',
@@ -339,8 +339,9 @@ const I18N = {
     saved: '已保存', added: '已添加',
     pending: '待还', viewNow: '立即查看',
     basicInfo: '基本信息', noOverdueGood: '暂无逾期 👍',
-    contractDetails2: '${t("contractDetails")}',
-    
+    contractDetails2: '各合同盈利明细',
+  },
+
   en: {
     // System
     systemTitle: 'Phone Installment Management System', systemSub: 'Management System',
@@ -491,7 +492,7 @@ const I18N = {
     pending: 'Pending', viewNow: 'View Now',
     basicInfo: 'Basic Information', noOverdueGood: 'No overdue 👍',
     contractDetails2: 'Contract Profit Details',
-    
+  },
 
   // ── ភាសាខ្មែរ (Khmer) ──
   km: {
@@ -901,7 +902,7 @@ function renderHome() {
     <div class="stat-card amber"><span class="stat-icon">⏳</span><div class="stat-label">${t('pendingPrincipal')}</div><div class="stat-value">${fmt(pending)}</div></div>
     <div class="stat-card red"><span class="stat-icon">🚨</span><div class="stat-label">${t('overdueOrders')}</div><div class="stat-value">${overdue.length}</div></div>
   </div>
-  ${overdue.length > 0 ? `<div class="alert alert-red">⚠️ ${overdue.length} ${_lang==='zh'?'' +:'overdue orders, total'} ${fmt(overdue.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}<button class="btn btn-danger btn-sm" style="margin-left:12px" onclick="nav('reminder-overdue')">${_lang==='zh'?'立即查看':t("viewNow")}</button></div>` : ''}
+  ${overdue.length > 0 ? `<div class="alert alert-red">⚠️ ${overdue.length} ${_lang==='km'?'—':_lang==='zh'?'笔逾期，合计':'overdue,'} ${fmt(overdue.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}<button class="btn btn-danger btn-sm" style="margin-left:12px" onclick="nav('reminder-overdue')">${_lang==='zh'?'立即查看':t("viewNow")}</button></div>` : ''}
   <div class="home-grid">
     ${[['➕',t('saleAdd'),t('newContractSub').slice(0,10),'sale-add'],['💳',t('paymentAdd'),_lang==='km'?'ចុះបង្ហាញការទូទាត់':_lang==='zh'?'录入收款记录':'Record payment','payment-add'],
        ['📊',t('statsCollection'),_lang==='km'?'សង្ខេបប្រចាំខែ':_lang==='zh'?'月度汇总':'Monthly summary','stats-collection'],['💰',t('statsProfit'),_lang==='km'?'វិភាគប្រាក់ចំណេញ':_lang==='zh'?'盈利分析':'Profit analysis','stats-profit'],
