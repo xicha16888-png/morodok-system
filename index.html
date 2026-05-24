@@ -925,18 +925,31 @@ async function loadDB() {
     const res = await fetch('/api/data');
     if (!res.ok) {
       console.warn('⚠️ 服务器返回错误:', res.status);
-      return false; // 加载失败，不覆盖现有数据
-    }
-    const data = await res.json();
-    // 验证数据有效性：必须包含 sales 字段且是数组
-    if (!data || typeof data !== 'object' || !Array.isArray(data.sales)) {
-      console.warn('⚠️ 服务器返回数据格式无效，跳过覆盖');
       return false;
     }
+    const data = await res.json();
+    if (!data || typeof data !== 'object') {
+      console.warn('⚠️ 数据格式无效');
+      return false;
+    }
+    // 自动修正缺失的数组字段
+    if (!Array.isArray(data.sales))        data.sales = [];
+    if (!Array.isArray(data.payments))     data.payments = [];
+    if (!Array.isArray(data.phones))       data.phones = [];
+    if (!Array.isArray(data.suppliers))    data.suppliers = [];
+    if (!Array.isArray(data.purchases))    data.purchases = [];
+    if (!Array.isArray(data.earlyPayments))data.earlyPayments = [];
+    if (!Array.isArray(data.expenses))     data.expenses = [];
+    if (!data.nextId)                      data.nextId = 1001;
+    if (!data.company)                     data.company = {name:'MORODOK',address:'',phone:'',note:''};
+
     _db = data;
-    _dbReady = true; // 🔓 解锁保存功能
-    const co = _db.company;
-    if (co?.name) document.getElementById('companyName').textContent = co.name;
+    _dbReady = true;
+    // 安全更新公司名（不抛异常）
+    try {
+      const el = document.getElementById('companyName');
+      if (el && data.company?.name) el.textContent = data.company.name;
+    } catch(e2) {}
     return true;
   } catch(e) {
     console.warn('⚠️ loadDB 失败:', e.message);
@@ -2474,22 +2487,43 @@ window.saveCompany = function() {
   buildMobileNav('home');
   showLoading(t('loading'));
 
-  // Auto-retry — handles Render free-tier sleep (wake-up takes 30-50s)
+  // Auto-retry — Render free-tier can take up to 90s to wake up
   let retryCount = 0;
-  const MAX_RETRY = 8;
+  const MAX_RETRY = 15; // 15 × 10s = 150 seconds total wait
+  const RETRY_SEC = 10;
 
   function startDateClock() {
     const upd = () => { const el = document.getElementById('dateDisplay'); if (el) el.textContent = new Date().toLocaleDateString(_lang==='zh'?'zh-CN':'en-US',{month:'long',day:'numeric',weekday:'short'}); };
     upd(); setInterval(upd, 30000);
   }
 
+  // Show a nice waking-up screen instead of just spinner
+  function showWakingUp() {
+    const lo = document.getElementById('loadingOverlay');
+    if (!lo) return;
+    lo.innerHTML = `
+      <div style="background:rgba(15,45,92,.95);border-radius:20px;padding:36px 32px;max-width:320px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+        <div style="font-size:48px;margin-bottom:16px">🚀</div>
+        <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:8px">
+          ${_lang==='km'?'ម៉ាស៊ីនកំពុងដើរ...':_lang==='en'?'Server is starting up...':'服务器启动中...'}
+        </div>
+        <div style="color:rgba(255,255,255,.7);font-size:13px;margin-bottom:20px">
+          ${_lang==='km'?'សូមរង់ចាំ ១-២ នាទី':_lang==='en'?'Please wait 1-2 minutes':'请稍候约1分钟'}
+        </div>
+        <div style="background:rgba(255,255,255,.15);border-radius:100px;height:8px;overflow:hidden;margin-bottom:16px">
+          <div id="wakeProgress" style="background:linear-gradient(90deg,#64b5f6,#1e88e5);height:8px;border-radius:100px;width:0%;transition:width 0.5s;"></div>
+        </div>
+        <div id="wakeMsg" style="color:rgba(255,255,255,.6);font-size:12px">
+          ${_lang==='km'?'កំពុងព្យាយាម...':_lang==='en'?'Connecting...':'正在连接...'}
+        </div>
+        <button onclick="location.reload()" style="margin-top:20px;padding:10px 24px;border-radius:8px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);font-size:13px;cursor:pointer;font-family:inherit">
+          ${_lang==='km'?'ផ្ទុកឡើងវិញ':_lang==='en'?'Refresh Now':'立即刷新'}
+        </button>
+      </div>`;
+    lo.classList.add('show');
+  }
+
   async function tryConnect() {
-    const lo = document.getElementById('loadingText');
-    if (retryCount > 0 && lo) {
-      lo.textContent = _lang==='km' ? `កំពុងព្យាយាម ${retryCount}/${MAX_RETRY}...` :
-                       _lang==='en' ? `Connecting... attempt ${retryCount}/${MAX_RETRY}` :
-                       `正在连接... 第${retryCount}次`;
-    }
     const ok = await loadDB();
     if (ok) {
       hideLoading();
@@ -2497,35 +2531,39 @@ window.saveCompany = function() {
       updateBadges();
       setInterval(updateBadges, 60000);
       startDateClock();
-    } else {
-      retryCount++;
-      if (retryCount <= MAX_RETRY) {
-        let sec = 7;
-        const cd = setInterval(() => {
-          if (lo) lo.textContent = _lang==='km' ? `ម៉ាស៊ីនកំពុងដើរ... ${sec}s` :
-                                   _lang==='en' ? `Server waking up... retry in ${sec}s` :
-                                   `服务器启动中，${sec}秒后重试...`;
-          sec--;
-          if (sec < 0) { clearInterval(cd); tryConnect(); }
-        }, 1000);
-      } else {
-        hideLoading();
-        document.getElementById('mainContent').innerHTML = `
-          <div class="empty-state" style="margin-top:60px;padding:24px">
-            <div class="ei">❌</div>
-            <p style="font-size:16px;font-weight:700;color:var(--red)">
-              ${_lang==='km'?'មិនអាចភ្ជាប់ម៉ាស៊ីន':_lang==='en'?'Cannot connect to server':'无法连接服务器'}
+      return;
+    }
+    retryCount++;
+    if (retryCount === 1) showWakingUp();
+    if (retryCount > MAX_RETRY) {
+      // Give up, show final error with reload button
+      const lo = document.getElementById('loadingOverlay');
+      if (lo) {
+        lo.innerHTML = `
+          <div style="background:#fff;border-radius:16px;padding:32px;max-width:300px;width:90%;text-align:center">
+            <div style="font-size:40px;margin-bottom:12px">❌</div>
+            <p style="font-size:15px;font-weight:700;color:#c62828;margin-bottom:8px">
+              ${_lang==='km'?'មិនអាចភ្ជាប់':_lang==='en'?'Connection failed':'连接失败'}
             </p>
-            <p style="margin-top:8px;color:var(--muted);font-size:13px">
-              ${_lang==='km'?'សូមចុចប៊ូតុងខាងក្រោម':_lang==='en'?'Please tap the button below':'请点击下方按钮刷新'}
+            <p style="font-size:13px;color:#78909c;margin-bottom:20px">
+              ${_lang==='km'?'សូមរង់ចាំ 1 នាទីហើយព្យាយាមម្ដងទៀត':_lang==='en'?'Wait 1 min then try again':'请等待1分钟后重试'}
             </p>
-            <button onclick="location.reload()"
-              style="margin-top:24px;padding:14px 40px;border-radius:10px;background:var(--sky);color:#fff;border:none;font-size:16px;font-weight:600;cursor:pointer;font-family:inherit;width:100%;max-width:280px">
-              ${_lang==='km'?'ផ្ទុកឡើងវិញ':_lang==='en'?'Refresh Page':'刷新重试'}
+            <button onclick="location.reload()" style="width:100%;padding:14px;border-radius:10px;background:#1e88e5;color:#fff;border:none;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit">
+              ${_lang==='km'?'ព្យាយាមម្ដងទៀត':_lang==='en'?'Try Again':'重新连接'}
             </button>
           </div>`;
       }
+      return;
     }
+    // Update progress bar and message
+    const pct = Math.round((retryCount / MAX_RETRY) * 100);
+    const prog = document.getElementById('wakeProgress');
+    if (prog) prog.style.width = pct + '%';
+    const msg = document.getElementById('wakeMsg');
+    if (msg) msg.textContent = _lang==='km' ? `ព្យាយាម ${retryCount}/${MAX_RETRY} — ${RETRY_SEC*(MAX_RETRY-retryCount)}s...` :
+                               _lang==='en' ? `Attempt ${retryCount}/${MAX_RETRY} — ~${RETRY_SEC*(MAX_RETRY-retryCount)}s left` :
+                               `第${retryCount}/${MAX_RETRY}次 — 约${RETRY_SEC*(MAX_RETRY-retryCount)}秒`;
+    setTimeout(tryConnect, RETRY_SEC * 1000);
   }
 
   tryConnect();
