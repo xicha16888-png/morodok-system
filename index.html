@@ -151,6 +151,127 @@ tr:hover td{background:#f8faff}
 .loading-spinner{width:48px;height:48px;border:4px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .loading-text{color:#fff;font-size:15px}
+
+/* ═══════════════════════════════════════
+   📱 MOBILE RESPONSIVE STYLES
+   ═══════════════════════════════════════ */
+
+/* Mobile bottom nav */
+.mob-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--border);z-index:300;box-shadow:0 -2px 12px rgba(0,0,0,.1)}
+.mob-nav-inner{display:flex;justify-content:space-around;align-items:center;height:58px;padding:0 4px}
+.mob-nav-item{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 8px;border-radius:10px;cursor:pointer;flex:1;border:none;background:none;font-family:inherit;min-width:0;position:relative}
+.mob-nav-item .mni{font-size:22px;line-height:1}
+.mob-nav-item .mnl{font-size:9px;color:var(--muted);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.mob-nav-item.active .mnl{color:var(--sky)}
+.mob-nav-item.active .mni{transform:scale(1.15)}
+.mob-nav-badge{position:absolute;top:4px;right:12px;background:var(--red);color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:700}
+
+/* Mobile more menu */
+.mob-more-menu{display:none;position:fixed;bottom:58px;left:0;right:0;background:#fff;z-index:299;border-top:1px solid var(--border);box-shadow:0 -4px 20px rgba(0,0,0,.15);max-height:60vh;overflow-y:auto;border-radius:16px 16px 0 0;padding:8px 0 8px}
+.mob-more-menu.open{display:block}
+.mob-more-item{display:flex;align-items:center;gap:14px;padding:14px 20px;font-size:14px;cursor:pointer;border:none;background:none;width:100%;font-family:inherit;text-align:left}
+.mob-more-item:active{background:#f0f7ff}
+.mob-more-item .mmi{font-size:20px;width:28px;text-align:center}
+.mob-more-item .mmn{color:var(--text);font-weight:500}
+.mob-more-item .mms{color:var(--muted);font-size:12px}
+.mob-more-section{padding:6px 20px 2px;font-size:10px;color:var(--muted);letter-spacing:1.5px;font-weight:600;text-transform:uppercase}
+.mob-more-divider{height:1px;background:var(--border);margin:6px 0}
+.mob-overlay{display:none;position:fixed;inset:0;z-index:298}
+.mob-overlay.open{display:block}
+
+@media (max-width: 768px) {
+  /* Body */
+  html,body{overflow:auto;height:auto}
+
+  /* Header */
+  .header{padding:0 14px;height:48px}
+  .header-title{font-size:14px}
+  .chip#companyName{display:none}
+  #langToggle{font-size:10px;padding:3px 8px}
+  #syncStatus{font-size:10px}
+
+  /* Hide desktop sidebar */
+  .sidebar{display:none}
+
+  /* Layout */
+  .layout{flex-direction:column;height:auto;margin-top:48px;min-height:calc(100vh - 48px)}
+
+  /* Main content */
+  .main{padding:12px 12px 74px;overflow-y:visible}
+
+  /* Show mobile nav */
+  .mob-nav{display:block}
+
+  /* Page header */
+  .page-title{font-size:16px}
+  .page-sub{font-size:11px}
+
+  /* Stats grid: 2 columns on mobile */
+  .stats-grid{grid-template-columns:repeat(2,1fr);gap:8px}
+  .stat-card{padding:12px 14px}
+  .stat-value{font-size:20px}
+  .stat-icon{font-size:22px;right:10px;top:10px}
+
+  /* Home grid: 3 columns */
+  .home-grid{grid-template-columns:repeat(3,1fr);gap:10px}
+  .home-card{padding:16px 8px}
+  .home-card .icon{font-size:26px;margin-bottom:6px}
+  .home-card .label{font-size:11px}
+  .home-card .sublabel{display:none}
+
+  /* Forms: single column */
+  .form-grid{grid-template-columns:1fr}
+  .form-group.span2,.form-group.span3{grid-column:span 1}
+  .form-group input,.form-group select,.form-group textarea{padding:12px;font-size:15px}
+  .form-group label{font-size:11px}
+
+  /* Buttons */
+  .btn{padding:12px 18px;font-size:14px}
+  .btn-row{flex-direction:column}
+  .btn-row .btn{width:100%;justify-content:center}
+  .btn-sm{padding:7px 12px;font-size:12px}
+
+  /* Tables: horizontal scroll */
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table{font-size:12px;min-width:500px}
+  th,td{padding:8px 10px;white-space:nowrap}
+
+  /* Cards */
+  .card{padding:14px;border-radius:10px}
+  .card-header{flex-direction:column;align-items:flex-start;gap:8px}
+
+  /* Reminder items */
+  .reminder-item{flex-direction:column;align-items:flex-start;gap:10px}
+  .reminder-item > div:last-child{width:100%;display:flex;align-items:center;justify-content:space-between}
+
+  /* Search row */
+  .search-row{flex-direction:column}
+  .search-row input,.search-row select{width:100%}
+
+  /* Modal */
+  .modal{min-width:unset;width:95vw;padding:18px;border-radius:12px}
+
+  /* Alert */
+  .alert{font-size:12px;padding:10px 12px}
+
+  /* Hide some desktop-only columns in tables */
+  .hide-mobile{display:none!important}
+
+  /* Bottom nav spacing */
+  .home-bottom-row{flex-wrap:wrap;gap:8px}
+  .home-bottom-btn{font-size:12px;padding:8px 12px}
+
+  /* Form sections */
+  [style*="background:#e8f5e9"],[style*="background:#fff8e1"],
+  [style*="background:#fce4ec"],[style*="background:#f0f7ff"]{
+    padding:12px!important;
+  }
+}
+
+@media (max-width: 380px) {
+  .home-grid{grid-template-columns:repeat(2,1fr)}
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+}
 </style>
 </head>
 <body>
@@ -175,6 +296,13 @@ tr:hover td{background:#f8faff}
     <div class="modal-title"><span id="modalTitle"></span><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div id="modalBody"></div>
   </div>
+</div>
+
+<!-- 📱 Mobile Bottom Navigation -->
+<div class="mob-overlay" id="mobOverlay" onclick="closeMobMore()"></div>
+<div class="mob-more-menu" id="mobMoreMenu"></div>
+<div class="mob-nav">
+  <div class="mob-nav-inner" id="mobNavInner"></div>
 </div>
 
 <div class="loading-overlay" id="loadingOverlay">
@@ -339,7 +467,7 @@ const I18N = {
     saved: '已保存', added: '已添加',
     pending: '待还', viewNow: '立即查看',
     basicInfo: '基本信息', noOverdueGood: '暂无逾期 👍',
-    contractDetails2: '各合同盈利明细',
+    contractDetails2: '各合同盈利明细', more: '更多',
   },
 
   en: {
@@ -491,7 +619,7 @@ const I18N = {
     saved: 'Saved successfully', added: 'Added successfully',
     pending: 'Pending', viewNow: 'View Now',
     basicInfo: 'Basic Information', noOverdueGood: 'No overdue 👍',
-    contractDetails2: 'Contract Profit Details',
+    contractDetails2: 'Contract Profit Details', more: 'More',
   },
 
   // ── ភាសាខ្មែរ (Khmer) ──
@@ -644,7 +772,7 @@ const I18N = {
     saved: 'បានរក្សាទុកដោយជោគជ័យ', added: 'បានបន្ថែមដោយជោគជ័យ',
     pending: 'រង់ចាំ', viewNow: 'មើលឥឡូវ',
     basicInfo: 'ព័ត៌មានមូលដ្ឋាន', noOverdueGood: 'គ្មានការហួសកំណត់ 👍',
-    contractDetails2: 'ព័ត៌មានលម្អិតប្រាក់ចំណេញ',
+    contractDetails2: 'ព័ត៌មានលម្អិតប្រាក់ចំណេញ', more: 'ច្រើនទៀត',
   }
 };
 
@@ -718,7 +846,76 @@ function buildSidebar() {
     if (el.dataset.page === currentPage) el.classList.add('active');
   });
 }
-let _db = null;
+
+// ── 📱 Mobile bottom navigation ──
+const MOB_MAIN = [
+  {page:'sale-add',    icon:'➕', label:'saleAdd'},
+  {page:'payment-add', icon:'💳', label:'paymentAdd'},
+  {page:'sale-list',   icon:'🔍', label:'saleList'},
+  {page:'reminder-overdue', icon:'🚨', label:'reminderOverdue', badge:true},
+  {page:'__more',      icon:'☰',  label:'more'},
+];
+const MOB_MORE_ITEMS = [
+  {page:'home',             icon:'🏠', label:'home'},
+  {page:'early-payment',    icon:'⚡', label:'earlyPayment'},
+  {page:'payment-query',    icon:'📋', label:'paymentQuery'},
+  {page:'reminder-tomorrow',icon:'⏰', label:'reminderTomorrow'},
+  {divider:true},
+  {page:'stats-collection', icon:'📊', label:'statsCollection', lock:true},
+  {page:'stats-profit',     icon:'💰', label:'statsProfit',     lock:true},
+  {page:'finance-report',   icon:'📈', label:'financeReport',   lock:true},
+  {page:'expenses',         icon:'🧾', label:'expenses',        lock:true},
+  {divider:true},
+  {page:'phones',       icon:'📱', label:'phones'},
+  {page:'suppliers',    icon:'🏢', label:'suppliers'},
+  {page:'purchase-add', icon:'🛒', label:'purchaseAdd'},
+  {page:'inventory',    icon:'📦', label:'inventory'},
+  {page:'company',      icon:'⚙️', label:'company'},
+];
+
+const MORE_LABEL = {zh:'更多', en:'More', km:'ច្រើនទៀត'};
+
+function buildMobileNav(activePage) {
+  const inner = document.getElementById('mobNavInner');
+  if (!inner) return;
+  const isMore = !MOB_MAIN.find(m => m.page === activePage && m.page !== '__more');
+  inner.innerHTML = MOB_MAIN.map(item => {
+    const isActive = item.page === '__more' ? isMore : item.page === activePage;
+    const lbl = item.page === '__more' ? (MORE_LABEL[_lang]||MORE_LABEL.zh) : (t(item.label)||item.label);
+    return `<button class="mob-nav-item ${isActive?'active':''}" onclick="${item.page==='__more'?'toggleMobMore()':'closeMobMore();nav(\''+item.page+'\')'}">
+      <span class="mni">${item.icon}</span>
+      <span class="mnl">${lbl}</span>
+      ${item.badge?'<span class="mob-nav-badge" id="mobOverdueBadge" style="display:none">0</span>':''}
+    </button>`;
+  }).join('');
+}
+
+function buildMobileMore(activePage) {
+  const menu = document.getElementById('mobMoreMenu');
+  if (!menu) return;
+  menu.innerHTML = '<div style="width:40px;height:4px;background:#e0e0e0;border-radius:2px;margin:8px auto 12px"></div>' +
+    MOB_MORE_ITEMS.map(item => {
+      if (item.divider) return '<div class="mob-more-divider"></div>';
+      const isActive = item.page === activePage;
+      return `<button class="mob-more-item" onclick="closeMobMore();nav('${item.page}')" style="${isActive?'background:#f0f7ff;':''}">
+        <span class="mmi">${item.icon}</span>
+        <div class="mmn">${t(item.label)||item.label}${item.lock?' 🔐':''}</div>
+      </button>`;
+    }).join('');
+}
+
+window.toggleMobMore = function() {
+  const menu = document.getElementById('mobMoreMenu');
+  const overlay = document.getElementById('mobOverlay');
+  const page = document.querySelector('.mob-nav-item.active[onclick*="nav"]')?.getAttribute('onclick')?.match(/nav\('(.+?)'\)/)?.[1] || 'home';
+  buildMobileMore(page);
+  const isOpen = menu?.classList.contains('open');
+  if (isOpen) { closeMobMore(); } else { menu?.classList.add('open'); overlay?.classList.add('open'); }
+};
+window.closeMobMore = function() {
+  document.getElementById('mobMoreMenu')?.classList.remove('open');
+  document.getElementById('mobOverlay')?.classList.remove('open');
+};
 let _syncTimer = null;
 let _dirty = false;
 let _dbReady = false; // 🔒 数据安全锁：只有从Supabase成功加载后才允许保存
@@ -901,6 +1098,8 @@ const PAGES = {
 
 function nav(page) {
   buildSidebar();
+  buildMobileNav(page);
+  closeMobMore();
   // 受保护页面：先验证密码
   if (PROTECTED_PAGES.includes(page) && !_reportUnlocked) {
     requirePassword(page, () => nav(page));
@@ -926,8 +1125,12 @@ function initPage(page) {
 function updateBadges() {
   const td = today();
   const cnt = (DB_get('sales') || []).reduce((c, s) => c + s.schedule.filter(p => !p.paid && p.dueDate < td).length, 0);
+  // Desktop badge
   const b = document.getElementById('overdueBadge');
   if (b) { b.style.display = cnt > 0 ? '' : 'none'; b.textContent = cnt; }
+  // Mobile badge
+  const mb = document.getElementById('mobOverdueBadge');
+  if (mb) { mb.style.display = cnt > 0 ? '' : 'none'; mb.textContent = cnt; }
 }
 
 // Auto-refresh every 30s — 用户正在输入或在表单页面时跳过，不打断操作
@@ -2268,6 +2471,7 @@ window.saveCompany = function() {
   const ht = document.getElementById('headerTitle');
   if (ht) ht.textContent = t('systemTitle');
   buildSidebar();
+  buildMobileNav('home');
   showLoading(t('loading'));
   try {
     await loadDB();
