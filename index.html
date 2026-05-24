@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MORODOK · 手机销售分期管理系统</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&family=Noto+Sans+Khmer:wght@300;400;500;700&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
   --navy:#0f2d5c;--blue:#1565c0;--sky:#1e88e5;--light:#e3f2fd;
@@ -13,7 +13,7 @@
   --white:#fff;--border:#cfd8dc;--text:#1a2a3a;--muted:#78909c;
 }
 html,body{height:100%;overflow:hidden}
-body{font-family:'Noto Sans SC',sans-serif;background:var(--bg);color:var(--text)}
+body{font-family:'Noto Sans SC','Noto Sans Khmer',sans-serif;background:var(--bg);color:var(--text)}
 
 .header{background:linear-gradient(135deg,#0a1f42,var(--navy) 40%,var(--blue) 80%,var(--sky));
   color:#fff;padding:0 20px;height:54px;display:flex;align-items:center;
@@ -485,23 +485,173 @@ const I18N = {
     msgFillContract: 'Please select a contract', msgPeriodPaid: 'This period already recorded',
     msgSelectContract: 'Please select a contract',
     saved: 'Saved successfully', added: 'Added successfully',
+  },
+
+  // ── ភាសាខ្មែរ (Khmer) ──
+  km: {
+    // System
+    systemTitle: 'ប្រព័ន្ធគ្រប់គ្រងការបង់រំលោះទូរសព្ទ', systemSub: 'ប្រព័ន្ធគ្រប់គ្រង',
+    synced: 'បានធ្វើសមកាលកម្ម', syncing: 'កំពុងធ្វើសមកាលកម្ម...', syncError: 'ការធ្វើសមកាលកម្មបានបរាជ័យ!',
+    loading: 'កំពុងភ្ជាប់ម៉ាស៊ីនបម្រើ...',
+    // Sidebar sections
+    mainMenu: 'ម៉ឺនុយចម្បង', salesMgmt: 'ការគ្រប់គ្រងការលក់', reports: 'របាយការណ៍',
+    reminders: 'ការរំលឹក / សំណួរ', settings: 'ការកំណត់',
+    // Nav items
+    home: 'ទំព័រដើម', saleAdd: 'ចុះឈ្មោះការលក់', saleList: 'ស្វែងរកការលក់',
+    paymentAdd: 'ចុះឈ្មោះការបង់ប្រាក់', earlyPayment: 'ការបង់ប្រាក់មុនកំណត់',
+    statsCollection: 'ស្ថិតិការប្រមូល', statsProfit: 'ស្ថិតិប្រាក់ចំណេញ',
+    financeReport: 'របាយការណ៍ហិរញ្ញវត្ថុប្រចាំខែ', expenses: 'ការចំណាយប្រចាំថ្ងៃ',
+    reminderTomorrow: 'ការរំលឹកការបង់ប្រាក់ស្អែក', reminderOverdue: 'ការរំលឹកការបង់ហួសកំណត់',
+    paymentQuery: 'ការសំណួរការបង់ប្រាក់', phones: 'គំរូទូរសព្ទ', suppliers: 'ព័ត៌មានអ្នកផ្គត់ផ្គង់',
+    purchaseAdd: 'ចុះឈ្មោះការទិញ', inventory: 'មើលស្តុក', company: 'ព័ត៌មានក្រុមហ៊ុន',
+    // Common
+    save: 'រក្សាទុក', cancel: 'បោះបង់', delete: 'លុប', edit: 'កែសម្រួល',
+    add: 'បន្ថែម', confirm: 'បញ្ជាក់', search: 'ស្វែងរក', reset: 'កំណត់ឡើងវិញ',
+    noData: 'គ្មានទិន្នន័យ', noRecord: 'គ្មានកំណត់ត្រា', noContract: 'គ្មានកិច្ចសន្យា',
+    all: 'ទាំងអស់', allStatus: 'ស្ថានភាពទាំងអស់',
+    active: 'កំពុងដំណើរការ', settled: 'បានទូទាត់', earlySettled: 'ទូទាត់មុនកំណត់',
+    // Home
+    homeWelcome: 'ទំព័រដើម', homeSub: 'ទិន្នន័យពេលវេលាជាក់ស្តែង',
+    totalContracts: 'ចំនួនកិច្ចសន្យាសរុប', collected: 'ការប្រមូលប្រាក់សរុប',
+    pendingPrincipal: 'ប្រាក់ដើមដែលត្រូវប្រមូល', overdueOrders: 'ការបង់ប្រាក់ហួសកំណត់',
+    inProgress: 'កំពុងដំណើរការ', earlySettledCount: 'ទូទាត់មុន',
+    quickEntry: 'ចូលរហ័ស',
+    // Sale add
+    newContract: 'ចុះឈ្មោះការលក់', newContractSub: 'បង្កើតកិច្ចសន្យារំលោះជាមួយតារាងការបង់ប្រាក់ស្វ័យប្រវត្តិ',
+    contractDate: 'កាលបរិច្ឆេទកិច្ចសន្យា', customerName: 'ឈ្មោះអតិថិជន *', customerPhone: 'លេខទូរស័ព្ទអតិថិជន',
+    phoneModel: 'គំរូទូរសព្ទ *', salePrice: 'តម្លៃលក់ ($) *', deposit: 'ប្រាក់កក់ ($)',
+    installPeriods: 'ចំនួនខែបង់រំលោះ', firstDueDate: 'ថ្ងៃបង់ប្រាក់ទី១',
+    interestSection: 'ការកំណត់ការប្រាក់', interestMonthRate: 'អត្រាការប្រាក់ប្រចាំខែ (%)',
+    totalInterest: 'ការប្រាក់សរុប ($)', monthlyInterest: 'ការប្រាក់ប្រចាំខែ ($)',
+    serviceFeeSection: 'ការកំណត់ថ្លៃសេវា', svcFeeMonthRate: 'អត្រាថ្លៃសេវាប្រចាំខែ (%)',
+    svcFeePeriods: 'ចំនួនខែថ្លៃសេវា', totalServiceFee: 'ថ្លៃសេវាសរុប ($)', monthlyServiceFee: 'ថ្លៃសេវាប្រចាំខែ ($)',
+    lateSection: 'ការពិន័យ & កាំចំណែក', dailyLateFee: 'ការពិន័យប្រចាំថ្ងៃ ($)', storeRebate: 'កាំចំណែករបស់ហាង ($)',
+    summarySection: 'សរុបការគណនា', installPrincipal: 'ប្រាក់ដើមបង់រំលោះ ($)',
+    monthlyTotal: 'ការបង់ប្រាក់ប្រចាំខែសរុប ($)', netProfitEst: 'ប្រាក់ចំណេញសុទ្ធប៉ាន់ស្មាន ($)',
+    remarks: 'កំណត់ចំណាំ', remarkPlaceholder: 'កំណត់ចំណាំ (ស្រេចចិត្ត)',
+    saveContract: '✅ រក្សាទុककិច្ចសន្យា', viewList: '📋 មើលបញ្ជីកិច្ចសន្យា',
+    // Sale list
+    saleListTitle: 'ស្វែងរកការលក់', searchPlaceholder: 'ស្វែងរកឈ្មោះអតិថិជន / លេខកិច្ចសន្យា / គំរូ...',
+    newContractBtn: '➕ កិច្ចសន្យាថ្មី',
+    colNo: '#', colDate: 'កាលបរិច្ឆេទ', colCustomer: 'អតិថិជន', colModel: 'គំរូ',
+    colSalePrice: 'តម្លៃលក់', colDeposit: 'ប្រាក់កក់', colPrincipal: 'ប្រាក់ដើម',
+    colPeriods: 'ចំនួនខែ', colIntRate: 'អត្រាការប្រាក់', colSvcRate: 'អត្រាថ្លៃសេវា',
+    colMonthly: 'ការបង់ប្រចាំខែ', colRebate: 'កាំចំណែក', colProgress: 'វឌ្ឍនភាព',
+    colStatus: 'ស្ថានភាព', colAction: 'សកម្មភាព',
+    repaySchedule: 'ផែនការបង់ប្រាក់', deleteBtn: 'លុប',
+    // Payment add
+    paymentTitle: 'ចុះឈ្មោះការបង់ប្រាក់', selectContract: 'ជ្រើសរើសកិច្ចសន្យា *',
+    paymentDate: 'កាលបរិច្ឆេទបង់ប្រាក់', payPeriod: 'ខែ',
+    paidPrincipal: 'ប្រាក់ដើមដែលទទួលបាន ($)', paidInterest: 'ការប្រាក់ដែលទទួលបាន ($)', penalty: 'ប្រាក់ពិន័យ ($)',
+    confirmPayment: '✅ បញ្ជាក់ការទូទាត់', refresh: '🔄 ធ្វើឱ្យស្រស់',
+    recentPayments: 'កំណត់ត្រាការបង់ប្រាក់ចុងក្រោយ',
+    colPrincipalPaid: 'ប្រាក់ដើម', colInterestPaid: 'ការប្រាក់', colTotal: 'សរុប',
+    // Early payment
+    earlyTitle: 'ការបង់ប្រាក់មុនកំណត់', earlySub: 'អតិថិជនចរចាបិទកិច្ចសន្យាមុន',
+    earlyContractLabel: 'ជ្រើសរើសកិច្ចសន្យា *', earlyDate: 'កាលបរិច្ឆេទបង់ប្រាក់',
+    remainPrincipal: 'ប្រាក់ដើមដែលនៅសល់ ($)', origRemainInterest: 'ការប្រាក់ដើមដែលនៅសល់ ($)',
+    negotiationSection: 'ការកំណត់ការចរចា (ចម្បង)', negotiatedAmount: 'ចំនួនទឹកប្រាក់ចរចា ($) *',
+    autoProfit: 'ប្រាក់ចំណេញគណនាស្វ័យប្រវត្តិ ($)', manualProfit: '✏️ កែប្រាក់ចំណេញដោយដៃ ($)',
+    confirmEarly: '✅ បញ្ជាក់ការបិទមុន', earlyRecords: 'កំណត់ត្រាការបង់ប្រាក់មុន',
+    // Stats collection
+    collectionTitle: 'ស្ថិតិការប្រមូល', totalCollected: 'ចំនួនប្រមូលសរុប',
+    principalCollected: 'ប្រាក់ដើមដែលប្រមូលបាន', interestCollected: 'ការប្រាក់ដែលប្រមូលបាន',
+    pendingPrincipalStat: 'ប្រាក់ដើមដែលនៅតម្រូវ', monthlyCollection: 'ការប្រមូលប្រចាំខែ',
+    colMonth: 'ខែ', colCount: 'ចំនួន',
+    // Stats profit
+    profitTitle: 'ស្ថិតិប្រាក់ចំណេញ', profitSub: 'ការប្រាក់ + ថ្លៃសេវា + ប្រាក់ពិន័យ + ការបិទមុន − កាំចំណែក − ការចំណាយ',
+    netProfit: 'ប្រាក់ចំណេញសុទ្ធ', deductedNote: 'បន្ទាប់ពីកាត់កាំចំណែក+ការចំណាយ',
+    interestAndFee: 'ការប្រាក់ + ថ្លៃសេវា', penaltyIncome: 'ចំណូលប្រាក់ពិន័យ (ទទួលបានហើយ)',
+    actualLateFees: 'ប្រាក់ពិន័យដែលទទួលបានជាក់ស្តែង', storeRebateCost: 'កាំចំណែករបស់ហាង (តម្លៃ)',
+    profitBreakdown: '💡 ការវិភាគប្រាក់ចំណេញ', incomeSource: 'ប្រភពចំណូល',
+    grossProfit: 'ប្រាក់ចំណេញដុល (តម្លៃ−ថ្លៃដើម)', interestIncome: 'ចំណូលការប្រាក់',
+    serviceFeeIncome: 'ចំណូលថ្លៃសេវា', penaltyIncome2: 'ចំណូលប្រាក់ពិន័យ',
+    earlyRepayProfit: 'ប្រាក់ចំណេញការបង់ប្រាក់មុន', storeRebateDeduct: 'កាំចំណែករបស់ហាង (កាត់)',
+    preTaxProfit: 'ប្រាក់ចំណេញមុនពន្ធ', expenseDeduct: 'ការកាត់ការចំណាយ',
+    expenseTotal: 'ការចំណាយសរុប', managExpenses: '🧾 គ្រប់គ្រងការចំណាយ',
+    earlyRepayTitle: '⚡ សង្ខេបប្រាក់ចំណេញការបង់ប្រាក់មុន', profitChange: 'ការប្រែប្រួលប្រាក់ចំណេញ',
+    contractDetails: 'ព័ត៌មានលម្អិតប្រាក់ចំណេញកិច្ចសន្យា',
+    colCost: 'ថ្លៃដើម', colGross: 'ប្រាក់ចំណេញដុល', colInterest: 'ការប្រាក់/ប្រាក់ចំណេញ',
+    colServiceFee: 'ថ្លៃសេវា', colRebateCol: 'កាំចំណែក', colNetProfit: 'ប្រាក់ចំណេញសុទ្ធ',
+    // Finance report
+    financeTitle: 'របាយការណ៍ហិរញ្ញវត្ថុប្រចាំខែ', financeSub: 'ការផ្ដល់ · ការប្រមូល · ប្រាក់ចំណេញ · អត្រាហួសកំណត់ · អត្រាប្រមូល',
+    thisMonth: 'ខែនេះ', realtime: 'ពេលវេលាជាក់ស្តែង',
+    monthLoan: 'ចំនួនផ្ដល់ប្រចាំខែ', newContracts: 'កិច្ចសន្យាថ្មី',
+    monthRepay: 'ការប្រមូលប្រចាំខែ', repayRate: 'អត្រាប្រមូល',
+    monthProfit: 'ប្រាក់ចំណេញសុទ្ធប្រចាំខែ', deductedExp: 'បន្ទាប់ពីកាត់ការចំណាយ',
+    monthExpense: 'ការចំណាយប្រចាំខែ', preTaxProfitMonth: 'ប្រាក់ចំណេញមុនពន្ធ',
+    cumulativeSummary: '📊 សង្ខេបសរុប',
+    totalLoan: 'ការផ្ដល់សរុប', totalRepay: 'ការប្រមូលសរុប', totalExpense: 'ការចំណាយសរុប',
+    totalNetProfit: 'ប្រាក់ចំណេញសុទ្ធ', totalOrders: 'ចំនួនការបញ្ជាទិញ', avgOverdueRate: 'អត្រាហួសកំណត់មធ្យម',
+    monthlyDetail: 'ព័ត៌មានលម្អិតប្រចាំខែ',
+    overdueRateNote: 'អត្រាហួសកំណត់ = ខែហួស / ខែដល់កំណត់ · អត្រាប្រមូល = ខែបង់ / ខែដល់កំណត់',
+    colNewOrders: 'ការបញ្ជាទិញថ្មី', colMonthLoan: 'ការផ្ដល់ប្រចាំខែ', colMonthRepay: 'ការប្រមូលប្រចាំខែ',
+    colMonthExp: 'ការចំណាយ', colMonthNet: 'ប្រាក់ចំណេញសុទ្ធ',
+    colDuePeriods: 'ខែដល់កំណត់', colPaidPeriods: 'ខែបានបង់', colOverduePeriods: 'ខែហួសកំណត់',
+    colRepayRate: 'អត្រាប្រមូល', colOverdueRate: 'អត្រាហួសកំណត់', totalRow: 'សរុប',
+    orderAnalysis: '📦 ការវិភាគការបញ្ជាទិញ & ខែ',
+    // Expenses
+    expensesTitle: 'ការគ្រប់គ្រងការចំណាយប្រចាំថ្ងៃ', expensesSub: 'ចុះបញ្ជីការចំណាយប្រតិបត្តិការ',
+    addExpense: '➕ បន្ថែមការចំណាយ', expenseDate: 'កាលបរិច្ឆេទ *', expenseCategory: 'ប្រភេទការចំណាយ *',
+    expenseAmount: 'ចំនួន ($) *', expenseNote: 'ការពិពណ៌នា', expensePerson: 'អ្នកទទួលខុសត្រូវ',
+    saveExpense: '✅ រក្សាទុកការចំណាយ', expenseRecords: 'កំណត់ត្រាការចំណាយ', totalExpStr: 'ការចំណាយសរុប',
+    monthSummary: '📅 សង្ខេបប្រចាំខែ', expensePlaceholder: 'ការពិពណ៌នាលម្អិត (ស្រេចចិត្ត)',
+    personPlaceholder: 'ឈ្មោះ (ស្រេចចិត្ត)',
+    // Phones
+    phonesTitle: 'ការគ្រប់គ្រងគំរូទូរសព្ទ', addPhone: 'បន្ថែមគំរូថ្មី', phoneBrand: 'ម៉ាក',
+    phoneModelName: 'ឈ្មោះគំរូ', phoneCost: 'តម្លៃដើម ($)', phonePrice: 'តម្លៃលក់ ($)',
+    phoneStock: 'ស្តុកដំបូង', addPhoneBtn: '➕ បន្ថែមគំរូ', phoneList: 'បញ្ជីគំរូ',
+    colBrand: 'ម៉ាក', colPhoneModel: 'គំរូ', colCostPrice: 'តម្លៃដើម', colSellPrice: 'តម្លៃលក់',
+    colProfitPerUnit: 'ចំណេញ/គ្រឿង', colStock: 'ស្តុក', colStockValue: 'តម្លៃស្តុក', colStockStatus: 'ស្ថានភាព',
+    inStock: '✅ គ្រប់គ្រាន់', lowStock: '⚠️ ស្តុកទាប', outStock: '❌ អស់ស្តុក',
+    // Suppliers
+    suppliersTitle: 'ព័ត៌មានអ្នកផ្គត់ផ្គង់', addSupplier: 'បន្ថែមអ្នកផ្គត់ផ្គង់', supplierName: 'ឈ្មោះអ្នកផ្គត់ផ្គង់ *',
+    supplierContact: 'អ្នកទំនាក់ទំនង', supplierPhone: 'លេខទូរស័ព្ទ', supplierAddr: 'អាសយដ្ឋាន',
+    addSupplierBtn: '➕ បន្ថែម',
+    colName: 'ឈ្មោះ', colContact: 'អ្នកទំនាក់ទំនង', colPhone: 'ទូរស័ព្ទ', colAddr: 'អាសយដ្ឋាន',
+    // Purchase
+    purchaseTitle: 'ចុះឈ្មោះការទិញ', purchaseDate: 'កាលបរិច្ឆេទ', purchaseSupplier: 'អ្នកផ្គត់ផ្គង់',
+    purchaseModel: 'គំរូ', purchaseQty: 'ចំនួន', purchasePrice: 'តម្លៃឯកតា ($)',
+    confirmPurchase: '✅ បញ្ជាក់ការទិញ', purchaseRecords: 'កំណត់ត្រាការទិញ',
+    colQty: 'ចំនួន', colUnitPrice: 'តម្លៃឯកតា', colTotalAmt: 'សរុប',
+    // Inventory
+    inventoryTitle: 'មើលស្តុក', phoneTypes: 'ប្រភេទគំរូ', totalStock: 'ស្តុកសរុប',
+    stockCost: 'តម្លៃស្តុក',
+    // Company
+    companyTitle: 'ព័ត៌មានក្រុមហ៊ុន', companyName: 'ឈ្មោះក្រុមហ៊ុន', companyPhone: 'ទូរស័ព្ទ',
+    companyAddr: 'អាសយដ្ឋាន', companyNote: 'កំណត់ចំណាំ', saveInfo: '💾 រក្សាទុក',
+    dataMgmt: 'ការគ្រប់គ្រងទិន្នន័យ', downloadBackup: '📤 ទាញយកការបម្រុងទុក',
+    // Reminders
+    tomorrowTitle: 'ការរំលឹកការបង់ប្រាក់ស្អែក', tomorrowDue: 'ដល់កំណត់ស្អែក',
+    overdueTitle: 'ការរំលឹកការបង់ប្រាក់ហួសកំណត់', noOverdue: 'គ្មានការបង់ប្រាក់ហួសកំណត់',
+    queryTitle: 'ការសំណួរការបង់ប្រាក់', next30days: '30 ថ្ងៃខាងមុខ',
+    registerPayment: 'ចុះឈ្មោះការបង់ប្រាក់', daysLeft: 'ថ្ងៃទៀត', days: 'ថ្ងៃ',
+    daysOverdue: 'ថ្ងៃហួសកំណត់', period: 'ខែ',
+    // Messages
+    msgFillCustomer: 'សូមបញ្ចូលឈ្មោះអតិថិជន', msgFillPrice: 'សូមបញ្ចូលតម្លៃលក់',
+    msgDepositOver: 'ប្រាក់កក់មិនអាចលើសតម្លៃលក់', msgFillDue: 'សូមជ្រើសរើសថ្ងៃបង់ប្រាក់ទី១',
+    msgFillName: 'សូមបញ្ចូលម៉ាក និងគំរូ', msgFillSupplier: 'សូមបញ្ចូលឈ្មោះអ្នកផ្គត់ផ្គង់',
+    msgFillAmount: 'សូមបញ្ចូលចំនួនត្រឹមត្រូវ', msgFillAmounts: 'សូមបញ្ចូលចំនួន',
+    msgFillContract: 'សូមជ្រើសរើសកិច្ចសន្យា', msgPeriodPaid: 'ខែនេះបានចុះឈ្មោះហើយ',
+    msgSelectContract: 'សូមជ្រើសរើសកិច្ចសន្យា',
+    saved: 'បានរក្សាទុកដោយជោគជ័យ', added: 'បានបន្ថែមដោយជោគជ័យ',
   }
 };
 
 function t(key) { return (I18N[_lang] || I18N.zh)[key] || key; }
 
+function getLangLabel(lang) {
+  return lang === 'zh' ? '🌐 EN' : lang === 'en' ? '🌐 ខ្មែរ' : '🌐 中文';
+}
+
 window.toggleLang = function() {
-  _lang = _lang === 'zh' ? 'en' : 'zh';
+  _lang = _lang === 'zh' ? 'en' : _lang === 'en' ? 'km' : 'zh';
   localStorage.setItem('pms_lang', _lang);
-  // Update toggle button
   const btn = document.getElementById('langToggle');
-  if (btn) btn.textContent = _lang === 'zh' ? '🌐 EN' : '🌐 中文';
-  // Update header title
+  if (btn) btn.textContent = getLangLabel(_lang);
   const ht = document.getElementById('headerTitle');
   if (ht) ht.textContent = t('systemTitle');
-  // Rebuild sidebar
   buildSidebar();
-  // Re-render current page
   const page = document.querySelector('.nav-item.active')?.dataset?.page || 'home';
   nav(page);
 };
@@ -2041,7 +2191,7 @@ window.saveCompany = function() {
 (async function() {
   // Set language
   const btn = document.getElementById('langToggle');
-  if (btn) btn.textContent = _lang === 'zh' ? '🌐 EN' : '🌐 中文';
+  if (btn) btn.textContent = getLangLabel(_lang);
   const ht = document.getElementById('headerTitle');
   if (ht) ht.textContent = t('systemTitle');
   buildSidebar();
