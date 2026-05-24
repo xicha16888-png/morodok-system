@@ -156,55 +156,17 @@ tr:hover td{background:#f8faff}
 <body>
 
 <div class="header">
-  <div class="header-title">📱 手机销售分期管理系统</div>
+  <div class="header-title">📱 <span id="headerTitle">手机销售分期管理系统</span></div>
   <div class="header-right">
-    <span id="syncStatus"><span class="sync-dot"></span>已同步</span>
+    <span id="syncStatus"><span class="sync-dot"></span><span id="syncText">已同步</span></span>
+    <button id="langToggle" onclick="toggleLang()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:4px 12px;border-radius:20px;font-size:11px;cursor:pointer;font-family:inherit;transition:all .2s">🌐 EN</button>
     <span class="chip" id="companyName">MORODOK</span>
     <span class="chip" id="dateDisplay"></span>
   </div>
 </div>
 
 <div class="layout">
-  <div class="sidebar">
-    <div class="sb-logo"><div class="sb-logo-sub">管理系统</div><div class="sb-logo-name">MORODOK</div></div>
-    <div style="padding:4px 0">
-      <div class="sb-label">主菜单</div>
-      <div class="nav-item active" data-page="home"><span class="nav-icon">🏠</span>系统首页</div>
-    </div>
-    <div class="nav-divider"></div>
-    <div style="padding:4px 0">
-      <div class="sb-label">销售管理</div>
-      <div class="nav-item" data-page="sale-add"><span class="nav-icon">➕</span>销售登记</div>
-      <div class="nav-item" data-page="sale-list"><span class="nav-icon">🔍</span>销售查询</div>
-      <div class="nav-item" data-page="payment-add"><span class="nav-icon">💳</span>还款登记</div>
-      <div class="nav-item" data-page="early-payment"><span class="nav-icon">⚡</span>提前还款</div>
-    </div>
-    <div class="nav-divider"></div>
-    <div style="padding:4px 0">
-      <div class="sb-label">统计报表</div>
-      <div class="nav-item" data-page="stats-collection"><span class="nav-icon">📊</span>收款统计</div>
-      <div class="nav-item" data-page="stats-profit"><span class="nav-icon">💰</span>利润统计</div>
-      <div class="nav-item" data-page="finance-report"><span class="nav-icon">📈</span>月度财务报表</div>
-      <div class="nav-item" data-page="expenses"><span class="nav-icon">🧾</span>日常开支</div>
-    </div>
-    <div class="nav-divider"></div>
-    <div style="padding:4px 0">
-      <div class="sb-label">提醒 / 查询</div>
-      <div class="nav-item" data-page="reminder-tomorrow"><span class="nav-icon">⏰</span>明日还款提醒</div>
-      <div class="nav-item" data-page="reminder-overdue"><span class="nav-icon">🚨</span>逾期未还提醒<span class="nav-badge" id="overdueBadge" style="display:none">0</span></div>
-      <div class="nav-item" data-page="payment-query"><span class="nav-icon">📋</span>需还款查询</div>
-    </div>
-    <div class="nav-divider"></div>
-    <div style="padding:4px 0">
-      <div class="sb-label">基础设置</div>
-      <div class="nav-item" data-page="phones"><span class="nav-icon">📱</span>手机型号</div>
-      <div class="nav-item" data-page="suppliers"><span class="nav-icon">🏢</span>供商信息</div>
-      <div class="nav-item" data-page="purchase-add"><span class="nav-icon">🛒</span>采购登记</div>
-      <div class="nav-item" data-page="inventory"><span class="nav-icon">📦</span>库存查看</div>
-      <div class="nav-item" data-page="company"><span class="nav-icon">⚙️</span>单位信息</div>
-    </div>
-    <div style="height:16px"></div>
-  </div>
+  <div class="sidebar" id="sidebarEl"></div>
   <div class="main" id="mainContent"></div>
 </div>
 
@@ -223,31 +185,435 @@ tr:hover td{background:#f8faff}
 <script>
 'use strict';
 // ══════════════════════════════════════════════════════
-// API LAYER — 所有数据存服务器，多人实时共享
+// i18n — 中英双语翻译系统
 // ══════════════════════════════════════════════════════
+let _lang = localStorage.getItem('pms_lang') || 'zh';
+
+const I18N = {
+  zh: {
+    // System
+    systemTitle: '手机销售分期管理系统', systemSub: '管理系统',
+    synced: '已同步', syncing: '同步中...', syncError: '同步失败!',
+    loading: '正在连接服务器...',
+    // Sidebar sections
+    mainMenu: '主菜单', salesMgmt: '销售管理', reports: '统计报表',
+    reminders: '提醒 / 查询', settings: '基础设置',
+    // Nav items
+    home: '系统首页', saleAdd: '销售登记', saleList: '销售查询',
+    paymentAdd: '还款登记', earlyPayment: '提前还款',
+    statsCollection: '收款统计', statsProfit: '利润统计',
+    financeReport: '月度财务报表', expenses: '日常开支',
+    reminderTomorrow: '明日还款提醒', reminderOverdue: '逾期未还提醒',
+    paymentQuery: '需还款查询', phones: '手机型号', suppliers: '供商信息',
+    purchaseAdd: '采购登记', inventory: '库存查看', company: '单位信息',
+    // Common
+    save: '保存', cancel: '取消', delete: '删除', edit: '编辑',
+    add: '添加', confirm: '确认', search: '搜索', reset: '重置',
+    noData: '暂无数据', noRecord: '暂无记录', noContract: '暂无合同',
+    all: '全部', allStatus: '全部状态',
+    active: '进行中', settled: '已结清', earlySettled: '提前结清',
+    // Home
+    homeWelcome: '系统首页', homeSub: '数据实时共享',
+    totalContracts: '合同总数', collected: '累计收款',
+    pendingPrincipal: '待回收本金', overdueOrders: '逾期账单',
+    inProgress: '笔进行中', earlySettledCount: '笔提前结清',
+    quickEntry: '快速入口',
+    // Sale add
+    newContract: '销售登记', newContractSub: '新建手机分期合同，自动生成还款计划',
+    contractDate: '合同日期', customerName: '客户姓名', customerPhone: '客户电话',
+    phoneModel: '手机型号', salePrice: '销售价格', deposit: '首付金额',
+    installPeriods: '分期期数', firstDueDate: '首次还款日',
+    interestSection: '利息设置', interestMonthRate: '利息月利率 (%)',
+    totalInterest: '利息总额', monthlyInterest: '每期利息',
+    serviceFeeSection: '手续费设置', svcFeeMonthRate: '手续费月利率 (%)',
+    svcFeePeriods: '手续费期数', totalServiceFee: '手续费总额', monthlyServiceFee: '每期手续费',
+    lateSection: '逾期 & 返点', dailyLateFee: '每日滞纳金', storeRebate: '店家返点',
+    summarySection: '汇总计算', installPrincipal: '分期本金',
+    monthlyTotal: '每期还款合计', netProfitEst: '预计净利润',
+    remarks: '备注', remarkPlaceholder: '可选备注',
+    saveContract: '✅ 保存合同', viewList: '📋 查看合同列表',
+    // Sale list
+    saleListTitle: '销售查询', searchPlaceholder: '搜索客户姓名 / 合同号 / 手机型号...',
+    newContractBtn: '➕ 新建合同',
+    colNo: '#', colDate: '日期', colCustomer: '客户', colModel: '型号',
+    colSalePrice: '售价', colDeposit: '首付', colPrincipal: '分期本金',
+    colPeriods: '期数', colIntRate: '利息率', colSvcRate: '手续费率',
+    colMonthly: '每期还款', colRebate: '返点', colProgress: '进度',
+    colStatus: '状态', colAction: '操作',
+    repaySchedule: '还款计划', deleteBtn: '删除',
+    // Payment add
+    paymentTitle: '还款登记', selectContract: '选择合同',
+    paymentDate: '还款日期', payPeriod: '还款期次',
+    paidPrincipal: '实收本金', paidInterest: '实收利息', penalty: '滞纳金',
+    confirmPayment: '✅ 确认收款', refresh: '🔄 刷新',
+    recentPayments: '最近收款记录',
+    colPrincipalPaid: '本金', colInterestPaid: '利息', colTotal: '合计',
+    // Early payment
+    earlyTitle: '提前还款登记', earlySub: '客户协商提前结清合同，手动输入协商金额与实际利润',
+    earlyContractLabel: '选择合同 *', earlyDate: '还款日期',
+    remainPrincipal: '剩余本金', origRemainInterest: '原剩余利息',
+    negotiationSection: '协商还款设置（核心）', negotiatedAmount: '客户协商还款总额 ($) *',
+    autoProfit: '自动计算利润 ($)', manualProfit: '✏️ 手动调整利润 ($)',
+    confirmEarly: '✅ 确认提前结清', earlyRecords: '提前还款记录',
+    // Stats collection
+    collectionTitle: '收款统计', totalCollected: '累计收款总额',
+    principalCollected: '收回本金', interestCollected: '收回利息',
+    pendingPrincipalStat: '待回收本金', monthlyCollection: '按月收款',
+    colMonth: '月份', colCount: '笔数',
+    // Stats profit
+    profitTitle: '利润统计', profitSub: '含利息 + 手续费 + 滞纳金 + 提前还款 − 店家返点 − 日常开支',
+    netProfit: '最终净利润', deductedNote: '扣除返点+开支后',
+    interestAndFee: '利息+手续费收入', penaltyIncome: '滞纳金收入（已收）',
+    actualLateFees: '实际收到的逾期罚款', storeRebateCost: '店家返点（成本）',
+    profitBreakdown: '💡 利润构成分析', incomeSource: '收入来源',
+    grossProfit: '销售毛利（售价-成本）', interestIncome: '利息收入',
+    serviceFeeIncome: '手续费收入', penaltyIncome2: '滞纳金收入（已收）',
+    earlyRepayProfit: '提前还款实际利润', storeRebateDeduct: '店家返点（扣除）',
+    preTaxProfit: '税前利润', expenseDeduct: '开支扣除',
+    expenseTotal: '开支合计', managExpenses: '🧾 管理开支记录',
+    earlyRepayTitle: '⚡ 提前还款利润汇总', profitChange: '利润变化',
+    contractDetails: '各合同盈利明细',
+    colCost: '成本', colGross: '毛利', colInterest: '利息/利润',
+    colServiceFee: '手续费', colRebateCol: '返点', colNetProfit: '净利润',
+    // Finance report
+    financeTitle: '月度财务报表', financeSub: '月总放款 · 月总回款 · 月利润 · 月逾期率 · 月回款率 · 单量统计',
+    thisMonth: '本月', realtime: '实时数据',
+    monthLoan: '本月放款额', newContracts: '笔新合同',
+    monthRepay: '本月回款额', repayRate: '回款率',
+    monthProfit: '本月净利润', deductedExp: '扣除开支',
+    monthExpense: '本月日常开支', preTaxProfitMonth: '税前利润',
+    cumulativeSummary: '📊 全期累计汇总',
+    totalLoan: '总放款额', totalRepay: '总回款额', totalExpense: '总开支',
+    totalNetProfit: '总净利润', totalOrders: '总单量', avgOverdueRate: '综合逾期率',
+    monthlyDetail: '月度明细数据',
+    overdueRateNote: '逾期率 = 逾期期次 / 应还期次 · 回款率 = 已还期次 / 应还期次',
+    colNewOrders: '新增单量', colMonthLoan: '月总放款额', colMonthRepay: '月总回款额',
+    colMonthExp: '日常开支', colMonthNet: '月净利润',
+    colDuePeriods: '应还期次', colPaidPeriods: '已还期次', colOverduePeriods: '逾期期次',
+    colRepayRate: '月回款率', colOverdueRate: '月逾期率', totalRow: '合计',
+    orderAnalysis: '📦 单量 & 期别分析',
+    // Expenses
+    expensesTitle: '日常开支管理', expensesSub: '记录日常运营支出，自动纳入月度财务与利润统计',
+    addExpense: '➕ 新增开支记录', expenseDate: '日期 *', expenseCategory: '开支类别 *',
+    expenseAmount: '金额 ($) *', expenseNote: '备注说明', expensePerson: '经手人',
+    saveExpense: '✅ 保存开支', expenseRecords: '开支记录', totalExpStr: '累计支出',
+    monthSummary: '📅 按月汇总', expensePlaceholder: '详细描述（可选）',
+    personPlaceholder: '姓名（可选）',
+    // Phones
+    phonesTitle: '手机型号管理', addPhone: '添加新型号', phoneBrand: '品牌',
+    phoneModelName: '型号名称', phoneCost: '进货价 ($)', phonePrice: '建议售价 ($)',
+    phoneStock: '初始库存（台）', addPhoneBtn: '➕ 添加型号', phoneList: '型号列表',
+    colBrand: '品牌', colPhoneModel: '型号', colCostPrice: '进货价', colSellPrice: '售价',
+    colProfitPerUnit: '利润/台', colStock: '库存', colStockValue: '库存成本', colStockStatus: '库存状态',
+    inStock: '✅ 充足', lowStock: '⚠️ 低库存', outStock: '❌ 缺货',
+    // Suppliers
+    suppliersTitle: '供商信息', addSupplier: '添加供商', supplierName: '供商名称 *',
+    supplierContact: '联系人', supplierPhone: '联系电话', supplierAddr: '地址',
+    addSupplierBtn: '➕ 添加',
+    colName: '名称', colContact: '联系人', colPhone: '电话', colAddr: '地址',
+    // Purchase
+    purchaseTitle: '采购登记', purchaseDate: '日期', purchaseSupplier: '供商',
+    purchaseModel: '型号', purchaseQty: '数量', purchasePrice: '单价 ($)',
+    confirmPurchase: '✅ 确认采购', purchaseRecords: '采购记录（最近20条）',
+    colQty: '数量', colUnitPrice: '单价', colTotalAmt: '总额',
+    // Inventory
+    inventoryTitle: '库存查看', phoneTypes: '型号种类', totalStock: '库存总量',
+    stockCost: '库存成本',
+    // Company
+    companyTitle: '单位信息', companyName: '单位名称', companyPhone: '联系电话',
+    companyAddr: '地址', companyNote: '备注', saveInfo: '💾 保存信息',
+    dataMgmt: '数据管理', downloadBackup: '📤 下载数据备份',
+    // Reminders
+    tomorrowTitle: '明日还款提醒', tomorrowDue: '到期账单',
+    overdueTitle: '逾期未还款提醒', noOverdue: '暂无逾期账单',
+    queryTitle: '需还款查询', next30days: '未来30天',
+    registerPayment: '登记收款', daysLeft: '还剩', days: '天',
+    daysOverdue: '逾期', period: '期',
+    // Messages
+    msgFillCustomer: '请填写客户姓名', msgFillPrice: '请填写销售价格',
+    msgDepositOver: '首付不能超过售价', msgFillDue: '请选择首次还款日',
+    msgFillName: '请填写品牌和型号', msgFillSupplier: '请填写供商名称',
+    msgFillAmount: '请填写有效金额', msgFillAmounts: '请填写金额',
+    msgFillContract: '请选择合同', msgPeriodPaid: '该期已登记',
+    msgSelectContract: '请选择合同',
+    saved: '已保存', added: '已添加',
+  },
+  en: {
+    // System
+    systemTitle: 'Phone Installment Management System', systemSub: 'Management System',
+    synced: 'Synced', syncing: 'Syncing...', syncError: 'Sync Failed!',
+    loading: 'Connecting to server...',
+    // Sidebar sections
+    mainMenu: 'Main Menu', salesMgmt: 'Sales Management', reports: 'Reports',
+    reminders: 'Reminders / Query', settings: 'Settings',
+    // Nav items
+    home: 'Home', saleAdd: 'New Sale', saleList: 'Sales Query',
+    paymentAdd: 'Payment Entry', earlyPayment: 'Early Repayment',
+    statsCollection: 'Collection Stats', statsProfit: 'Profit Report',
+    financeReport: 'Monthly Finance', expenses: 'Daily Expenses',
+    reminderTomorrow: 'Tomorrow Due', reminderOverdue: 'Overdue Alert',
+    paymentQuery: 'Payment Query', phones: 'Phone Models', suppliers: 'Suppliers',
+    purchaseAdd: 'Purchase Entry', inventory: 'Inventory', company: 'Company Info',
+    // Common
+    save: 'Save', cancel: 'Cancel', delete: 'Delete', edit: 'Edit',
+    add: 'Add', confirm: 'Confirm', search: 'Search', reset: 'Reset',
+    noData: 'No data', noRecord: 'No records', noContract: 'No contracts',
+    all: 'All', allStatus: 'All Status',
+    active: 'Active', settled: 'Settled', earlySettled: 'Early Settled',
+    // Home
+    homeWelcome: 'Dashboard', homeSub: 'Real-time data sync',
+    totalContracts: 'Total Contracts', collected: 'Total Collected',
+    pendingPrincipal: 'Pending Principal', overdueOrders: 'Overdue',
+    inProgress: 'active', earlySettledCount: 'early settled',
+    quickEntry: 'Quick Access',
+    // Sale add
+    newContract: 'New Sale', newContractSub: 'Create installment contract with auto repayment schedule',
+    contractDate: 'Contract Date', customerName: 'Customer Name *', customerPhone: 'Customer Phone',
+    phoneModel: 'Phone Model *', salePrice: 'Sale Price ($) *', deposit: 'Down Payment ($)',
+    installPeriods: 'Installment Periods', firstDueDate: 'First Due Date',
+    interestSection: 'Interest Settings', interestMonthRate: 'Monthly Interest Rate (%)',
+    totalInterest: 'Total Interest ($)', monthlyInterest: 'Monthly Interest ($)',
+    serviceFeeSection: 'Service Fee Settings', svcFeeMonthRate: 'Monthly Service Fee Rate (%)',
+    svcFeePeriods: 'Service Fee Periods', totalServiceFee: 'Total Service Fee ($)', monthlyServiceFee: 'Monthly Service Fee ($)',
+    lateSection: 'Late Fees & Rebate', dailyLateFee: 'Daily Late Fee ($)', storeRebate: 'Store Rebate ($)',
+    summarySection: 'Summary', installPrincipal: 'Installment Principal ($)',
+    monthlyTotal: 'Monthly Payment Total ($)', netProfitEst: 'Estimated Net Profit ($)',
+    remarks: 'Remarks', remarkPlaceholder: 'Optional remarks',
+    saveContract: '✅ Save Contract', viewList: '📋 View Contracts',
+    // Sale list
+    saleListTitle: 'Sales Query', searchPlaceholder: 'Search customer / contract # / model...',
+    newContractBtn: '➕ New Contract',
+    colNo: '#', colDate: 'Date', colCustomer: 'Customer', colModel: 'Model',
+    colSalePrice: 'Sale Price', colDeposit: 'Deposit', colPrincipal: 'Principal',
+    colPeriods: 'Periods', colIntRate: 'Int. Rate', colSvcRate: 'Svc. Rate',
+    colMonthly: 'Monthly Pmt', colRebate: 'Rebate', colProgress: 'Progress',
+    colStatus: 'Status', colAction: 'Action',
+    repaySchedule: 'Repayment Schedule', deleteBtn: 'Delete',
+    // Payment add
+    paymentTitle: 'Payment Entry', selectContract: 'Select Contract *',
+    paymentDate: 'Payment Date', payPeriod: 'Period',
+    paidPrincipal: 'Principal Received ($)', paidInterest: 'Interest Received ($)', penalty: 'Late Fee ($)',
+    confirmPayment: '✅ Confirm Payment', refresh: '🔄 Refresh',
+    recentPayments: 'Recent Payment Records',
+    colPrincipalPaid: 'Principal', colInterestPaid: 'Interest', colTotal: 'Total',
+    // Early payment
+    earlyTitle: 'Early Repayment', earlySub: 'Customer negotiated early settlement, manually enter profit',
+    earlyContractLabel: 'Select Contract *', earlyDate: 'Repayment Date',
+    remainPrincipal: 'Remaining Principal ($)', origRemainInterest: 'Original Remaining Interest ($)',
+    negotiationSection: 'Negotiation Settings (Core)', negotiatedAmount: 'Negotiated Amount ($) *',
+    autoProfit: 'Auto-calculated Profit ($)', manualProfit: '✏️ Manual Profit Adjustment ($)',
+    confirmEarly: '✅ Confirm Early Settlement', earlyRecords: 'Early Repayment Records',
+    // Stats collection
+    collectionTitle: 'Collection Statistics', totalCollected: 'Total Collected',
+    principalCollected: 'Principal Collected', interestCollected: 'Interest Collected',
+    pendingPrincipalStat: 'Pending Principal', monthlyCollection: 'Monthly Collection',
+    colMonth: 'Month', colCount: 'Count',
+    // Stats profit
+    profitTitle: 'Profit Report', profitSub: 'Interest + Fee + Late + Early − Rebate − Expenses',
+    netProfit: 'Net Profit', deductedNote: 'After rebate & expenses',
+    interestAndFee: 'Interest + Service Fee', penaltyIncome: 'Late Fee Income (Received)',
+    actualLateFees: 'Actually received late fees', storeRebateCost: 'Store Rebate (Cost)',
+    profitBreakdown: '💡 Profit Breakdown', incomeSource: 'Income Sources',
+    grossProfit: 'Gross Profit (Price − Cost)', interestIncome: 'Interest Income',
+    serviceFeeIncome: 'Service Fee Income', penaltyIncome2: 'Late Fee Income (Received)',
+    earlyRepayProfit: 'Early Repayment Profit', storeRebateDeduct: 'Store Rebate (Deducted)',
+    preTaxProfit: 'Pre-tax Profit', expenseDeduct: 'Expense Deductions',
+    expenseTotal: 'Total Expenses', managExpenses: '🧾 Manage Expenses',
+    earlyRepayTitle: '⚡ Early Repayment Summary', profitChange: 'Profit Change',
+    contractDetails: 'Contract Profit Details',
+    colCost: 'Cost', colGross: 'Gross', colInterest: 'Interest/Profit',
+    colServiceFee: 'Svc. Fee', colRebateCol: 'Rebate', colNetProfit: 'Net Profit',
+    // Finance report
+    financeTitle: 'Monthly Finance Report', financeSub: 'Loans · Collections · Profit · Overdue Rate · Repayment Rate · Orders',
+    thisMonth: 'This Month', realtime: 'Real-time',
+    monthLoan: 'Monthly Loans', newContracts: 'new contracts',
+    monthRepay: 'Monthly Collections', repayRate: 'Repayment Rate',
+    monthProfit: 'Monthly Net Profit', deductedExp: 'After expenses',
+    monthExpense: 'Monthly Expenses', preTaxProfitMonth: 'Pre-tax Profit',
+    cumulativeSummary: '📊 Cumulative Summary',
+    totalLoan: 'Total Loans', totalRepay: 'Total Collections', totalExpense: 'Total Expenses',
+    totalNetProfit: 'Net Profit', totalOrders: 'Total Orders', avgOverdueRate: 'Avg Overdue Rate',
+    monthlyDetail: 'Monthly Detail',
+    overdueRateNote: 'Overdue Rate = Overdue Periods / Due Periods · Repayment Rate = Paid / Due',
+    colNewOrders: 'New Orders', colMonthLoan: 'Monthly Loans', colMonthRepay: 'Monthly Collections',
+    colMonthExp: 'Expenses', colMonthNet: 'Net Profit',
+    colDuePeriods: 'Due', colPaidPeriods: 'Paid', colOverduePeriods: 'Overdue',
+    colRepayRate: 'Repayment Rate', colOverdueRate: 'Overdue Rate', totalRow: 'Total',
+    orderAnalysis: '📦 Order & Period Analysis',
+    // Expenses
+    expensesTitle: 'Daily Expense Management', expensesSub: 'Record operational expenses, auto-included in reports',
+    addExpense: '➕ Add Expense', expenseDate: 'Date *', expenseCategory: 'Category *',
+    expenseAmount: 'Amount ($) *', expenseNote: 'Description', expensePerson: 'Handler',
+    saveExpense: '✅ Save Expense', expenseRecords: 'Expense Records', totalExpStr: 'Total Expenses',
+    monthSummary: '📅 Monthly Summary', expensePlaceholder: 'Detail description (optional)',
+    personPlaceholder: 'Name (optional)',
+    // Phones
+    phonesTitle: 'Phone Model Management', addPhone: 'Add New Model', phoneBrand: 'Brand',
+    phoneModelName: 'Model Name', phoneCost: 'Cost Price ($)', phonePrice: 'Suggested Price ($)',
+    phoneStock: 'Initial Stock (units)', addPhoneBtn: '➕ Add Model', phoneList: 'Model List',
+    colBrand: 'Brand', colPhoneModel: 'Model', colCostPrice: 'Cost', colSellPrice: 'Price',
+    colProfitPerUnit: 'Profit/Unit', colStock: 'Stock', colStockValue: 'Stock Value', colStockStatus: 'Status',
+    inStock: '✅ In Stock', lowStock: '⚠️ Low Stock', outStock: '❌ Out of Stock',
+    // Suppliers
+    suppliersTitle: 'Supplier Information', addSupplier: 'Add Supplier', supplierName: 'Supplier Name *',
+    supplierContact: 'Contact Person', supplierPhone: 'Phone', supplierAddr: 'Address',
+    addSupplierBtn: '➕ Add',
+    colName: 'Name', colContact: 'Contact', colPhone: 'Phone', colAddr: 'Address',
+    // Purchase
+    purchaseTitle: 'Purchase Entry', purchaseDate: 'Date', purchaseSupplier: 'Supplier',
+    purchaseModel: 'Model', purchaseQty: 'Quantity', purchasePrice: 'Unit Price ($)',
+    confirmPurchase: '✅ Confirm Purchase', purchaseRecords: 'Purchase Records (Last 20)',
+    colQty: 'Qty', colUnitPrice: 'Unit Price', colTotalAmt: 'Total',
+    // Inventory
+    inventoryTitle: 'Inventory', phoneTypes: 'Model Types', totalStock: 'Total Stock',
+    stockCost: 'Stock Cost',
+    // Company
+    companyTitle: 'Company Info', companyName: 'Company Name', companyPhone: 'Phone',
+    companyAddr: 'Address', companyNote: 'Notes', saveInfo: '💾 Save',
+    dataMgmt: 'Data Management', downloadBackup: '📤 Download Backup',
+    // Reminders
+    tomorrowTitle: 'Tomorrow Due Reminder', tomorrowDue: 'Due Tomorrow',
+    overdueTitle: 'Overdue Payment Alert', noOverdue: 'No overdue payments',
+    queryTitle: 'Payment Query', next30days: 'Next 30 Days',
+    registerPayment: 'Record Payment', daysLeft: 'days left', days: 'days',
+    daysOverdue: 'days overdue', period: 'Period',
+    // Messages
+    msgFillCustomer: 'Please enter customer name', msgFillPrice: 'Please enter sale price',
+    msgDepositOver: 'Deposit cannot exceed sale price', msgFillDue: 'Please select first due date',
+    msgFillName: 'Please enter brand and model', msgFillSupplier: 'Please enter supplier name',
+    msgFillAmount: 'Please enter a valid amount', msgFillAmounts: 'Please enter amount',
+    msgFillContract: 'Please select a contract', msgPeriodPaid: 'This period already recorded',
+    msgSelectContract: 'Please select a contract',
+    saved: 'Saved successfully', added: 'Added successfully',
+  }
+};
+
+function t(key) { return (I18N[_lang] || I18N.zh)[key] || key; }
+
+window.toggleLang = function() {
+  _lang = _lang === 'zh' ? 'en' : 'zh';
+  localStorage.setItem('pms_lang', _lang);
+  // Update toggle button
+  const btn = document.getElementById('langToggle');
+  if (btn) btn.textContent = _lang === 'zh' ? '🌐 EN' : '🌐 中文';
+  // Update header title
+  const ht = document.getElementById('headerTitle');
+  if (ht) ht.textContent = t('systemTitle');
+  // Rebuild sidebar
+  buildSidebar();
+  // Re-render current page
+  const page = document.querySelector('.nav-item.active')?.dataset?.page || 'home';
+  nav(page);
+};
+
+function buildSidebar() {
+  const currentPage = document.querySelector('.nav-item.active')?.dataset?.page || 'home';
+  const sidebar = document.getElementById('sidebarEl');
+  if (!sidebar) return;
+  sidebar.innerHTML = `
+    <div class="sb-logo">
+      <div class="sb-logo-sub">${t('systemSub')}</div>
+      <div class="sb-logo-name">MORODOK</div>
+    </div>
+    <div style="padding:4px 0">
+      <div class="sb-label">${t('mainMenu')}</div>
+      <div class="nav-item" data-page="home"><span class="nav-icon">🏠</span>${t('home')}</div>
+    </div>
+    <div class="nav-divider"></div>
+    <div style="padding:4px 0">
+      <div class="sb-label">${t('salesMgmt')}</div>
+      <div class="nav-item" data-page="sale-add"><span class="nav-icon">➕</span>${t('saleAdd')}</div>
+      <div class="nav-item" data-page="sale-list"><span class="nav-icon">🔍</span>${t('saleList')}</div>
+      <div class="nav-item" data-page="payment-add"><span class="nav-icon">💳</span>${t('paymentAdd')}</div>
+      <div class="nav-item" data-page="early-payment"><span class="nav-icon">⚡</span>${t('earlyPayment')}</div>
+    </div>
+    <div class="nav-divider"></div>
+    <div style="padding:4px 0">
+      <div class="sb-label">${t('reports')}</div>
+      <div class="nav-item" data-page="stats-collection"><span class="nav-icon">📊</span>${t('statsCollection')}</div>
+      <div class="nav-item" data-page="stats-profit"><span class="nav-icon">💰</span>${t('statsProfit')}</div>
+      <div class="nav-item" data-page="finance-report"><span class="nav-icon">📈</span>${t('financeReport')}</div>
+      <div class="nav-item" data-page="expenses"><span class="nav-icon">🧾</span>${t('expenses')}</div>
+    </div>
+    <div class="nav-divider"></div>
+    <div style="padding:4px 0">
+      <div class="sb-label">${t('reminders')}</div>
+      <div class="nav-item" data-page="reminder-tomorrow"><span class="nav-icon">⏰</span>${t('reminderTomorrow')}</div>
+      <div class="nav-item" data-page="reminder-overdue"><span class="nav-icon">🚨</span>${t('reminderOverdue')}<span class="nav-badge" id="overdueBadge" style="display:none">0</span></div>
+      <div class="nav-item" data-page="payment-query"><span class="nav-icon">📋</span>${t('paymentQuery')}</div>
+    </div>
+    <div class="nav-divider"></div>
+    <div style="padding:4px 0">
+      <div class="sb-label">${t('settings')}</div>
+      <div class="nav-item" data-page="phones"><span class="nav-icon">📱</span>${t('phones')}</div>
+      <div class="nav-item" data-page="suppliers"><span class="nav-icon">🏢</span>${t('suppliers')}</div>
+      <div class="nav-item" data-page="purchase-add"><span class="nav-icon">🛒</span>${t('purchaseAdd')}</div>
+      <div class="nav-item" data-page="inventory"><span class="nav-icon">📦</span>${t('inventory')}</div>
+      <div class="nav-item" data-page="company"><span class="nav-icon">⚙️</span>${t('company')}</div>
+    </div>
+    <div style="height:16px"></div>`;
+  // Bind click events
+  sidebar.querySelectorAll('.nav-item[data-page]').forEach(el => {
+    el.addEventListener('click', () => nav(el.dataset.page));
+    if (el.dataset.page === currentPage) el.classList.add('active');
+  });
+}
 let _db = null;
 let _syncTimer = null;
 let _dirty = false;
+let _dbReady = false; // 🔒 数据安全锁：只有从Supabase成功加载后才允许保存
 
 async function loadDB() {
-  const res = await fetch('/api/data');
-  _db = await res.json();
-  const co = _db.company;
-  if (co?.name) document.getElementById('companyName').textContent = co.name;
+  try {
+    const res = await fetch('/api/data');
+    if (!res.ok) {
+      console.warn('⚠️ 服务器返回错误:', res.status);
+      return false; // 加载失败，不覆盖现有数据
+    }
+    const data = await res.json();
+    // 验证数据有效性：必须包含 sales 字段且是数组
+    if (!data || typeof data !== 'object' || !Array.isArray(data.sales)) {
+      console.warn('⚠️ 服务器返回数据格式无效，跳过覆盖');
+      return false;
+    }
+    _db = data;
+    _dbReady = true; // 🔓 解锁保存功能
+    const co = _db.company;
+    if (co?.name) document.getElementById('companyName').textContent = co.name;
+    return true;
+  } catch(e) {
+    console.warn('⚠️ loadDB 失败:', e.message);
+    return false;
+  }
 }
 
 async function saveDB() {
+  if (!_dbReady) {
+    console.warn('🔒 数据未就绪，拒绝保存（防止覆盖真实数据）');
+    return;
+  }
+  if (!_db || !Array.isArray(_db.sales)) {
+    console.warn('🔒 数据无效，拒绝保存');
+    return;
+  }
   setSyncStatus('syncing');
   try {
-    await fetch('/api/data', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(_db) });
+    const res = await fetch('/api/data', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(_db)
+    });
+    if (!res.ok) throw new Error('服务器返回错误: ' + res.status);
     setSyncStatus('ok');
     _dirty = false;
   } catch(e) {
     setSyncStatus('error');
+    console.error('❌ 保存失败:', e.message);
   }
 }
 
 function markDirty() {
+  if (!_dbReady) return; // 🔒 未就绪时拒绝标记脏数据
   _dirty = true;
   clearTimeout(_syncTimer);
   _syncTimer = setTimeout(() => { if (_dirty) saveDB(); }, 800);
@@ -255,13 +621,21 @@ function markDirty() {
 
 function setSyncStatus(state) {
   const el = document.getElementById('syncStatus');
-  const dot = el.querySelector('.sync-dot');
-  dot.className = 'sync-dot' + (state === 'syncing' ? ' syncing' : state === 'error' ? ' error' : '');
-  el.lastChild.textContent = state === 'syncing' ? '同步中...' : state === 'error' ? '同步失败!' : '已同步';
+  const dot = el?.querySelector('.sync-dot');
+  const txt = document.getElementById('syncText');
+  if (dot) dot.className = 'sync-dot' + (state==='syncing'?' syncing':state==='error'?' error':'');
+  if (txt) txt.textContent = state==='syncing'?t('syncing'):state==='error'?t('syncError'):t('synced');
 }
 
 function DB_get(k) { return _db ? _db[k] : null; }
-function DB_set(k, v) { if (_db) { _db[k] = v; markDirty(); } }
+function DB_set(k, v) {
+  if (!_db || !_dbReady) {
+    console.warn('🔒 DB_set 被阻止：数据未就绪', k);
+    return;
+  }
+  _db[k] = v;
+  markDirty();
+}
 
 function showLoading(text='正在加载...') { document.getElementById('loadingText').textContent=text; document.getElementById('loadingOverlay').classList.add('show'); }
 function hideLoading() { document.getElementById('loadingOverlay').classList.remove('show'); }
@@ -302,6 +676,7 @@ const PAGES = {
 };
 
 function nav(page) {
+  buildSidebar();
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
   const fn = PAGES[page];
   const mc = document.getElementById('mainContent');
@@ -337,8 +712,8 @@ setInterval(async () => {
   if (userIsTyping()) return;
   const page = document.querySelector('.nav-item.active')?.dataset?.page;
   if (FORM_PAGES.includes(page)) return;
-  await loadDB();
-  if (page && PAGES[page]) {
+  const ok = await loadDB(); // 只有成功才刷新
+  if (ok && page && PAGES[page]) {
     document.getElementById('mainContent').innerHTML = PAGES[page]();
     initPage(page);
     updateBadges();
@@ -357,25 +732,28 @@ function renderHome() {
   const tPaid = pays.reduce((a, p) => a + (+p.principal) + (+p.interest), 0);
   const pending = sales.reduce((a, s) => { const paid = s.schedule.filter(p => p.paid).reduce((x, p) => x + (+p.paidPrincipal || 0), 0); return a + (+s.installmentAmount - paid); }, 0);
   return `
-  <div class="page-header"><div class="page-title">🏠 系统首页</div><div class="page-sub">今日 ${td} · 数据实时共享</div></div>
-  <div class="stats-grid">
-    <div class="stat-card blue"><span class="stat-icon">📋</span><div class="stat-label">合同总数</div><div class="stat-value">${sales.length}</div><div class="stat-sub">${sales.filter(s=>s.status==='进行中').length} 笔进行中 · ${sales.filter(s=>s.status==='提前结清').length} 笔提前结清</div></div>
-    <div class="stat-card green"><span class="stat-icon">💵</span><div class="stat-label">累计收款</div><div class="stat-value">${fmt(tPaid)}</div><div class="stat-sub">本金+利息合计</div></div>
-    <div class="stat-card amber"><span class="stat-icon">⏳</span><div class="stat-label">待回收本金</div><div class="stat-value">${fmt(pending)}</div></div>
-    <div class="stat-card red"><span class="stat-icon">🚨</span><div class="stat-label">逾期账单</div><div class="stat-value">${overdue.length}</div><div class="stat-sub">${overdue.length > 0 ? '需立即跟进' : '暂无逾期 👍'}</div></div>
+  <div class="page-header">
+    <div class="page-title">🏠 ${t('homeWelcome')}</div>
+    <div class="page-sub">${td} · ${t('homeSub')}</div>
   </div>
-  ${overdue.length > 0 ? `<div class="alert alert-red">⚠️ 当前有 ${overdue.length} 笔逾期账单，合计 ${fmt(overdue.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}，请及时处理！<button class="btn btn-danger btn-sm" style="margin-left:12px" onclick="nav('reminder-overdue')">立即查看</button></div>` : ''}
+  <div class="stats-grid">
+    <div class="stat-card blue"><span class="stat-icon">📋</span><div class="stat-label">${t('totalContracts')}</div><div class="stat-value">${sales.length}</div><div class="stat-sub">${sales.filter(s=>s.status==='进行中'||s.status==='Active').length} ${t('inProgress')} · ${sales.filter(s=>s.status==='提前结清'||s.status==='Early Settled').length} ${t('earlySettledCount')}</div></div>
+    <div class="stat-card green"><span class="stat-icon">💵</span><div class="stat-label">${t('collected')}</div><div class="stat-value">${fmt(tPaid)}</div></div>
+    <div class="stat-card amber"><span class="stat-icon">⏳</span><div class="stat-label">${t('pendingPrincipal')}</div><div class="stat-value">${fmt(pending)}</div></div>
+    <div class="stat-card red"><span class="stat-icon">🚨</span><div class="stat-label">${t('overdueOrders')}</div><div class="stat-value">${overdue.length}</div></div>
+  </div>
+  ${overdue.length > 0 ? `<div class="alert alert-red">⚠️ ${overdue.length} ${_lang==='zh'?'笔逾期账单，合计':'overdue orders, total'} ${fmt(overdue.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}<button class="btn btn-danger btn-sm" style="margin-left:12px" onclick="nav('reminder-overdue')">${_lang==='zh'?'立即查看':'View Now'}</button></div>` : ''}
   <div class="home-grid">
-    ${[['➕','销售登记','新建分期合同','sale-add'],['💳','还款登记','录入收款记录','payment-add'],
-       ['📊','收款统计','月度汇总','stats-collection'],['💰','利润统计','盈利分析','stats-profit'],
-       ['📈','月度财务','放款/回款/利润','finance-report'],['⚡','提前还款','协商结清','early-payment'],
-       ['🔍','销售查询','合同检索','sale-list'],['⏰','明日提醒','明日到期','reminder-tomorrow'],
-       ['🚨','逾期提醒','催收列表','reminder-overdue'],['📋','还款查询','30天计划','payment-query']
+    ${[['➕',t('saleAdd'),t('newContractSub').slice(0,10),'sale-add'],['💳',t('paymentAdd'),_lang==='zh'?'录入收款记录':'Record payment','payment-add'],
+       ['📊',t('statsCollection'),_lang==='zh'?'月度汇总':'Monthly summary','stats-collection'],['💰',t('statsProfit'),_lang==='zh'?'盈利分析':'Profit analysis','stats-profit'],
+       ['📈',t('financeReport'),_lang==='zh'?'放款/回款/利润':'Loans/Collections','finance-report'],['⚡',t('earlyPayment'),_lang==='zh'?'协商结清':'Early settlement','early-payment'],
+       ['🔍',t('saleList'),_lang==='zh'?'合同检索':'Contract search','sale-list'],['⏰',t('reminderTomorrow'),_lang==='zh'?'明日到期':'Due tomorrow','reminder-tomorrow'],
+       ['🚨',t('reminderOverdue'),_lang==='zh'?'催收列表':'Overdue list','reminder-overdue'],['📋',t('paymentQuery'),_lang==='zh'?'30天计划':'30-day plan','payment-query']
     ].map(([i,l,s,p]) => `<div class="home-card" onclick="nav('${p}')"><div class="icon">${i}</div><div class="label">${l}</div><div class="sublabel">${s}</div></div>`).join('')}
   </div>
-  <div class="card"><div class="card-header"><div class="card-title">快速入口</div></div>
+  <div class="card"><div class="card-header"><div class="card-title">${t('quickEntry')}</div></div>
   <div class="home-bottom-row">
-    ${[['⚙️ 单位信息','company'],['🏢 供商信息','suppliers'],['📱 手机型号','phones'],['🛒 采购登记','purchase-add'],['📦 库存查看','inventory'],['🧾 日常开支','expenses']]
+    ${[[`⚙️ ${t('company')}`,'company'],[`🏢 ${t('suppliers')}`,'suppliers'],[`📱 ${t('phones')}`,'phones'],[`🛒 ${t('purchaseAdd')}`,'purchase-add'],[`📦 ${t('inventory')}`,'inventory'],[`🧾 ${t('expenses')}`,'expenses']]
     .map(([l,p]) => `<button class="home-bottom-btn" onclick="nav('${p}')">${l}</button>`).join('')}
   </div></div>`;
 }
@@ -393,64 +771,64 @@ function periodSelect(id, defaultVal, onchange) {
 
 function renderSaleAdd() {
   const phones = DB_get('phones') || [];
-  const opts = phones.map(p => `<option value="${p.id}">${esc(p.brand)} ${esc(p.model)} — 库存${p.stock}台 (建议${fmt(p.price)})</option>`).join('');
+  const opts = phones.map(p => `<option value="${p.id}">${esc(p.brand)} ${esc(p.model)} — ${_lang==='zh'?'库存':'Stock'}${p.stock}${_lang==='zh'?'台':'pcs'} (${_lang==='zh'?'建议':'Suggested'}${fmt(p.price)})</option>`).join('');
   return `
-  <div class="page-header"><div class="page-title">➕ 销售登记</div><div class="page-sub">新建手机分期合同，自动生成还款计划</div></div>
+  <div class="page-header"><div class="page-title">➕ ${t('newContract')}</div><div class="page-sub">${t('newContractSub')}</div></div>
   <div class="card">
-    <div class="card-title" style="margin-bottom:16px">📝 基本信息</div>
+    <div class="card-title" style="margin-bottom:16px">📝 ${_lang==='zh'?'基本信息':'Basic Information'}</div>
     <div class="form-grid">
-      <div class="form-group"><label>合同日期</label><input type="date" id="sDate" value="${today()}"></div>
-      <div class="form-group"><label>客户姓名 *</label><input id="sCust" placeholder="输入客户全名"></div>
-      <div class="form-group"><label>客户电话</label><input id="sCustPhone" placeholder="联系电话"></div>
-      <div class="form-group span2"><label>手机型号 *</label><select id="sModel" onchange="calcInstall()">${opts || '<option>请先添加手机型号</option>'}</select></div>
-      <div class="form-group"><label>销售价格 ($) *</label><input type="number" id="sSalePrice" placeholder="0.00" step="0.01" oninput="calcInstall()"></div>
-      <div class="form-group"><label>首付金额 ($)</label><input type="number" id="sDeposit" value="0" step="0.01" oninput="calcInstall()"></div>
-      <div class="form-group"><label>分期期数</label>${periodSelect('sPeriods', 3, 'calcInstall()')}</div>
-      <div class="form-group"><label>首次还款日</label><input type="date" id="sFirstDue"></div>
+      <div class="form-group"><label>${t('contractDate')}</label><input type="date" id="sDate" value="${today()}"></div>
+      <div class="form-group"><label>${t('customerName')}</label><input id="sCust" placeholder="${_lang==='zh'?'输入客户全名':'Enter full name'}"></div>
+      <div class="form-group"><label>${t('customerPhone')}</label><input id="sCustPhone" placeholder="${_lang==='zh'?'联系电话':'Contact number'}"></div>
+      <div class="form-group span2"><label>${t('phoneModel')}</label><select id="sModel" onchange="calcInstall()">${opts || `<option>${_lang==='zh'?'请先添加手机型号':'Please add phone models first'}</option>`}</select></div>
+      <div class="form-group"><label>${t('salePrice')}</label><input type="number" id="sSalePrice" placeholder="0.00" step="0.01" oninput="calcInstall()"></div>
+      <div class="form-group"><label>${t('deposit')}</label><input type="number" id="sDeposit" value="0" step="0.01" oninput="calcInstall()"></div>
+      <div class="form-group"><label>${t('installPeriods')}</label>${periodSelect('sPeriods', 3, 'calcInstall()')}</div>
+      <div class="form-group"><label>${t('firstDueDate')}</label><input type="date" id="sFirstDue"></div>
     </div>
 
     <div style="background:#e8f5e9;border-radius:8px;padding:14px;margin-top:14px;border-left:3px solid var(--green)">
-      <div style="font-size:12px;color:var(--green);font-weight:700;margin-bottom:12px">💰 利息设置</div>
+      <div style="font-size:12px;color:var(--green);font-weight:700;margin-bottom:12px">💰 ${t('interestSection')}</div>
       <div class="form-grid">
-        <div class="form-group"><label>利息月利率 (%)</label><input type="number" id="sInterestRate" value="0" step="0.01" placeholder="0.00" oninput="calcInstall()"></div>
-        <div class="form-group"><label>利息总额 ($)</label><input id="sTotalInt" readonly style="background:#f0faf0"></div>
-        <div class="form-group"><label>每期利息 ($)</label><input id="sMonthlyInt" readonly style="background:#f0faf0"></div>
+        <div class="form-group"><label>${t('interestMonthRate')}</label><input type="number" id="sInterestRate" value="0" step="0.01" placeholder="0.00" oninput="calcInstall()"></div>
+        <div class="form-group"><label>${t('totalInterest')}</label><input id="sTotalInt" readonly style="background:#f0faf0"></div>
+        <div class="form-group"><label>${t('monthlyInterest')}</label><input id="sMonthlyInt" readonly style="background:#f0faf0"></div>
       </div>
     </div>
 
     <div style="background:#fff8e1;border-radius:8px;padding:14px;margin-top:10px;border-left:3px solid var(--amber)">
-      <div style="font-size:12px;color:var(--amber);font-weight:700;margin-bottom:12px">🧾 手续费设置</div>
+      <div style="font-size:12px;color:var(--amber);font-weight:700;margin-bottom:12px">🧾 ${t('serviceFeeSection')}</div>
       <div class="form-grid">
-        <div class="form-group"><label>手续费月利率 (%)</label><input type="number" id="sServiceRate" value="0" step="0.01" placeholder="0.00" oninput="calcInstall()"></div>
-        <div class="form-group"><label>手续费期数</label>${periodSelect('sServicePeriods', 3, 'calcInstall()')}</div>
-        <div class="form-group"><label>手续费总额 ($)</label><input id="sTotalService" readonly style="background:#fffbf0"></div>
-        <div class="form-group"><label>每期手续费 ($)</label><input id="sMonthlyService" readonly style="background:#fffbf0"></div>
+        <div class="form-group"><label>${t('svcFeeMonthRate')}</label><input type="number" id="sServiceRate" value="0" step="0.01" placeholder="0.00" oninput="calcInstall()"></div>
+        <div class="form-group"><label>${t('svcFeePeriods')}</label>${periodSelect('sServicePeriods', 3, 'calcInstall()')}</div>
+        <div class="form-group"><label>${t('totalServiceFee')}</label><input id="sTotalService" readonly style="background:#fffbf0"></div>
+        <div class="form-group"><label>${t('monthlyServiceFee')}</label><input id="sMonthlyService" readonly style="background:#fffbf0"></div>
       </div>
     </div>
 
     <div style="background:#fce4ec;border-radius:8px;padding:14px;margin-top:10px;border-left:3px solid var(--red)">
-      <div style="font-size:12px;color:var(--red);font-weight:700;margin-bottom:12px">⚠️ 逾期 & 返点</div>
+      <div style="font-size:12px;color:var(--red);font-weight:700;margin-bottom:12px">⚠️ ${t('lateSection')}</div>
       <div class="form-grid">
-        <div class="form-group"><label>每日滞纳金 ($)</label><input type="number" id="sDailyFee" value="0" step="0.01" placeholder="0.00"></div>
-        <div class="form-group"><label>店家返点 ($)</label><input type="number" id="sRebate" value="0" step="0.01" placeholder="0.00" oninput="calcInstall()"></div>
+        <div class="form-group"><label>${t('dailyLateFee')}</label><input type="number" id="sDailyFee" value="0" step="0.01" placeholder="0.00"></div>
+        <div class="form-group"><label>${t('storeRebate')}</label><input type="number" id="sRebate" value="0" step="0.01" placeholder="0.00" oninput="calcInstall()"></div>
       </div>
     </div>
 
     <div style="background:#f0f7ff;border-radius:8px;padding:14px;margin-top:10px;border-left:3px solid var(--sky)">
-      <div style="font-size:12px;color:var(--sky);font-weight:700;margin-bottom:12px">📊 汇总计算</div>
+      <div style="font-size:12px;color:var(--sky);font-weight:700;margin-bottom:12px">📊 ${t('summarySection')}</div>
       <div class="form-grid">
-        <div class="form-group"><label>分期本金 ($)</label><input id="sInstAmt" readonly></div>
-        <div class="form-group"><label>每期还款合计 ($)</label><input id="sMonthly" readonly style="background:#e3f2fd;font-weight:700"></div>
-        <div class="form-group"><label>预计净利润 ($)</label><input id="sNetProfit" readonly style="background:#e3f2fd;color:var(--green);font-weight:700"></div>
+        <div class="form-group"><label>${t('installPrincipal')}</label><input id="sInstAmt" readonly></div>
+        <div class="form-group"><label>${t('monthlyTotal')}</label><input id="sMonthly" readonly style="background:#e3f2fd;font-weight:700"></div>
+        <div class="form-group"><label>${t('netProfitEst')}</label><input id="sNetProfit" readonly style="background:#e3f2fd;font-weight:700"></div>
       </div>
     </div>
 
     <div class="form-grid" style="margin-top:12px">
-      <div class="form-group span3"><label>备注</label><input id="sNote" placeholder="可选备注"></div>
+      <div class="form-group span3"><label>${t('remarks')}</label><input id="sNote" placeholder="${t('remarkPlaceholder')}"></div>
     </div>
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="submitSale()">✅ 保存合同</button>
-      <button class="btn btn-outline" onclick="nav('sale-list')">📋 查看合同列表</button>
+      <button class="btn btn-primary" onclick="submitSale()">${t('saveContract')}</button>
+      <button class="btn btn-outline" onclick="nav('sale-list')">${t('viewList')}</button>
     </div>
     <div id="saleMsg"></div>
   </div>`;
@@ -1653,28 +2031,38 @@ function renderCompany() {
 window.saveCompany = function() {
   const name=document.getElementById('coName')?.value||'';
   DB_set('company',{name,phone:document.getElementById('coPhone')?.value||'',address:document.getElementById('coAddr')?.value||'',note:document.getElementById('coNote')?.value||''});
-  document.getElementById('companyName').textContent=name||'MORODOK'; showMsg('coMsg','✅ 已保存','green');
+  document.getElementById('companyName').textContent=name||'MORODOK';
+  showMsg('coMsg',`✅ ${t('saved')}`, 'green');
 };
 
 // ══════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════
 (async function() {
-  showLoading('正在连接服务器...');
+  // Set language
+  const btn = document.getElementById('langToggle');
+  if (btn) btn.textContent = _lang === 'zh' ? '🌐 EN' : '🌐 中文';
+  const ht = document.getElementById('headerTitle');
+  if (ht) ht.textContent = t('systemTitle');
+  buildSidebar();
+  showLoading(t('loading'));
   try {
     await loadDB();
     hideLoading();
     nav('home');
     updateBadges();
     setInterval(updateBadges, 60000);
-    // Date
-    const updateDate = () => { const el = document.getElementById('dateDisplay'); if(el) el.textContent = new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'short'}); };
+    const updateDate = () => {
+      const el = document.getElementById('dateDisplay');
+      if (el) el.textContent = new Date().toLocaleDateString(_lang==='zh'?'zh-CN':'en-US',{month:'long',day:'numeric',weekday:'short'});
+    };
     updateDate(); setInterval(updateDate, 30000);
   } catch(e) {
     hideLoading();
     document.getElementById('mainContent').innerHTML = `<div class="empty-state" style="margin-top:60px">
-      <div class="ei">❌</div><p style="font-size:16px;font-weight:700;color:var(--red)">无法连接服务器</p>
-      <p style="margin-top:8px">请确保 server.js 已启动，然后刷新页面</p>
+      <div class="ei">❌</div>
+      <p style="font-size:16px;font-weight:700;color:var(--red)">${_lang==='zh'?'无法连接服务器':'Cannot connect to server'}</p>
+      <p style="margin-top:8px">${_lang==='zh'?'请刷新页面重试':'Please refresh the page to retry'}</p>
     </div>`;
   }
 })();
