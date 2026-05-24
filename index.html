@@ -690,10 +690,10 @@ function buildSidebar() {
     <div class="nav-divider"></div>
     <div style="padding:4px 0">
       <div class="sb-label">${t('reports')}</div>
-      <div class="nav-item" data-page="stats-collection"><span class="nav-icon">📊</span>${t('statsCollection')}</div>
-      <div class="nav-item" data-page="stats-profit"><span class="nav-icon">💰</span>${t('statsProfit')}</div>
-      <div class="nav-item" data-page="finance-report"><span class="nav-icon">📈</span>${t('financeReport')}</div>
-      <div class="nav-item" data-page="expenses"><span class="nav-icon">🧾</span>${t('expenses')}</div>
+      <div class="nav-item" data-page="stats-collection"><span class="nav-icon">📊</span>${t('statsCollection')} 🔐</div>
+      <div class="nav-item" data-page="stats-profit"><span class="nav-icon">💰</span>${t('statsProfit')} 🔐</div>
+      <div class="nav-item" data-page="finance-report"><span class="nav-icon">📈</span>${t('financeReport')} 🔐</div>
+      <div class="nav-item" data-page="expenses"><span class="nav-icon">🧾</span>${t('expenses')} 🔐</div>
     </div>
     <div class="nav-divider"></div>
     <div style="padding:4px 0">
@@ -823,6 +823,70 @@ function showModal(title, body) {
 window.closeModal = () => document.getElementById('modalBg').classList.remove('open');
 
 // ══════════════════════════════════════════════════════
+// 🔐 密码保护
+// ══════════════════════════════════════════════════════
+const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','expenses'];
+const REPORT_PWD = 'morodok888';
+let _reportUnlocked = false; // 会话内解锁状态
+
+function requirePassword(page, onSuccess) {
+  if (_reportUnlocked) { onSuccess(); return; }
+
+  const labels = {zh:'请输入统计报表密码', en:'Enter report password', km:'បញ្ចូលពាក្យសម្ងាត់'};
+  const btnLabels = {zh:'确认', en:'Confirm', km:'បញ្ជាក់'};
+  const errLabels = {zh:'密码错误，请重试', en:'Wrong password', km:'ពាក្យសម្ងាត់មិនត្រូវ'};
+  const cancelLabels = {zh:'取消', en:'Cancel', km:'បោះបង់'};
+
+  // Build lock modal directly (not using showModal to keep it separate)
+  const overlay = document.createElement('div');
+  overlay.id = 'pwdOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,31,66,.7);z-index:600;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:32px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center">
+      <div style="font-size:40px;margin-bottom:12px">🔐</div>
+      <div style="font-size:16px;font-weight:700;color:#0f2d5c;margin-bottom:6px">${labels[_lang]||labels.zh}</div>
+      <div style="font-size:12px;color:#78909c;margin-bottom:20px">${_lang==='km'?'ការចូលត្រូវការការអនុញ្ញាត':_lang==='en'?'This section is restricted':'此区域需要授权访问'}</div>
+      <input id="pwdInput" type="password" placeholder="••••••••" autocomplete="off"
+        style="width:100%;border:2px solid #e3f2fd;border-radius:8px;padding:12px;font-size:16px;text-align:center;letter-spacing:4px;outline:none;box-sizing:border-box;margin-bottom:12px"
+        onkeydown="if(event.key==='Enter')document.getElementById('pwdConfirm').click()">
+      <div id="pwdErr" style="color:#c62828;font-size:12px;margin-bottom:10px;min-height:18px"></div>
+      <div style="display:flex;gap:10px">
+        <button onclick="document.getElementById('pwdOverlay').remove()" 
+          style="flex:1;padding:10px;border-radius:8px;border:1.5px solid #cfd8dc;background:#fff;color:#546e7a;cursor:pointer;font-size:13px">
+          ${cancelLabels[_lang]||cancelLabels.zh}
+        </button>
+        <button id="pwdConfirm"
+          style="flex:1;padding:10px;border-radius:8px;border:none;background:#1e88e5;color:#fff;cursor:pointer;font-size:13px;font-weight:600"
+          onclick="checkPwd('${page}')">
+          ${btnLabels[_lang]||btnLabels.zh}
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  setTimeout(() => document.getElementById('pwdInput')?.focus(), 100);
+
+  window._pwdSuccess = onSuccess;
+  window._pwdErrLabel = errLabels[_lang]||errLabels.zh;
+}
+
+window.checkPwd = function(page) {
+  const val = document.getElementById('pwdInput')?.value || '';
+  if (val === REPORT_PWD) {
+    _reportUnlocked = true;
+    document.getElementById('pwdOverlay')?.remove();
+    if (window._pwdSuccess) window._pwdSuccess();
+  } else {
+    const err = document.getElementById('pwdErr');
+    if (err) {
+      err.textContent = window._pwdErrLabel;
+      const input = document.getElementById('pwdInput');
+      if (input) { input.value = ''; input.style.borderColor='#c62828'; input.focus();
+        setTimeout(()=>{ input.style.borderColor='#e3f2fd'; }, 1500); }
+    }
+  }
+};
+
+// ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
 const PAGES = {
@@ -837,6 +901,11 @@ const PAGES = {
 
 function nav(page) {
   buildSidebar();
+  // 受保护页面：先验证密码
+  if (PROTECTED_PAGES.includes(page) && !_reportUnlocked) {
+    requirePassword(page, () => nav(page));
+    return;
+  }
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
   const fn = PAGES[page];
   const mc = document.getElementById('mainContent');
@@ -905,8 +974,8 @@ function renderHome() {
   ${overdue.length > 0 ? `<div class="alert alert-red">⚠️ ${overdue.length} ${_lang==='km'?'—':_lang==='zh'?'笔逾期，合计':'overdue,'} ${fmt(overdue.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}<button class="btn btn-danger btn-sm" style="margin-left:12px" onclick="nav('reminder-overdue')">${_lang==='zh'?'立即查看':t("viewNow")}</button></div>` : ''}
   <div class="home-grid">
     ${[['➕',t('saleAdd'),t('newContractSub').slice(0,10),'sale-add'],['💳',t('paymentAdd'),_lang==='km'?'ចុះបង្ហាញការទូទាត់':_lang==='zh'?'录入收款记录':'Record payment','payment-add'],
-       ['📊',t('statsCollection'),_lang==='km'?'សង្ខេបប្រចាំខែ':_lang==='zh'?'月度汇总':'Monthly summary','stats-collection'],['💰',t('statsProfit'),_lang==='km'?'វិភាគប្រាក់ចំណេញ':_lang==='zh'?'盈利分析':'Profit analysis','stats-profit'],
-       ['📈',t('financeReport'),_lang==='km'?'ផ្ដល់/ប្រមូល/ចំណេញ':_lang==='zh'?'放款/回款/利润':'Loans/Collections','finance-report'],['⚡',t('earlyPayment'),_lang==='km'?'ទូទាត់ចរចា':_lang==='zh'?'协商结清':'Early settlement','early-payment'],
+       ['📊',t('statsCollection')+'🔐',_lang==='km'?'សង្ខេបប្រចាំខែ':_lang==='zh'?'月度汇总':'Monthly summary','stats-collection'],['💰',t('statsProfit')+'🔐',_lang==='km'?'វិភាគប្រាក់ចំណេញ':_lang==='zh'?'盈利分析':'Profit analysis','stats-profit'],
+       ['📈',t('financeReport')+'🔐',_lang==='km'?'ផ្ដល់/ប្រមូល/ចំណេញ':_lang==='zh'?'放款/回款/利润':'Loans/Collections','finance-report'],['⚡',t('earlyPayment'),_lang==='km'?'ទូទាត់ចរចា':_lang==='zh'?'协商结清':'Early settlement','early-payment'],
        ['🔍',t('saleList'),_lang==='km'?'ស្វែងរកកិច្ចសន្យា':_lang==='zh'?'合同检索':'Contract search','sale-list'],['⏰',t('reminderTomorrow'),_lang==='km'?'ដល់កំណត់ស្អែក':_lang==='zh'?'明日到期':'Due tomorrow','reminder-tomorrow'],
        ['🚨',t('reminderOverdue'),_lang==='km'?'បញ្ជីហួសកំណត់':_lang==='zh'?'催收列表':'Overdue list','reminder-overdue'],['📋',t('paymentQuery'),_lang==='km'?'ផែនការ30ថ្ងៃ':_lang==='zh'?'30天计划':'30-day plan','payment-query']
     ].map(([i,l,s,p]) => `<div class="home-card" onclick="nav('${p}')"><div class="icon">${i}</div><div class="label">${l}</div><div class="sublabel">${s}</div></div>`).join('')}
