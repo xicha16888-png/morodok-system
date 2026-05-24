@@ -916,9 +916,10 @@ window.closeMobMore = function() {
   document.getElementById('mobMoreMenu')?.classList.remove('open');
   document.getElementById('mobOverlay')?.classList.remove('open');
 };
+let _db = null;
 let _syncTimer = null;
 let _dirty = false;
-let _dbReady = false; // 🔒 数据安全锁：只有从Supabase成功加载后才允许保存
+let _dbReady = false; // 🔒 数据安全锁
 
 async function loadDB() {
   try {
