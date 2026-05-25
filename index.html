@@ -1734,25 +1734,102 @@ window.submitPayment = function() {
 // STATS
 // ══════════════════════════════════════════════════════
 function renderStatsCollection() {
-  const pays = DB_get('payments')||[]; const sales = DB_get('sales')||[];
+  const pays  = DB_get('payments')||[];
+  const sales = DB_get('sales')||[];
+  const earlyPays = DB_get('earlyPayments')||[];
+
   const byMonth = {};
-  pays.forEach(p => { const m = p.date.slice(0,7); if (!byMonth[m]) byMonth[m]={principal:0,interest:0,count:0};
-    byMonth[m].principal += +p.principal; byMonth[m].interest += +p.interest; byMonth[m].count++; });
+  pays.forEach(p => {
+    const m = p.date.slice(0,7);
+    if (!byMonth[m]) byMonth[m] = {principal:0, interest:0, serviceFee:0, penalty:0, rebate:0, count:0};
+    byMonth[m].principal  += +p.principal;
+    byMonth[m].interest   += +p.interest;
+    byMonth[m].serviceFee += +p.serviceFee||0;
+    byMonth[m].penalty    += +p.penalty||0;
+    byMonth[m].count++;
+  });
+  // Add rebate per month (from contracts signed that month)
+  sales.forEach(s => {
+    const m = s.date.slice(0,7);
+    if (!byMonth[m]) byMonth[m] = {principal:0, interest:0, serviceFee:0, penalty:0, rebate:0, count:0};
+    byMonth[m].rebate += +s.storeRebate||0;
+  });
+
   const months = Object.keys(byMonth).sort().reverse();
-  const tP = pays.reduce((a,p)=>a+(+p.principal),0), tI = pays.reduce((a,p)=>a+(+p.interest),0);
-  const pending = sales.reduce((a,s)=>{const paid=s.schedule.filter(p=>p.paid).reduce((x,p)=>x+(+p.paidPrincipal||0),0);return a+(+s.installmentAmount-paid);},0);
+  const tP   = pays.reduce((a,p)=>a+(+p.principal),0);
+  const tI   = pays.reduce((a,p)=>a+(+p.interest),0);
+  const tSvc = pays.reduce((a,p)=>a+(+p.serviceFee||0),0);
+  const tPen = pays.reduce((a,p)=>a+(+p.penalty||0),0);
+  const tReb = sales.reduce((a,s)=>a+(+s.storeRebate||0),0);
+  const pending = sales.reduce((a,s)=>{
+    const paid = s.schedule.filter(p=>p.paid).reduce((x,p)=>x+(+p.paidPrincipal||0),0);
+    return a + (+s.installmentAmount - paid);
+  },0);
+  const tGross = tI + tSvc + tPen - tReb;
+
   return `
   <div class="page-header"><div class="page-title">📊 ${t('collectionTitle')}</div></div>
   <div class="stats-grid">
-    <div class="stat-card green"><div class="stat-label">${t("totalCollected")}</div><div class="stat-value">${fmt(tP+tI)}</div><div class="stat-sub">共 ${pays.length} 笔</div></div>
+    <div class="stat-card green"><div class="stat-label">${t("totalCollected")}</div>
+      <div class="stat-value">${fmt(tP+tI+tSvc+tPen)}</div>
+      <div class="stat-sub">${pays.length} ${_lang==='km'?'ករណី':_lang==='en'?'records':'笔'}</div></div>
     <div class="stat-card blue"><div class="stat-label">${t("principalCollected")}</div><div class="stat-value">${fmt(tP)}</div></div>
     <div class="stat-card amber"><div class="stat-label">${t("interestCollected")}</div><div class="stat-value">${fmt(tI)}</div></div>
     <div class="stat-card red"><div class="stat-label">${t("pendingPrincipalStat")}</div><div class="stat-value">${fmt(pending)}</div></div>
   </div>
+
+  <!-- 收益汇总 -->
+  <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="stat-card" style="background:#f3e5f5;border-left:3px solid #9c27b0">
+      <div class="stat-label">${_lang==='km'?'ថ្លៃសេវាដែលបានប្រមូល':_lang==='en'?'Service Fee Collected':'已收手续费'}</div>
+      <div class="stat-value" style="color:#9c27b0">${fmt(tSvc)}</div>
+    </div>
+    <div class="stat-card" style="background:#fce4ec;border-left:3px solid var(--red)">
+      <div class="stat-label">${_lang==='km'?'ប្រាក់ពិន័យដែលបានប្រមូល':_lang==='en'?'Late Fee Collected':'已收滞纳金'}</div>
+      <div class="stat-value" style="color:var(--red)">${fmt(tPen)}</div>
+    </div>
+    <div class="stat-card" style="background:#fff3e0;border-left:3px solid var(--amber)">
+      <div class="stat-label">${_lang==='km'?'កាំចំណែករបស់ហាង':_lang==='en'?'Store Rebate (deducted)':'店家返点（扣除）'}</div>
+      <div class="stat-value" style="color:var(--amber)">-${fmt(tReb)}</div>
+    </div>
+    <div class="stat-card" style="background:#e8f5e9;border-left:3px solid var(--green)">
+      <div class="stat-label">${_lang==='km'?'ចំណូលសុទ្ធ':_lang==='en'?'Net Income (excl. principal)':'净收益（不含本金）'}</div>
+      <div class="stat-value" style="color:var(--green)">${fmt(tGross)}</div>
+    </div>
+  </div>
+
   <div class="card"><div class="card-title" style="margin-bottom:14px">${t("monthlyCollection")}</div>
-    ${months.length?`<div class="table-wrap"><table><tr><th>${t("colMonth")}</th><th>${t("colCount")}</th><th>${t("colPrincipalPaid")}</th><th>${t("colInterestPaid")}</th><th>${t("colTotal")}</th></tr>
-      ${months.map(m=>`<tr><td class="fw700">${m}</td><td>${byMonth[m].count}</td><td>${fmt(byMonth[m].principal)}</td><td>${fmt(byMonth[m].interest)}</td><td class="fw700 text-green">${fmt(byMonth[m].principal+byMonth[m].interest)}</td></tr>`).join('')}
-    </table></div>`:`<div class="empty-state"><div class="ei">📊</div><p>${t("noRecord")}</p></div>`}
+    ${months.length ? `<div class="table-wrap"><table>
+      <tr>
+        <th>${t("colMonth")}</th><th>${t("colCount")}</th>
+        <th>${t("colPrincipalPaid")}</th><th>${t("colInterestPaid")}</th>
+        <th>${_lang==='km'?'ថ្លៃសេវា':_lang==='en'?'Svc Fee':'手续费'}</th>
+        <th>${_lang==='km'?'ប្រាក់ពិន័យ':_lang==='en'?'Late Fee':'滞纳金'}</th>
+        <th>${_lang==='km'?'កាំចំណែក':_lang==='en'?'Rebate':'返点'}</th>
+        <th>${t("colTotal")}</th>
+      </tr>
+      ${months.map(m => {
+        const d = byMonth[m];
+        const net = d.interest + d.serviceFee + d.penalty - d.rebate;
+        return `<tr>
+          <td class="fw700">${m}</td>
+          <td>${d.count}</td>
+          <td>${fmt(d.principal)}</td>
+          <td>${fmt(d.interest)}</td>
+          <td>${d.serviceFee>0?fmt(d.serviceFee):'—'}</td>
+          <td>${d.penalty>0?`<span class="text-red">${fmt(d.penalty)}</span>`:'—'}</td>
+          <td>${d.rebate>0?`<span class="text-amber">-${fmt(d.rebate)}</span>`:'—'}</td>
+          <td class="fw700 text-green">${fmt(d.principal+d.interest+d.serviceFee+d.penalty)}</td>
+        </tr>`;
+      }).join('')}
+      <tr style="font-weight:700;background:#f0f4f8;border-top:2px solid var(--border)">
+        <td>${t('totalRow')}</td><td>${pays.length}</td>
+        <td>${fmt(tP)}</td><td>${fmt(tI)}</td>
+        <td>${fmt(tSvc)}</td><td class="text-red">${fmt(tPen)}</td>
+        <td class="text-amber">-${fmt(tReb)}</td>
+        <td class="fw700 text-green">${fmt(tP+tI+tSvc+tPen)}</td>
+      </tr>
+    </table></div>` : `<div class="empty-state"><div class="ei">📊</div><p>${t("noRecord")}</p></div>`}
   </div>`;
 }
 
@@ -2081,7 +2158,7 @@ window.submitPurchase = function() {
 // EARLY PAYMENT 提前还款
 // ══════════════════════════════════════════════════════
 function renderEarlyPayment() {
-  const sales = (DB_get('sales')||[]).filter(s => s.status === '进行中');
+  const sales = (DB_get('sales')||[]).filter(s => s.status === '进行中' || s.status === 'Active');
   const earlyList = (DB_get('earlyPayments')||[]).slice().reverse();
   const opts = sales.map(s => {
     const paidP = s.schedule.filter(p=>p.paid).reduce((a,p)=>a+(+p.paidPrincipal||0),0);
@@ -2332,14 +2409,14 @@ function renderFinanceReport() {
     const orderCount = mSales.length;
     const mPays  = pays.filter(p => p.date.slice(0,7) === m);
     const mEarly = earlyPays.filter(r => r.date.slice(0,7) === m);
-    const totalRepay  = mPays.reduce((a,p)  => a + (+p.principal) + (+p.interest), 0)
-                      + mEarly.reduce((a,r) => a + (+r.negotiatedAmount), 0);
+    const mExpenses = expenses.filter(e => e.date.slice(0,7) === m).reduce((a,e)=>a+(+e.amount),0);
     const mInterest    = mPays.reduce((a,p) => a + (+p.interest), 0);
     const mEarlyProfit = mEarly.reduce((a,r) => a + (+r.actualProfit), 0);
-    const mServiceFee = mSales.reduce((a,s)=>a+(+s.totalServiceFee||0),0);
-    const mRebate     = mSales.reduce((a,s)=>a+(+s.storeRebate||0),0);
-    const mPenalty    = mPays.reduce((a,p)=>a+(+p.penalty||0),0);
-    const mExpenses = expenses.filter(e => e.date.slice(0,7) === m).reduce((a,e)=>a+(+e.amount),0);
+    const mServiceFee  = mPays.reduce((a,p) => a + (+p.serviceFee||0), 0);
+    const mRebate      = mSales.reduce((a,s)=>a+(+s.storeRebate||0),0);
+    const mPenalty     = mPays.reduce((a,p)=>a+(+p.penalty||0),0);
+    const totalRepay = mPays.reduce((a,p) => a + (+p.principal) + (+p.interest) + (+p.serviceFee||0) + (+p.penalty||0), 0)
+                     + mEarly.reduce((a,r) => a + (+r.negotiatedAmount), 0);
     const mProfit = mInterest + mEarlyProfit + mServiceFee + mPenalty - mRebate - mExpenses;
     const mProfitBeforeExp = mInterest + mEarlyProfit + mServiceFee + mPenalty - mRebate;
 
