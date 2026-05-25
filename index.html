@@ -1849,8 +1849,8 @@ function renderStatsProfit() {
   ${earlyPays.length > 0 ? `
   <div class="card" style="border-left:4px solid var(--amber)">
     <div class="card-header">
-      <div class="card-title">${t("earlyRepayTitle")}</div>
-      <span class="badge ${tEarlyDiff >= 0 ? 'badge-green' : 'badge-red'}">利润变化：${tEarlyDiff >= 0 ? '+' : ''}${fmt(tEarlyDiff)}</span>
+      <div class="card-title">⚡ ${t("earlyRepayTitle")}</div>
+      <span class="badge ${tEarlyDiff >= 0 ? 'badge-green' : 'badge-red'}">${t("profitChange")}： ${tEarlyDiff >= 0 ? '+' : ''}${fmt(tEarlyDiff)}</span>
     </div>
     <div class="table-wrap"><table>
       <tr><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>#</th><th>${t("negotiatedAmount").replace(" *","")}</th><th>${t("origRemainInterest")}</th><th>${t("netProfit")}</th><th>${t("profitChange")}</th></tr>
@@ -1864,7 +1864,7 @@ function renderStatsProfit() {
   </div>` : ''}
 
   <div class="card">
-    <div class="card-title" style="margin-bottom:14px">${t("contractDetails")}</div>
+    <div class="card-title" style="margin-bottom:14px">📋 ${t("contractDetails")}</div>
     ${sales.length?`<div class="table-wrap"><table>
       <tr><th>${t("colNo")}</th><th>${t("colCustomer")}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colInterest")}</th><th>${t("colServiceFee")}</th><th>${t("colRebateCol")}</th><th>${t("colNetProfit")}</th><th>${t("colStatus")}</th></tr>
       ${sales.slice().reverse().map(s=>{
