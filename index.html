@@ -280,6 +280,10 @@ tr:hover td{background:#f8faff}
   <div class="header-title">📱 <span id="headerTitle">手机销售分期管理系统</span></div>
   <div class="header-right">
     <span id="syncStatus"><span class="sync-dot"></span><span id="syncText">已同步</span></span>
+    <button onclick="manualRefresh()" title="刷新数据" id="refreshBtn"
+      style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;font-family:inherit;transition:all .2s">
+      🔄 <span id="syncTimeAgo"></span>
+    </button>
     <button id="langToggle" onclick="toggleLang()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:4px 12px;border-radius:20px;font-size:11px;cursor:pointer;font-family:inherit;transition:all .2s">🌐 EN</button>
     <span class="chip" id="companyName">MORODOK</span>
     <span class="chip" id="dateDisplay"></span>
@@ -972,6 +976,7 @@ async function loadDB() {
     if (!data.company)                     data.company = {name:'MORODOK',address:'',phone:'',note:''};
     _db = data;
     _dbReady = true;
+    _lastSyncTime = Date.now();
     try { const el=document.getElementById('companyName'); if(el&&data.company?.name) el.textContent=data.company.name; } catch(e2){}
     return {ok:true};
   } catch(e) {
@@ -1131,6 +1136,38 @@ const PAGES = {
   'purchase-add': renderPurchaseAdd, 'inventory': renderInventory, 'company': renderCompany
 };
 
+// Track last sync time
+let _lastSyncTime = null;
+
+function updateSyncTimeAgo() {
+  const el = document.getElementById('syncTimeAgo');
+  if (!el || !_lastSyncTime) return;
+  const sec = Math.floor((Date.now() - _lastSyncTime) / 1000);
+  if (sec < 10) el.textContent = '';
+  else if (sec < 60) el.textContent = `${sec}s`;
+  else el.textContent = `${Math.floor(sec/60)}m`;
+}
+
+window.manualRefresh = async function() {
+  const btn = document.getElementById('refreshBtn');
+  if (btn) btn.style.opacity = '0.5';
+  setSyncStatus('syncing');
+  const ok = await loadDB();
+  if (ok) {
+    _lastSyncTime = Date.now();
+    setSyncStatus('ok');
+    const page = document.querySelector('.nav-item.active')?.dataset?.page || 'home';
+    if (PAGES[page]) {
+      document.getElementById('mainContent').innerHTML = PAGES[page]();
+      initPage(page);
+      updateBadges();
+    }
+  } else {
+    setSyncStatus('error');
+  }
+  if (btn) btn.style.opacity = '1';
+};
+
 function nav(page) {
   buildSidebar();
   buildMobileNav(page);
@@ -1141,10 +1178,23 @@ function nav(page) {
     return;
   }
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
-  const fn = PAGES[page];
-  const mc = document.getElementById('mainContent');
-  if (fn && mc) { mc.innerHTML = fn(); mc.scrollTop = 0; initPage(page); }
-  updateBadges();
+  // 切换页面时拉取最新数据（静默刷新，不影响操作）
+  if (!_dirty) {
+    loadDB().then(ok => {
+      if (ok) {
+        _lastSyncTime = Date.now();
+        const fn = PAGES[page];
+        const mc = document.getElementById('mainContent');
+        if (fn && mc) { mc.innerHTML = fn(); mc.scrollTop = 0; initPage(page); }
+        updateBadges();
+      }
+    });
+  } else {
+    const fn = PAGES[page];
+    const mc = document.getElementById('mainContent');
+    if (fn && mc) { mc.innerHTML = fn(); mc.scrollTop = 0; initPage(page); }
+    updateBadges();
+  }
 }
 document.querySelectorAll('.nav-item[data-page]').forEach(el => el.addEventListener('click', () => nav(el.dataset.page)));
 
@@ -1179,13 +1229,14 @@ setInterval(async () => {
   if (userIsTyping()) return;
   const page = document.querySelector('.nav-item.active')?.dataset?.page;
   if (FORM_PAGES.includes(page)) return;
-  const ok = await loadDB(); // 只有成功才刷新
-  if (ok && page && PAGES[page]) {
+  const result = await loadDB();
+  if (result.ok && page && PAGES[page]) {
     document.getElementById('mainContent').innerHTML = PAGES[page]();
     initPage(page);
     updateBadges();
+    updateSyncTimeAgo();
   }
-}, 30000);
+}, 15000);
 
 // ══════════════════════════════════════════════════════
 // HOME
@@ -1529,9 +1580,13 @@ function renderPaymentAdd() {
       <div class="form-group span3"><label>${t('selectContract')}</label><select id="pContract" onchange="loadContractPeriods()">${opts||'<option>—</option>'}</select></div>
       <div class="form-group"><label>${t("paymentDate")}</label><input type="date" id="pDate" value="${today()}"></div>
       <div class="form-group"><label>${t("payPeriod")}</label><select id="pPeriod" onchange="autoFillPayment()"></select></div>
-      <div class="form-group"><label>${t("paidPrincipal")}</label><input type="number" id="pPrincipal" placeholder="0.00" step="0.01"></div>
-      <div class="form-group"><label>${t("paidInterest")}</label><input type="number" id="pInterest" placeholder="0.00" step="0.01"></div>
-      <div class="form-group"><label>${t("penalty")}</label><input type="number" id="pPenalty" value="0" step="0.01"></div>
+      <div class="form-group"><label>${t("paidPrincipal")}</label><input type="number" id="pPrincipal" placeholder="0.00" step="0.01" oninput="calcPayTotal()"></div>
+      <div class="form-group"><label>${t("paidInterest")}</label><input type="number" id="pInterest" placeholder="0.00" step="0.01" oninput="calcPayTotal()"></div>
+      <div class="form-group"><label>${t("colServiceFee")}</label><input type="number" id="pServiceFee" placeholder="0.00" step="0.01" oninput="calcPayTotal()"></div>
+      <div class="form-group"><label>${t("penalty")}</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcPayTotal()"></div>
+      <div class="form-group"><label>${_lang==='km'?'សរុបទូទាត់':_lang==='en'?'Total Payment ($)':'总还款金额 ($)'}</label>
+        <input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px">
+      </div>
       <div class="form-group"><label>备注</label><input id="pNote" placeholder="可选"></div>
     </div>
     <div class="btn-row">
@@ -1597,17 +1652,22 @@ window.deletePayment = function(id) {
 function buildPayTable(pays) {
   if (!pays.length) return `<div class="empty-state"><div class="ei">📝</div><p>${t('noRecord')}</p></div>`;
   return `<div class="table-wrap"><table>
-    <tr><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>#</th><th>${t("period")}</th><th>${t("colPrincipalPaid")}</th><th>${t("colInterestPaid")}</th><th>${t("colTotal")}</th><th>${t("colAction")}</th></tr>
-    ${pays.map(p => `<tr>
-      <td>${p.date}</td>
-      <td class="fw700">${esc(p.customer)}</td>
-      <td class="text-blue">#${p.contractId}</td>
-      <td>${p.period} ${t("period")}</td>
-      <td>${fmt(p.principal)}</td>
-      <td>${fmt(p.interest)}</td>
-      <td class="fw700 text-green">${fmt((+p.principal)+(+p.interest)+(+p.penalty||0))}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="deletePayment(${p.id})">${t('deleteBtn')}</button></td>
-    </tr>`).join('')}
+    <tr><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>#</th><th>${t("period")}</th><th>${t("colPrincipalPaid")}</th><th>${t("colInterestPaid")}</th><th>${t("colServiceFee")}</th><th>${t("penalty")}</th><th>${t("colTotal")}</th><th>${t("colAction")}</th></tr>
+    ${pays.map(p => {
+      const total = (+p.principal)+(+p.interest)+(+p.serviceFee||0)+(+p.penalty||0);
+      return `<tr>
+        <td>${p.date}</td>
+        <td class="fw700">${esc(p.customer)}</td>
+        <td class="text-blue">#${p.contractId}</td>
+        <td>${p.period} ${t("period")}</td>
+        <td>${fmt(p.principal)}</td>
+        <td>${fmt(p.interest)}</td>
+        <td>${(+p.serviceFee||0)>0?fmt(p.serviceFee):'—'}</td>
+        <td>${(+p.penalty||0)>0?`<span class="text-red">${fmt(p.penalty)}</span>`:'—'}</td>
+        <td class="fw700 text-green">${fmt(total)}</td>
+        <td><button class="btn btn-danger btn-sm" onclick="deletePayment(${p.id})">${t('deleteBtn')}</button></td>
+      </tr>`;
+    }).join('')}
   </table></div>`;
 }
 
@@ -1623,31 +1683,50 @@ window.autoFillPayment = function() {
   const period = +(document.getElementById('pPeriod')?.value||0);
   const s = (DB_get('sales')||[]).find(x => x.id === id);
   const p = s?.schedule.find(x => x.period === period);
-  if (p) { const pi = document.getElementById('pPrincipal'); const ii = document.getElementById('pInterest');
-    if (pi) pi.value = (+p.principalDue).toFixed(2); if (ii) ii.value = (+p.interestDue).toFixed(2); }
+  if (p) {
+    const pi = document.getElementById('pPrincipal');
+    const ii = document.getElementById('pInterest');
+    const si = document.getElementById('pServiceFee');
+    if (pi) pi.value = (+p.principalDue).toFixed(2);
+    if (ii) ii.value = (+p.interestDue||0).toFixed(2);
+    if (si) si.value = (+p.serviceFeeDue||0).toFixed(2);
+    calcPayTotal();
+  }
+};
+
+window.calcPayTotal = function() {
+  const p = +(document.getElementById('pPrincipal')?.value||0);
+  const i = +(document.getElementById('pInterest')?.value||0);
+  const sf= +(document.getElementById('pServiceFee')?.value||0);
+  const pe= +(document.getElementById('pPenalty')?.value||0);
+  const tot = document.getElementById('pTotal');
+  if (tot) tot.value = fmt(p + i + sf + pe);
 };
 window.submitPayment = function() {
   const contractId = +(document.getElementById('pContract')?.value||0);
   const periodNo = +(document.getElementById('pPeriod')?.value||0);
   const pDate = document.getElementById('pDate')?.value||today();
-  const principal = +(document.getElementById('pPrincipal')?.value||0);
-  const interest = +(document.getElementById('pInterest')?.value||0);
-  const penalty = +(document.getElementById('pPenalty')?.value||0);
+  const principal  = +(document.getElementById('pPrincipal')?.value||0);
+  const interest   = +(document.getElementById('pInterest')?.value||0);
+  const serviceFee = +(document.getElementById('pServiceFee')?.value||0);
+  const penalty    = +(document.getElementById('pPenalty')?.value||0);
   if (!contractId) { showMsg('payMsg',t('msgFillContract'),'red'); return; }
-  if (!principal&&!interest) { showMsg('payMsg',t('msgFillAmounts'),'red'); return; }
+  if (!principal&&!interest&&!serviceFee) { showMsg('payMsg',t('msgFillAmounts'),'red'); return; }
   const sales = DB_get('sales')||[];
   const si = sales.findIndex(s => s.id === contractId); if (si < 0) return;
   const s = sales[si];
   const pi = s.schedule.findIndex(p => p.period === periodNo); if (pi < 0) return;
   if (s.schedule[pi].paid) { showMsg('payMsg',t('msgPeriodPaid'),'amber'); return; }
-  s.schedule[pi] = {...s.schedule[pi], paid:true, paidDate:pDate, paidPrincipal:principal, paidInterest:interest, penalty};
+  s.schedule[pi] = {...s.schedule[pi], paid:true, paidDate:pDate, paidPrincipal:principal, paidInterest:interest, paidServiceFee:serviceFee, penalty};
   if (s.schedule.every(p => p.paid)) s.status = '已结清';
   sales[si] = s; DB_set('sales', sales);
   const pays = DB_get('payments')||[];
-  pays.push({id:newId(), contractId, customer:s.customer, period:periodNo, date:pDate, principal, interest, penalty});
+  pays.push({id:newId(), contractId, customer:s.customer, period:periodNo, date:pDate, principal, interest, serviceFee, penalty});
   DB_set('payments', pays);
-  showMsg('payMsg', `✅ ${s.customer} — ${t('period')} ${periodNo}：${fmt(principal+interest+penalty)}`, 'green');
-  ['pPenalty','pNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = id==='pPenalty'?'0':''; });
+  const total = principal + interest + serviceFee + penalty;
+  showMsg('payMsg', `✅ ${s.customer} — ${t('period')} ${periodNo}：${fmt(total)}`, 'green');
+  ['pPenalty','pNote','pServiceFee'].forEach(id => { const el = document.getElementById(id); if (el) el.value = id==='pPenalty'?'0':'0'; });
+  document.getElementById('pTotal').value = '';
   loadContractPeriods(); updateBadges();
 };
 // ══════════════════════════════════════════════════════
@@ -2837,8 +2916,12 @@ window.saveCompany = function() {
   const RETRY_SEC = 10;
 
   function startDateClock() {
-    const upd = () => { const el = document.getElementById('dateDisplay'); if (el) el.textContent = new Date().toLocaleDateString(_lang==='zh'?'zh-CN':'en-US',{month:'long',day:'numeric',weekday:'short'}); };
-    upd(); setInterval(upd, 30000);
+    const upd = () => {
+      const el = document.getElementById('dateDisplay');
+      if (el) el.textContent = new Date().toLocaleDateString(_lang==='zh'?'zh-CN':'en-US',{month:'long',day:'numeric',weekday:'short'});
+      updateSyncTimeAgo();
+    };
+    upd(); setInterval(upd, 10000);
   }
 
   // Show a nice waking-up screen instead of just spinner
