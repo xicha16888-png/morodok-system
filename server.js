@@ -30,7 +30,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 // ── 默认初始数据 ──
 function getInitData() {
   return {
-    sales: [], payments: [], purchases: [], earlyPayments: [], expenses: [], nextId: 1001,
+    sales: [], payments: [], purchases: [], earlyPayments: [], expenses: [], stores: [], nextId: 1001,
     phones: [
       { id: 1, brand: 'Apple', model: 'iPhone 16', cost: 700, price: 950, stock: 5 },
       { id: 2, brand: 'Apple', model: 'iPhone 15 Pro', cost: 820, price: 1099, stock: 3 },
@@ -126,7 +126,7 @@ app.post('/api/data', async (req, res) => {
 app.post('/api/:collection', async (req, res) => {
   try {
     const { collection } = req.params;
-    const allowed = ['sales','payments','phones','suppliers','purchases','company','nextId','earlyPayments','expenses'];
+    const allowed = ['sales','payments','phones','suppliers','purchases','company','nextId','earlyPayments','expenses','stores'];
     if (!allowed.includes(collection)) return res.status(400).json({ ok: false, error: '不允许的集合' });
     const { error } = await supabase
       .from('appdata')
