@@ -346,8 +346,18 @@ const I18N = {
     pendingPrincipal: '待回收本金', overdueOrders: '逾期账单',
     inProgress: '笔进行中', earlySettledCount: '笔提前结清',
     quickEntry: '快速入口',
-    // Sale add
-    newContract: '销售登记', newContractSub: '新建手机分期合同，自动生成还款计划',
+    // Sale add - new fields
+    shopName: '店铺名称', salesperson: '业务员', msgPhoneDuplicate: '该电话已登记超过2个合同，请确认！',
+    // Store stats
+    storeStats: '店家统计', storeList: '店家列表', addStore: '添加店家',
+    storeName: '店家名称', storeQR: '店家二维码', storeMonthly: '月度单量',
+    storeTotal: '总单量', storeBadDebt: '坏账率',
+    // Finance report new
+    monthPending: '月总待收款', monthPenalty: '月总滞纳金',
+    badDebtRate: '坏账率', badDebtAmt: '坏账金额',
+    badDebt7: '7天坏账', badDebt15: '15天坏账', badDebt30: '30天坏账',
+    withPenalty: '含滞纳金', withoutPenalty: '不含滞纳金',
+    badDebtSection: '坏账统计', newContractSub: '新建手机分期合同，自动生成还款计划',
     contractDate: '合同日期', customerName: '客户姓名', customerPhone: '客户电话',
     phoneModel: '手机型号', salePrice: '销售价格', deposit: '首付金额',
     installPeriods: '分期期数', firstDueDate: '首次还款日',
@@ -498,8 +508,18 @@ const I18N = {
     pendingPrincipal: 'Pending Principal', overdueOrders: 'Overdue',
     inProgress: 'active', earlySettledCount: 'early settled',
     quickEntry: 'Quick Access',
-    // Sale add
-    newContract: 'New Sale', newContractSub: 'Create installment contract with auto repayment schedule',
+    // Sale add - new fields
+    shopName: 'Shop Name', salesperson: 'Salesperson', msgPhoneDuplicate: 'This phone is registered in 2+ contracts. Please verify!',
+    // Store stats
+    storeStats: 'Store Statistics', storeList: 'Store List', addStore: 'Add Store',
+    storeName: 'Store Name', storeQR: 'Store QR Code', storeMonthly: 'Monthly Orders',
+    storeTotal: 'Total Orders', storeBadDebt: 'Bad Debt Rate',
+    // Finance report new
+    monthPending: 'Monthly Pending', monthPenalty: 'Monthly Late Fees',
+    badDebtRate: 'Bad Debt Rate', badDebtAmt: 'Bad Debt Amount',
+    badDebt7: '7-Day Overdue', badDebt15: '15-Day Overdue', badDebt30: '30-Day Overdue',
+    withPenalty: 'Incl. Late Fee', withoutPenalty: 'Excl. Late Fee',
+    badDebtSection: 'Bad Debt Analysis', newContractSub: 'Create installment contract with auto repayment schedule',
     contractDate: 'Contract Date', customerName: 'Customer Name *', customerPhone: 'Customer Phone',
     phoneModel: 'Phone Model *', salePrice: 'Sale Price ($) *', deposit: 'Down Payment ($)',
     installPeriods: 'Installment Periods', firstDueDate: 'First Due Date',
@@ -756,8 +776,18 @@ const I18N = {
     companyTitle: 'ព័ត៌មានក្រុមហ៊ុន', companyName: 'ឈ្មោះក្រុមហ៊ុន', companyPhone: 'ទូរស័ព្ទ',
     companyAddr: 'អាសយដ្ឋាន', companyNote: 'កំណត់ចំណាំ', saveInfo: '💾 រក្សាទុក',
     dataMgmt: 'ការគ្រប់គ្រងទិន្នន័យ', downloadBackup: '📤 ទាញយកការបម្រុងទុក',
-    // Reminders
-    tomorrowTitle: 'ការរំលឹកការបង់ប្រាក់ស្អែក', tomorrowDue: 'ដល់កំណត់ស្អែក',
+    // Sale add - new fields
+    shopName: 'ឈ្មោះហាង', salesperson: 'អ្នកលក់', msgPhoneDuplicate: 'លេខទូរស័ព្ទនេះមានលើស 2 កិច្ចសន្យា។ សូមពិនិត្យ!',
+    // Store stats
+    storeStats: 'ស្ថិតិហាង', storeList: 'បញ្ជីហាង', addStore: 'បន្ថែមហាង',
+    storeName: 'ឈ្មោះហាង', storeQR: 'QR Code ហាង', storeMonthly: 'ការបញ្ជាទិញប្រចាំខែ',
+    storeTotal: 'ការបញ្ជាទិញសរុប', storeBadDebt: 'អត្រាបំណុលអាក្រក់',
+    // Finance report new
+    monthPending: 'ប្រាក់ចំណាយប្រចាំខែ', monthPenalty: 'ប្រាក់ពិន័យប្រចាំខែ',
+    badDebtRate: 'អត្រាបំណុលអាក្រក់', badDebtAmt: 'ចំនួនបំណុលអាក្រក់',
+    badDebt7: 'ហួស 7 ថ្ងៃ', badDebt15: 'ហួស 15 ថ្ងៃ', badDebt30: 'ហួស 30 ថ្ងៃ',
+    withPenalty: 'រួមមានការពិន័យ', withoutPenalty: 'គ្មានការពិន័យ',
+    badDebtSection: 'ការវិភាគបំណុលអាក្រក់', tomorrowDue: 'ដល់កំណត់ស្អែក',
     overdueTitle: 'ការរំលឹកការបង់ប្រាក់ហួសកំណត់', noOverdue: 'គ្មានការបង់ប្រាក់ហួសកំណត់',
     queryTitle: 'ការសំណួរការបង់ប្រាក់', next30days: '30 ថ្ងៃខាងមុខ',
     registerPayment: 'ចុះឈ្មោះការបង់ប្រាក់', daysLeft: 'ថ្ងៃទៀត', days: 'ថ្ងៃ',
@@ -822,6 +852,7 @@ function buildSidebar() {
       <div class="nav-item" data-page="stats-profit"><span class="nav-icon">💰</span>${t('statsProfit')} 🔐</div>
       <div class="nav-item" data-page="finance-report"><span class="nav-icon">📈</span>${t('financeReport')} 🔐</div>
       <div class="nav-item" data-page="expenses"><span class="nav-icon">🧾</span>${t('expenses')} 🔐</div>
+      <div class="nav-item" data-page="store-stats"><span class="nav-icon">🏪</span>${t('storeStats')} 🔐</div>
     </div>
     <div class="nav-divider"></div>
     <div style="padding:4px 0">
@@ -1026,7 +1057,7 @@ window.closeModal = () => document.getElementById('modalBg').classList.remove('o
 // ══════════════════════════════════════════════════════
 // 🔐 密码保护
 // ══════════════════════════════════════════════════════
-const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','expenses'];
+const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','expenses','store-stats'];
 const REPORT_PWD = 'morodok888';
 let _reportUnlocked = false; // 会话内解锁状态
 
@@ -1093,7 +1124,7 @@ window.checkPwd = function(page) {
 const PAGES = {
   'home': renderHome, 'sale-add': renderSaleAdd, 'sale-list': renderSaleList,
   'payment-add': renderPaymentAdd, 'early-payment': renderEarlyPayment,
-  'stats-collection': renderStatsCollection, 'finance-report': renderFinanceReport, 'expenses': renderExpenses,
+  'stats-collection': renderStatsCollection, 'finance-report': renderFinanceReport, 'expenses': renderExpenses, 'store-stats': renderStoreStats,
   'stats-profit': renderStatsProfit, 'reminder-tomorrow': renderReminderTomorrow,
   'reminder-overdue': renderReminderOverdue, 'payment-query': renderPaymentQuery,
   'phones': renderPhones, 'suppliers': renderSuppliers,
@@ -1215,7 +1246,15 @@ function renderSaleAdd() {
     <div class="form-grid">
       <div class="form-group"><label>${t('contractDate')}</label><input type="date" id="sDate" value="${today()}"></div>
       <div class="form-group"><label>${t('customerName')}</label><input id="sCust" placeholder="${_lang==='km'?'វាយឈ្មោះ':_lang==='zh'?'输入客户全名':'Enter full name'}"></div>
-      <div class="form-group"><label>${t('customerPhone')}</label><input id="sCustPhone" placeholder="${_lang==='km'?'លេខទូរស័ព្ទ':_lang==='zh'?'联系电话':'Contact number'}"></div>
+      <div class="form-group"><label>${t('customerPhone')}</label><input id="sCustPhone" placeholder="${_lang==='km'?'លេខទូរស័ព្ទ':_lang==='zh'?'联系电话':'Contact number'}" oninput="checkPhoneDup()"></div>
+      <div class="form-group"><label>${t('shopName')}</label>
+        <select id="sShopName">
+          <option value="">— ${_lang==='km'?'ជ្រើសរើសហាង':_lang==='en'?'Select store':'选择店铺'} —</option>
+          ${(DB_get('stores')||[]).map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>${t('salesperson')}</label><input id="sSalesperson" placeholder="${_lang==='km'?'ឈ្មោះអ្នកលក់':_lang==='en'?'Staff name':'业务员姓名'}"></div>
+      <div id="phoneDupMsg" style="grid-column:span 3"></div>
       <div class="form-group span2"><label>${t('phoneModel')}</label><select id="sModel" onchange="calcInstall()">${opts || `<option>${_lang==='km'?'សូមបន្ថែមគំរូ':_lang==='zh'?'请先添加手机型号':'Please add phone models first'}</option>`}</select></div>
       <div class="form-group"><label>${t('salePrice')}</label><input type="number" id="sSalePrice" placeholder="0.00" step="0.01" oninput="calcInstall()"></div>
       <div class="form-group"><label>${t('deposit')}</label><input type="number" id="sDeposit" value="0" step="0.01" oninput="calcInstall()"></div>
@@ -1270,6 +1309,21 @@ function renderSaleAdd() {
   </div>`;
 }
 
+window.checkPhoneDup = function() {
+  const phone = document.getElementById('sCustPhone')?.value?.trim();
+  const msg = document.getElementById('phoneDupMsg');
+  if (!msg || !phone || phone.length < 6) { if(msg) msg.innerHTML=''; return; }
+  const sales = DB_get('sales')||[];
+  const count = sales.filter(s => s.customerPhone === phone).length;
+  if (count >= 2) {
+    msg.innerHTML = `<div class="alert alert-amber">⚠️ ${t('msgPhoneDuplicate')} (${_lang==='zh'?'已有':'Already'} ${count} ${_lang==='zh'?'笔合同':'contracts'})</div>`;
+  } else if (count === 1) {
+    msg.innerHTML = `<div class="alert alert-blue">ℹ️ ${_lang==='km'?'លេខនេះមាន 1 កិច្ចសន្យា':_lang==='en'?'This phone has 1 existing contract':'该电话已有 1 笔合同'}</div>`;
+  } else {
+    msg.innerHTML = '';
+  }
+};
+
 window.calcInstall = function() {
   const price       = +(document.getElementById('sSalePrice')?.value || 0);
   const dep         = +(document.getElementById('sDeposit')?.value || 0);
@@ -1304,6 +1358,8 @@ window.calcInstall = function() {
 window.submitSale = function() {
   const cust        = document.getElementById('sCust')?.value?.trim();
   const custPhone   = document.getElementById('sCustPhone')?.value?.trim() || '';
+  const shopName    = document.getElementById('sShopName')?.value?.trim() || '';
+  const salesperson = document.getElementById('sSalesperson')?.value?.trim() || '';
   const price       = +(document.getElementById('sSalePrice')?.value || 0);
   const dep         = +(document.getElementById('sDeposit')?.value || 0);
   const periods     = +(document.getElementById('sPeriods')?.value || 3);
@@ -1350,7 +1406,8 @@ window.submitSale = function() {
 
   const sale = {
     id: newId(), date: sDate, customer: cust, customerPhone: custPhone,
-    modelId, modelName: ph ? `${ph.brand} ${ph.model}` : '',
+    shopName, salesperson,
+    modelId, modelName: ph ? `${ph.brand} ${ph.model} ${ph.storage||''}`.trim() : '',
     salePrice: price, deposit: dep, installmentAmount: principal,
     periods, svcPeriods,
     interestRate: intRate * 100, serviceFeeRate: svcRate * 100,
@@ -2175,8 +2232,29 @@ function renderFinanceReport() {
     const repayRate = mDueBeforeToday.length > 0
       ? (mDuePaid.length / mDueBeforeToday.length * 100).toFixed(1) : '—';
 
-    return { m, orderCount, totalLoan, totalRepay, mProfit, mProfitBeforeExp, mExpenses, overdueRate, repayRate,
-             mDue: mDuePeriods.length, mOverdue: mOverduePeriods.length };
+    // Monthly pending (total outstanding principal+interest for active contracts as of this month)
+    const mPending = sales.filter(s => s.status === '进行中').reduce((a,s) => {
+      return a + s.schedule.filter(p => !p.paid).reduce((b,p) => b + (+p.principalDue||0) + (+p.interestDue||0), 0);
+    }, 0);
+
+    // Bad debt calc helper
+    const allOverdue7  = sales.flatMap(s => s.schedule.filter(p => !p.paid && daysDiff(p.dueDate, td) > 7));
+    const allOverdue15 = sales.flatMap(s => s.schedule.filter(p => !p.paid && daysDiff(p.dueDate, td) > 15));
+    const allOverdue30 = sales.flatMap(s => s.schedule.filter(p => !p.paid && daysDiff(p.dueDate, td) > 30));
+    const totalDueAmt  = sales.reduce((a,s) => a + s.schedule.reduce((b,p) => b + (+p.principalDue||0) + (+p.interestDue||0), 0), 0);
+    const bd7noP  = allOverdue7.reduce((a,p)=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
+    const bd15noP = allOverdue15.reduce((a,p)=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
+    const bd30noP = allOverdue30.reduce((a,p)=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
+    // With penalty estimate (daily fee × overdue days)
+    const bd7withP  = allOverdue7.reduce((a,p,_,arr,s2)=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
+    const bd7Rate   = totalDueAmt>0?(bd7noP/totalDueAmt*100).toFixed(1):'0.0';
+    const bd15Rate  = totalDueAmt>0?(bd15noP/totalDueAmt*100).toFixed(1):'0.0';
+    const bd30Rate  = totalDueAmt>0?(bd30noP/totalDueAmt*100).toFixed(1):'0.0';
+
+    return { m, orderCount, totalLoan, totalRepay, mProfit, mProfitBeforeExp, mExpenses,
+             mPenalty, mPending, overdueRate, repayRate,
+             mDue: mDuePeriods.length, mOverdue: mOverduePeriods.length,
+             bd7Rate, bd7noP, bd15Rate, bd15noP, bd30Rate, bd30noP };
   });
 
   // ── totals ──
@@ -2250,67 +2328,83 @@ function renderFinanceReport() {
   <div class="card">
     <div class="card-header">
       <div class="card-title">${t('monthlyDetail')}</div>
-      <span style="font-size:12px;color:var(--muted)">逾期率 = 逾期期次 / 应还期次 &nbsp;·&nbsp; 回款率 = 已还期次 / 应还期次</span>
     </div>
     <div class="table-wrap">
       <table>
         <tr>
-          <th>月份</th>
-          <th>新增单量</th>
-          <th>月总放款额</th>
-          <th>月总回款额</th>
-          <th>日常开支</th>
-          <th>月净利润</th>
-          <th>应还期次</th>
-          <th>已还期次</th>
-          <th>逾期期次</th>
-          <th>月回款率</th>
-          <th>月逾期率</th>
+          <th>${t('colMonth')}</th>
+          <th>${t('colNewOrders')}</th>
+          <th>${t('colMonthLoan')}</th>
+          <th>${t('colMonthRepay')}</th>
+          <th>${t('monthPending')}</th>
+          <th>${t('monthPenalty')}</th>
+          <th>${t('colMonthExp')}</th>
+          <th>${t('colMonthNet')}</th>
+          <th>${t('colRepayRate')}</th>
+          <th>${t('colOverdueRate')}</th>
         </tr>
         ${rows.map((r,i) => {
           const isCurrent = r.m === td.slice(0,7);
           const repayNum  = parseFloat(r.repayRate);
           const overdueNum = parseFloat(r.overdueRate);
-          const repayColor  = isNaN(repayNum)  ? '' : repayNum  >= 95 ? 'text-green' : repayNum  >= 80 ? 'text-amber' : 'text-red';
-          const overdueColor = overdueNum > 10 ? 'text-red' : overdueNum > 5 ? 'text-amber' : 'text-green';
-          return `<tr style="${isCurrent ? 'background:#f0f7ff;font-weight:500' : ''}">
-            <td><b>${r.m}</b>${isCurrent ? ' <span class="badge badge-blue" style="font-size:10px">${t("thisMonth")}</span>' : ''}</td>
-            <td>${r.orderCount} 笔</td>
+          const repayColor  = isNaN(repayNum) ? '' : repayNum>=95?'text-green':repayNum>=80?'text-amber':'text-red';
+          return `<tr style="${isCurrent?'background:#f0f7ff;font-weight:500':''}">
+            <td><b>${r.m}</b>${isCurrent?` <span class="badge badge-blue" style="font-size:10px">${t('thisMonth')}</span>`:''}</td>
+            <td>${r.orderCount}</td>
             <td class="text-blue fw700">${fmt(r.totalLoan)}</td>
             <td class="text-green fw700">${fmt(r.totalRepay)}</td>
-            <td class="text-red">${r.mExpenses > 0 ? fmt(r.mExpenses) : '<span style="color:var(--muted)">—</span>'}</td>
+            <td class="text-amber fw700">${fmt(r.mPending)}</td>
+            <td class="${r.mPenalty>0?'text-red':''}">${r.mPenalty>0?fmt(r.mPenalty):'—'}</td>
+            <td class="text-red">${r.mExpenses>0?fmt(r.mExpenses):'—'}</td>
             <td class="fw700" style="color:${r.mProfit>=0?'var(--navy)':'var(--red)'}">${fmt(r.mProfit)}</td>
-            <td>${r.mDue}</td>
-            <td>${r.mDue - r.mOverdue}</td>
-            <td class="${r.mOverdue > 0 ? 'text-red' : ''}">${r.mOverdue}</td>
-            <td>
-              <div style="display:flex;align-items:center;gap:6px">
-                <div style="background:#e3f2fd;height:6px;border-radius:3px;width:60px;flex-shrink:0">
-                  <div style="background:${isNaN(repayNum)||repayNum>=95?'#2e7d32':repayNum>=80?'#f57c00':'#c62828'};height:6px;border-radius:3px;width:${isNaN(repayNum)?0:Math.min(repayNum,100)}%"></div>
-                </div>
-                <span class="${repayColor} fw700">${r.repayRate}%</span>
-              </div>
-            </td>
-            <td>
-              <span class="badge ${overdueNum>10?'badge-red':overdueNum>5?'badge-amber':'badge-green'}">${r.overdueRate}%</span>
-            </td>
+            <td><span class="${repayColor} fw700">${r.repayRate}%</span></td>
+            <td><span class="badge ${overdueNum>10?'badge-red':overdueNum>5?'badge-amber':'badge-green'}">${r.overdueRate}%</span></td>
           </tr>`;
         }).join('')}
         <tr style="background:#f0f4f8;font-weight:700;border-top:2px solid var(--border)">
-          <td>${t("totalRow")}</td>
-          <td>${totOrders} 笔</td>
+          <td>${t('totalRow')}</td>
+          <td>${totOrders}</td>
           <td class="text-blue">${fmt(totLoan)}</td>
           <td class="text-green">${fmt(totRepay)}</td>
+          <td class="text-amber">${fmt(rows.reduce((a,r)=>a+r.mPending,0))}</td>
+          <td class="text-red">${fmt(rows.reduce((a,r)=>a+r.mPenalty,0))}</td>
           <td class="text-red">${fmt(totExpenses)}</td>
           <td style="color:var(--navy)">${fmt(totProfit)}</td>
-          <td>${totDue}</td>
-          <td>${totDue - totOverdue}</td>
-          <td class="${totOverdue>0?'text-red':''}">${totOverdue}</td>
           <td>—</td>
           <td><span class="badge ${parseFloat(avgOverdueRate)>10?'badge-red':parseFloat(avgOverdueRate)>5?'badge-amber':'badge-green'}">${avgOverdueRate}%</span></td>
         </tr>
       </table>
     </div>
+  </div>
+
+  <!-- 坏账统计 -->
+  <div class="card">
+    <div class="card-title" style="margin-bottom:14px">📉 ${t('badDebtSection')}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      ${t('withoutPenalty')} = ${_lang==='zh'?'逾期本金+利息':_lang==='en'?'Overdue principal+interest':'ដើម+ការប្រាក់ហួសកំណត់'} &nbsp;·&nbsp;
+      ${t('withPenalty')} = ${_lang==='zh'?'含每日滞纳金估算':_lang==='en'?'Incl. estimated daily late fees':'រួមមានការប្រាក់ប្រចាំថ្ងៃ'}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+      ${rows[0] ? [
+        ['7', rows[0].bd7Rate, rows[0].bd7noP, 'badge-amber'],
+        ['15', rows[0].bd15Rate, rows[0].bd15noP, 'badge-red'],
+        ['30', rows[0].bd30Rate, rows[0].bd30noP, 'badge-red'],
+      ].map(([d,rate,amt,cls])=>`
+        <div style="background:#fff5f5;border-radius:10px;padding:16px;border-top:3px solid ${cls==='badge-red'?'var(--red)':'var(--amber)'}">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${d}${_lang==='km'?'ថ្ងៃ':_lang==='en'?'-Day':'天'} ${t('badDebtSection')}</div>
+          <div style="font-size:24px;font-weight:700;color:${cls==='badge-red'?'var(--red)':'var(--amber)'}">${rate}%</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">${t('badDebtAmt')}：${fmt(amt)}</div>
+        </div>`).join('') : ''}
+    </div>
+    <div class="table-wrap"><table>
+      <tr><th>${t('badDebtSection')}</th><th>${t('badDebtRate')} (${t('withoutPenalty')})</th><th>${t('badDebtAmt')} (${t('withoutPenalty')})</th></tr>
+      ${[['7',rows[0]?.bd7Rate||'0.0',rows[0]?.bd7noP||0],['15',rows[0]?.bd15Rate||'0.0',rows[0]?.bd15noP||0],['30',rows[0]?.bd30Rate||'0.0',rows[0]?.bd30noP||0]]
+        .map(([d,r,a])=>`<tr>
+          <td><span class="badge ${+r>10?'badge-red':+r>5?'badge-amber':'badge-green'}">${d}${_lang==='km'?'ថ្ងៃ':_lang==='en'?'-Day':'天'}</span></td>
+          <td class="${+r>10?'text-red':+r>5?'text-amber':'text-green'} fw700">${r}%</td>
+          <td>${fmt(a)}</td>
+        </tr>`).join('')}
+    </table></div>
   </div>
 
   <!-- 单量分析 -->
@@ -2482,6 +2576,113 @@ window.deleteExpense = function(id) {
   if (!confirm('确认删除该开支记录？')) return;
   DB_set('expenses', (DB_get('expenses')||[]).filter(e=>e.id!==id));
   nav('expenses');
+};
+
+// ══════════════════════════════════════════════════════
+// STORE STATS 店家统计
+// ══════════════════════════════════════════════════════
+function renderStoreStats() {
+  const stores = DB_get('stores') || [];
+  const sales  = DB_get('sales')  || [];
+  const td     = today();
+
+  function badDebtCalc(storeSales, days) {
+    const totalAmt = storeSales.reduce((a,s) => a + s.schedule.reduce((b,p) => b + (+p.principalDue||0) + (+p.interestDue||0), 0), 0);
+    const overdue  = storeSales.flatMap(s => s.schedule.filter(p => !p.paid && daysDiff(p.dueDate, td) > days));
+    const bdAmt    = overdue.reduce((a,p) => a + (+p.principalDue||0) + (+p.interestDue||0), 0);
+    return { rate: totalAmt > 0 ? (bdAmt/totalAmt*100).toFixed(1) : '0.0', amt: bdAmt };
+  }
+
+  return `
+  <div class="page-header">
+    <div class="page-title">🏪 ${t('storeStats')}</div>
+    <div class="page-sub">${_lang==='km'?'ស្ថិតិតាមហាង':_lang==='en'?'Statistics by store':'按店铺统计单量及坏账'}</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="margin-bottom:14px">${t('addStore')}</div>
+    <div class="form-grid">
+      <div class="form-group"><label>${t('storeName')}</label><input id="stName" placeholder="${_lang==='km'?'ឈ្មោះហាង':_lang==='en'?'Store name':'店铺名称'}"></div>
+      <div class="form-group"><label>${t('storeQR')} (${_lang==='km'?'ជ្រើសរូបភាព':_lang==='en'?'Upload image':'上传图片'})</label>
+        <input type="file" id="stQR" accept="image/*" style="border:1.5px solid var(--border);border-radius:7px;padding:8px;font-size:13px">
+      </div>
+    </div>
+    <div class="btn-row"><button class="btn btn-primary" onclick="addStore()">➕ ${t('addStore')}</button></div>
+    <div id="storeMsg"></div>
+  </div>
+
+  ${stores.length === 0 ? `<div class="card"><div class="empty-state"><div class="ei">🏪</div><p>${t('noData')}</p></div></div>` :
+    stores.map(store => {
+      const storeSales = sales.filter(s => s.shopName === store.name);
+      const bd7  = badDebtCalc(storeSales, 7);
+      const bd15 = badDebtCalc(storeSales, 15);
+      const bd30 = badDebtCalc(storeSales, 30);
+      const byMonth = {};
+      storeSales.forEach(s => { const m = s.date.slice(0,7); byMonth[m] = (byMonth[m]||0)+1; });
+      const months = Object.keys(byMonth).sort().reverse().slice(0,6);
+
+      return `<div class="card" style="margin-bottom:14px">
+        <div class="card-header">
+          <div style="display:flex;align-items:center;gap:12px">
+            ${store.qr ? `<img src="${store.qr}" style="width:60px;height:60px;border-radius:8px;object-fit:cover;border:1px solid var(--border)">` : '<div style="width:60px;height:60px;border-radius:8px;background:#f0f7ff;display:flex;align-items:center;justify-content:center;font-size:24px">🏪</div>'}
+            <div>
+              <div style="font-size:16px;font-weight:700;color:var(--navy)">${esc(store.name)}</div>
+              <div style="font-size:12px;color:var(--muted)">${t('storeTotal')}：${storeSales.length} ${_lang==='km'?'ករណី':_lang==='en'?'contracts':'笔'}</div>
+            </div>
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="deleteStore('${esc(store.name)}')">删除</button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0">
+          ${[['7', bd7],['15', bd15],['30', bd30]].map(([d,bd])=>`
+          <div style="background:#fff5f5;border-radius:8px;padding:12px;border-left:3px solid var(--red)">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${d}${_lang==='km'?'ថ្ងៃ':_lang==='en'?'-Day':'天'} ${t('badDebtSection')}</div>
+            <div style="font-size:18px;font-weight:700;color:var(--red)">${bd.rate}%</div>
+            <div style="font-size:11px;color:var(--muted)">${fmt(bd.amt)}</div>
+          </div>`).join('')}
+        </div>
+
+        ${months.length ? `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:600">${t('storeMonthly')}</div>
+        <div class="table-wrap"><table>
+          <tr><th>${t('colMonth')}</th><th>${t('storeTotal')}</th></tr>
+          ${months.map(m=>`<tr><td>${m}</td><td class="fw700">${byMonth[m]}</td></tr>`).join('')}
+        </table></div>` : ''}
+      </div>`;
+    }).join('')}`;
+}
+
+function daysDiff(dateStr, today) {
+  return Math.floor((new Date(today) - new Date(dateStr)) / 86400000);
+}
+
+window.addStore = function() {
+  const name = document.getElementById('stName')?.value?.trim();
+  if (!name) { showMsg('storeMsg', t('msgFillName').replace('品牌和型号','店铺名称').replace('brand and model','store name'), 'red'); return; }
+  const stores = DB_get('stores') || [];
+  if (stores.find(s => s.name === name)) { showMsg('storeMsg', _lang==='zh'?'店铺名称已存在':_lang==='en'?'Store already exists':'ហាងនេះមានស្រាប់', 'amber'); return; }
+  const fileInput = document.getElementById('stQR');
+  const file = fileInput?.files?.[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      stores.push({ name, qr: e.target.result, createdAt: today() });
+      DB_set('stores', stores);
+      showMsg('storeMsg', '✅ ' + t('added'), 'green');
+      setTimeout(() => nav('store-stats'), 300);
+    };
+    reader.readAsDataURL(file);
+  } else {
+    stores.push({ name, qr: '', createdAt: today() });
+    DB_set('stores', stores);
+    showMsg('storeMsg', '✅ ' + t('added'), 'green');
+    setTimeout(() => nav('store-stats'), 300);
+  }
+};
+
+window.deleteStore = function(name) {
+  if (!confirm(`${t('deleteBtn')} ${name}?`)) return;
+  DB_set('stores', (DB_get('stores')||[]).filter(s => s.name !== name));
+  nav('store-stats');
 };
 
 function renderInventory() {
