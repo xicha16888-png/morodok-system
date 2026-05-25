@@ -1247,12 +1247,7 @@ function renderSaleAdd() {
       <div class="form-group"><label>${t('contractDate')}</label><input type="date" id="sDate" value="${today()}"></div>
       <div class="form-group"><label>${t('customerName')}</label><input id="sCust" placeholder="${_lang==='km'?'វាយឈ្មោះ':_lang==='zh'?'输入客户全名':'Enter full name'}"></div>
       <div class="form-group"><label>${t('customerPhone')}</label><input id="sCustPhone" placeholder="${_lang==='km'?'លេខទូរស័ព្ទ':_lang==='zh'?'联系电话':'Contact number'}" oninput="checkPhoneDup()"></div>
-      <div class="form-group"><label>${t('shopName')}</label>
-        <select id="sShopName">
-          <option value="">— ${_lang==='km'?'ជ្រើសរើសហាង':_lang==='en'?'Select store':'选择店铺'} —</option>
-          ${(DB_get('stores')||[]).map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('')}
-        </select>
-      </div>
+      <div class="form-group"><label>${t('shopName')}</label><input id="sShopName" placeholder="${_lang==='km'?'ឈ្មោះហាង':_lang==='en'?'Store name':'店铺名称'}"></div>
       <div class="form-group"><label>${t('salesperson')}</label><input id="sSalesperson" placeholder="${_lang==='km'?'ឈ្មោះអ្នកលក់':_lang==='en'?'Staff name':'业务员姓名'}"></div>
       <div id="phoneDupMsg" style="grid-column:span 3"></div>
       <div class="form-group span2"><label>${t('phoneModel')}</label><select id="sModel" onchange="calcInstall()">${opts || `<option>${_lang==='km'?'សូមបន្ថែមគំរូ':_lang==='zh'?'请先添加手机型号':'Please add phone models first'}</option>`}</select></div>
@@ -2242,19 +2237,39 @@ function renderFinanceReport() {
     const allOverdue15 = sales.flatMap(s => s.schedule.filter(p => !p.paid && daysDiff(p.dueDate, td) > 15));
     const allOverdue30 = sales.flatMap(s => s.schedule.filter(p => !p.paid && daysDiff(p.dueDate, td) > 30));
     const totalDueAmt  = sales.reduce((a,s) => a + s.schedule.reduce((b,p) => b + (+p.principalDue||0) + (+p.interestDue||0), 0), 0);
+    // Bad debt calc - without penalty (principal + interest only)
     const bd7noP  = allOverdue7.reduce((a,p)=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
     const bd15noP = allOverdue15.reduce((a,p)=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
     const bd30noP = allOverdue30.reduce((a,p)=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
-    // With penalty estimate (daily fee × overdue days)
-    const bd7withP  = allOverdue7.reduce((a,p,_,arr,s2)=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
+
+    // Bad debt calc - with penalty (add estimated daily late fee × overdue days)
+    function bdWithPenalty(overdueList) {
+      return overdueList.reduce((a, p) => {
+        const base = (+p.principalDue||0) + (+p.interestDue||0);
+        // Find the sale to get dailyLateFee
+        const sale = sales.find(s => s.schedule.some(sc => sc === p));
+        const dailyFee = sale ? (+sale.dailyLateFee||0) : 0;
+        const days = Math.floor((new Date(td) - new Date(p.dueDate)) / 86400000);
+        return a + base + (dailyFee * Math.max(0, days));
+      }, 0);
+    }
+    const bd7withP  = bdWithPenalty(allOverdue7);
+    const bd15withP = bdWithPenalty(allOverdue15);
+    const bd30withP = bdWithPenalty(allOverdue30);
+
     const bd7Rate   = totalDueAmt>0?(bd7noP/totalDueAmt*100).toFixed(1):'0.0';
     const bd15Rate  = totalDueAmt>0?(bd15noP/totalDueAmt*100).toFixed(1):'0.0';
     const bd30Rate  = totalDueAmt>0?(bd30noP/totalDueAmt*100).toFixed(1):'0.0';
+    const bd7RateP  = totalDueAmt>0?(bd7withP/totalDueAmt*100).toFixed(1):'0.0';
+    const bd15RateP = totalDueAmt>0?(bd15withP/totalDueAmt*100).toFixed(1):'0.0';
+    const bd30RateP = totalDueAmt>0?(bd30withP/totalDueAmt*100).toFixed(1):'0.0';
 
     return { m, orderCount, totalLoan, totalRepay, mProfit, mProfitBeforeExp, mExpenses,
              mPenalty, mPending, overdueRate, repayRate,
              mDue: mDuePeriods.length, mOverdue: mOverduePeriods.length,
-             bd7Rate, bd7noP, bd15Rate, bd15noP, bd30Rate, bd30noP };
+             bd7Rate, bd7noP, bd7RateP, bd7withP,
+             bd15Rate, bd15noP, bd15RateP, bd15withP,
+             bd30Rate, bd30noP, bd30RateP, bd30withP };
   });
 
   // ── totals ──
@@ -2386,24 +2401,45 @@ function renderFinanceReport() {
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
       ${rows[0] ? [
-        ['7', rows[0].bd7Rate, rows[0].bd7noP, 'badge-amber'],
-        ['15', rows[0].bd15Rate, rows[0].bd15noP, 'badge-red'],
-        ['30', rows[0].bd30Rate, rows[0].bd30noP, 'badge-red'],
-      ].map(([d,rate,amt,cls])=>`
-        <div style="background:#fff5f5;border-radius:10px;padding:16px;border-top:3px solid ${cls==='badge-red'?'var(--red)':'var(--amber)'}">
-          <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${d}${_lang==='km'?'ថ្ងៃ':_lang==='en'?'-Day':'天'} ${t('badDebtSection')}</div>
-          <div style="font-size:24px;font-weight:700;color:${cls==='badge-red'?'var(--red)':'var(--amber)'}">${rate}%</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:4px">${t('badDebtAmt')}：${fmt(amt)}</div>
+        ['7',  rows[0].bd7Rate,  rows[0].bd7noP,  rows[0].bd7RateP,  rows[0].bd7withP],
+        ['15', rows[0].bd15Rate, rows[0].bd15noP, rows[0].bd15RateP, rows[0].bd15withP],
+        ['30', rows[0].bd30Rate, rows[0].bd30noP, rows[0].bd30RateP, rows[0].bd30withP],
+      ].map(([d,rN,aN,rP,aP])=>`
+        <div style="background:#fff5f5;border-radius:10px;padding:14px;border-top:3px solid ${+rP>10?'var(--red)':'var(--amber)'}">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600">${d}${_lang==='km'?'ថ្ងៃ':_lang==='en'?'-Day':'天'} ${t('badDebtSection')}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px">
+            <div style="background:#fff;border-radius:6px;padding:8px;text-align:center">
+              <div style="font-size:10px;color:var(--muted)">${t('withoutPenalty')}</div>
+              <div style="font-size:18px;font-weight:700;color:${+rN>10?'var(--red)':+rN>5?'var(--amber)':'var(--green)'}">${rN}%</div>
+              <div style="font-size:11px;color:var(--muted)">${fmt(aN)}</div>
+            </div>
+            <div style="background:#fff3e0;border-radius:6px;padding:8px;text-align:center">
+              <div style="font-size:10px;color:var(--muted)">${t('withPenalty')}</div>
+              <div style="font-size:18px;font-weight:700;color:${+rP>10?'var(--red)':+rP>5?'var(--amber)':'var(--green)'}">${rP}%</div>
+              <div style="font-size:11px;color:var(--muted)">${fmt(aP)}</div>
+            </div>
+          </div>
         </div>`).join('') : ''}
     </div>
     <div class="table-wrap"><table>
-      <tr><th>${t('badDebtSection')}</th><th>${t('badDebtRate')} (${t('withoutPenalty')})</th><th>${t('badDebtAmt')} (${t('withoutPenalty')})</th></tr>
-      ${[['7',rows[0]?.bd7Rate||'0.0',rows[0]?.bd7noP||0],['15',rows[0]?.bd15Rate||'0.0',rows[0]?.bd15noP||0],['30',rows[0]?.bd30Rate||'0.0',rows[0]?.bd30noP||0]]
-        .map(([d,r,a])=>`<tr>
-          <td><span class="badge ${+r>10?'badge-red':+r>5?'badge-amber':'badge-green'}">${d}${_lang==='km'?'ថ្ងៃ':_lang==='en'?'-Day':'天'}</span></td>
-          <td class="${+r>10?'text-red':+r>5?'text-amber':'text-green'} fw700">${r}%</td>
-          <td>${fmt(a)}</td>
-        </tr>`).join('')}
+      <tr>
+        <th>${t('badDebtSection')}</th>
+        <th>${t('badDebtRate')} (${t('withoutPenalty')})</th>
+        <th>${t('badDebtAmt')} (${t('withoutPenalty')})</th>
+        <th>${t('badDebtRate')} (${t('withPenalty')})</th>
+        <th>${t('badDebtAmt')} (${t('withPenalty')})</th>
+      </tr>
+      ${[
+        ['7', rows[0]?.bd7Rate||'0.0', rows[0]?.bd7noP||0, rows[0]?.bd7RateP||'0.0', rows[0]?.bd7withP||0],
+        ['15', rows[0]?.bd15Rate||'0.0', rows[0]?.bd15noP||0, rows[0]?.bd15RateP||'0.0', rows[0]?.bd15withP||0],
+        ['30', rows[0]?.bd30Rate||'0.0', rows[0]?.bd30noP||0, rows[0]?.bd30RateP||'0.0', rows[0]?.bd30withP||0],
+      ].map(([d,rN,aN,rP,aP])=>`<tr>
+        <td><span class="badge ${+rP>10?'badge-red':+rP>5?'badge-amber':'badge-green'}">${d}${_lang==='km'?'ថ្ងៃ':_lang==='en'?'-Day':'天'}</span></td>
+        <td class="${+rN>10?'text-red':+rN>5?'text-amber':'text-green'} fw700">${rN}%</td>
+        <td>${fmt(aN)}</td>
+        <td class="${+rP>10?'text-red':+rP>5?'text-amber':'text-green'} fw700">${rP}%</td>
+        <td>${fmt(aP)}</td>
+      </tr>`).join('')}
     </table></div>
   </div>
 
@@ -2586,17 +2622,33 @@ function renderStoreStats() {
   const sales  = DB_get('sales')  || [];
   const td     = today();
 
-  function badDebtCalc(storeSales, days) {
-    const totalAmt = storeSales.reduce((a,s) => a + s.schedule.reduce((b,p) => b + (+p.principalDue||0) + (+p.interestDue||0), 0), 0);
-    const overdue  = storeSales.flatMap(s => s.schedule.filter(p => !p.paid && daysDiff(p.dueDate, td) > days));
-    const bdAmt    = overdue.reduce((a,p) => a + (+p.principalDue||0) + (+p.interestDue||0), 0);
-    return { rate: totalAmt > 0 ? (bdAmt/totalAmt*100).toFixed(1) : '0.0', amt: bdAmt };
+  function calcBadDebt(storeSales, days) {
+    const totalAmt = storeSales.reduce((a,s) =>
+      a + s.schedule.reduce((b,p) => b + (+p.principalDue||0) + (+p.interestDue||0), 0), 0);
+    const overdue = storeSales.flatMap(s =>
+      s.schedule.filter(p => !p.paid && Math.floor((new Date(td)-new Date(p.dueDate))/86400000) > days));
+    const bdNoP  = overdue.reduce((a,p) => a + (+p.principalDue||0) + (+p.interestDue||0), 0);
+    // With penalty: add dailyLateFee × overdue days per sale
+    const bdWithP = overdue.reduce((a,p) => {
+      const sale = storeSales.find(s => s.schedule.includes(p));
+      const dailyFee = sale ? (+sale.dailyLateFee||0) : 0;
+      const d = Math.max(0, Math.floor((new Date(td)-new Date(p.dueDate))/86400000));
+      return a + (+p.principalDue||0) + (+p.interestDue||0) + dailyFee * d;
+    }, 0);
+    const rateNoP  = totalAmt > 0 ? (bdNoP/totalAmt*100).toFixed(1)  : '0.0';
+    const rateWithP= totalAmt > 0 ? (bdWithP/totalAmt*100).toFixed(1) : '0.0';
+    return { rateNoP, bdNoP, rateWithP, bdWithP, totalAmt };
   }
+
+  // All stores from sales (even if not in stores list)
+  const allShopNames = [...new Set(sales.map(s=>s.shopName||'').filter(Boolean))];
+  // Combine registered stores + stores from sales
+  const storeNames = [...new Set([...stores.map(s=>s.name), ...allShopNames])];
 
   return `
   <div class="page-header">
     <div class="page-title">🏪 ${t('storeStats')}</div>
-    <div class="page-sub">${_lang==='km'?'ស្ថិតិតាមហាង':_lang==='en'?'Statistics by store':'按店铺统计单量及坏账'}</div>
+    <div class="page-sub">${_lang==='km'?'ស្ថិតិតាមហាង':_lang==='en'?'Per-store order & bad debt analysis':'按店铺统计单量及坏账'}</div>
   </div>
 
   <div class="card">
@@ -2611,41 +2663,82 @@ function renderStoreStats() {
     <div id="storeMsg"></div>
   </div>
 
-  ${stores.length === 0 ? `<div class="card"><div class="empty-state"><div class="ei">🏪</div><p>${t('noData')}</p></div></div>` :
-    stores.map(store => {
-      const storeSales = sales.filter(s => s.shopName === store.name);
-      const bd7  = badDebtCalc(storeSales, 7);
-      const bd15 = badDebtCalc(storeSales, 15);
-      const bd30 = badDebtCalc(storeSales, 30);
+  ${storeNames.length === 0 ? `<div class="card"><div class="empty-state"><div class="ei">🏪</div><p>${t('noData')}</p></div></div>` :
+    storeNames.map(name => {
+      const storeInfo  = stores.find(s => s.name === name);
+      const storeSales = sales.filter(s => s.shopName === name);
+      const activeSales= storeSales.filter(s => s.status === '进行中');
+      const bd7  = calcBadDebt(storeSales, 7);
+      const bd15 = calcBadDebt(storeSales, 15);
+      const bd30 = calcBadDebt(storeSales, 30);
+
+      // Monthly breakdown
       const byMonth = {};
-      storeSales.forEach(s => { const m = s.date.slice(0,7); byMonth[m] = (byMonth[m]||0)+1; });
-      const months = Object.keys(byMonth).sort().reverse().slice(0,6);
+      storeSales.forEach(s => { const m = s.date.slice(0,7); byMonth[m]=(byMonth[m]||0)+1; });
+      const months = Object.keys(byMonth).sort().reverse();
 
       return `<div class="card" style="margin-bottom:14px">
         <div class="card-header">
           <div style="display:flex;align-items:center;gap:12px">
-            ${store.qr ? `<img src="${store.qr}" style="width:60px;height:60px;border-radius:8px;object-fit:cover;border:1px solid var(--border)">` : '<div style="width:60px;height:60px;border-radius:8px;background:#f0f7ff;display:flex;align-items:center;justify-content:center;font-size:24px">🏪</div>'}
+            ${storeInfo?.qr ? `<img src="${storeInfo.qr}" style="width:64px;height:64px;border-radius:8px;object-fit:cover;border:1px solid var(--border)">` :
+              '<div style="width:64px;height:64px;border-radius:8px;background:#f0f7ff;display:flex;align-items:center;justify-content:center;font-size:28px">🏪</div>'}
             <div>
-              <div style="font-size:16px;font-weight:700;color:var(--navy)">${esc(store.name)}</div>
-              <div style="font-size:12px;color:var(--muted)">${t('storeTotal')}：${storeSales.length} ${_lang==='km'?'ករណី':_lang==='en'?'contracts':'笔'}</div>
+              <div style="font-size:17px;font-weight:700;color:var(--navy)">${esc(name)}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px">
+                ${t('storeTotal')}：<b>${storeSales.length}</b> ${_lang==='km'?'ករណី':_lang==='en'?'contracts':'笔'} &nbsp;|&nbsp;
+                ${_lang==='km'?'កំពុងដំណើរ':_lang==='en'?'Active':'进行中'}：<b class="text-blue">${activeSales.length}</b> &nbsp;|&nbsp;
+                ${_lang==='km'?'បានទូទាត់':_lang==='en'?'Settled':'已结清'}：<b class="text-green">${storeSales.filter(s=>s.status==='已结清'||s.status==='提前结清').length}</b>
+              </div>
             </div>
           </div>
-          <button class="btn btn-danger btn-sm" onclick="deleteStore('${esc(store.name)}')">删除</button>
+          ${storeInfo ? `<button class="btn btn-danger btn-sm" onclick="deleteStore('${esc(name)}')">🗑️</button>` : ''}
         </div>
 
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0">
-          ${[['7', bd7],['15', bd15],['30', bd30]].map(([d,bd])=>`
-          <div style="background:#fff5f5;border-radius:8px;padding:12px;border-left:3px solid var(--red)">
-            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${d}${_lang==='km'?'ថ្ងៃ':_lang==='en'?'-Day':'天'} ${t('badDebtSection')}</div>
-            <div style="font-size:18px;font-weight:700;color:var(--red)">${bd.rate}%</div>
-            <div style="font-size:11px;color:var(--muted)">${fmt(bd.amt)}</div>
-          </div>`).join('')}
+        <!-- 单量统计 -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0 14px">
+          <div style="background:#e3f2fd;border-radius:8px;padding:12px;text-align:center">
+            <div style="font-size:11px;color:var(--muted)">${t('storeTotal')}</div>
+            <div style="font-size:22px;font-weight:700;color:var(--sky)">${storeSales.length}</div>
+          </div>
+          <div style="background:#e8f5e9;border-radius:8px;padding:12px;text-align:center">
+            <div style="font-size:11px;color:var(--muted)">${_lang==='km'?'ខែនេះ':_lang==='en'?'This Month':'本月'}</div>
+            <div style="font-size:22px;font-weight:700;color:var(--green)">${byMonth[td.slice(0,7)]||0}</div>
+          </div>
+          <div style="background:#fff8e1;border-radius:8px;padding:12px;text-align:center">
+            <div style="font-size:11px;color:var(--muted)">${_lang==='km'?'ខែមុន':_lang==='en'?'Last Month':'上月'}</div>
+            <div style="font-size:22px;font-weight:700;color:var(--amber)">${byMonth[months[1]]||0}</div>
+          </div>
         </div>
 
-        ${months.length ? `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:600">${t('storeMonthly')}</div>
+        <!-- 坏账率 -->
+        <div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:8px">📉 ${t('badDebtSection')}</div>
         <div class="table-wrap"><table>
-          <tr><th>${t('colMonth')}</th><th>${t('storeTotal')}</th></tr>
-          ${months.map(m=>`<tr><td>${m}</td><td class="fw700">${byMonth[m]}</td></tr>`).join('')}
+          <tr>
+            <th>${t('badDebtSection')}</th>
+            <th>${t('badDebtRate')} (${t('withoutPenalty')})</th>
+            <th>${t('badDebtAmt')} (${t('withoutPenalty')})</th>
+            <th>${t('badDebtRate')} (${t('withPenalty')})</th>
+            <th>${t('badDebtAmt')} (${t('withPenalty')})</th>
+          </tr>
+          ${[[7,bd7],[15,bd15],[30,bd30]].map(([d,bd])=>`<tr>
+            <td><span class="badge ${+bd.rateWithP>10?'badge-red':+bd.rateWithP>5?'badge-amber':'badge-green'}">${d}${_lang==='km'?'ថ្ងៃ':_lang==='en'?'-Day':'天'}</span></td>
+            <td class="${+bd.rateNoP>10?'text-red':+bd.rateNoP>5?'text-amber':'text-green'} fw700">${bd.rateNoP}%</td>
+            <td>${fmt(bd.bdNoP)}</td>
+            <td class="${+bd.rateWithP>10?'text-red':+bd.rateWithP>5?'text-amber':'text-green'} fw700">${bd.rateWithP}%</td>
+            <td>${fmt(bd.bdWithP)}</td>
+          </tr>`).join('')}
+        </table></div>
+
+        <!-- 月度单量 -->
+        ${months.length > 0 ? `
+        <div style="font-size:12px;font-weight:600;color:var(--navy);margin:14px 0 8px">${t('storeMonthly')}</div>
+        <div class="table-wrap"><table>
+          <tr><th>${t('colMonth')}</th><th>${t('storeTotal')}</th><th>${_lang==='km'?'ចំណែក':_lang==='en'?'Share':'占比'}</th></tr>
+          ${months.map(m=>`<tr>
+            <td>${m}${m===td.slice(0,7)?` <span class="badge badge-blue" style="font-size:10px">${t('thisMonth')}</span>`:''}</td>
+            <td class="fw700">${byMonth[m]}</td>
+            <td style="color:var(--muted)">${storeSales.length>0?(byMonth[m]/storeSales.length*100).toFixed(0):'0'}%</td>
+          </tr>`).join('')}
         </table></div>` : ''}
       </div>`;
     }).join('')}`;
