@@ -2476,21 +2476,22 @@ function renderFinanceReport() {
     function overdueAmt(list) {
       return list.reduce((a,p) => a + (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0), 0);
     }
-    function overdueAmtWithPenalty(list) {
-      return list.reduce((a, p) => {
-        const base = (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0);
-        const sale = sales.find(s => s.schedule.some(sc => sc === p));
-        const dailyFee = sale ? (+sale.dailyLateFee||0) : 0;
-        const days = Math.max(0, Math.floor((new Date(td) - new Date(p.dueDate)) / 86400000));
-        return a + base + dailyFee * days;
-      }, 0);
+    // 含滞纳金坏账金额 = 逾期金额 - 客户实际已付滞纳金（滞纳金抵消坏账，率更小）
+    function overdueAmtWithPenalty(overdueList) {
+      // 找出涉及的合同
+      const overdueSales = sales.filter(s => s.schedule.some(p => overdueList.includes(p)));
+      const contractIds = new Set(overdueSales.map(s => s.id));
+      // 这些合同实际已收的滞纳金
+      const actualPenalty = pays
+        .filter(p => contractIds.has(p.contractId))
+        .reduce((a,p) => a + (+p.penalty||0), 0);
+      // 坏账金额 - 已收滞纳金（不能为负）
+      return Math.max(0, overdueAmt(overdueList) - actualPenalty);
     }
 
-    // 坏账率 = (总应收款 - 实际回款) / 总应收款 × 100（不含滞纳金）
     const bd7noP  = overdueAmt(allOverdue7);
     const bd15noP = overdueAmt(allOverdue15);
     const bd30noP = overdueAmt(allOverdue30);
-    // 含滞纳金
     const bd7withP  = overdueAmtWithPenalty(allOverdue7);
     const bd15withP = overdueAmtWithPenalty(allOverdue15);
     const bd30withP = overdueAmtWithPenalty(allOverdue30);
@@ -2645,9 +2646,15 @@ function renderFinanceReport() {
   <!-- 坏账统计（基于选中月份合同）-->
   <div class="card">
     <div class="card-title" style="margin-bottom:14px">📉 ${t('badDebtSection')}</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
-      ${t('withoutPenalty')} = ${_lang==='zh'?'逾期本金+利息':_lang==='en'?'Overdue principal+interest':'ដើម+ការប្រាក់ហួសកំណត់'} &nbsp;·&nbsp;
-      ${t('withPenalty')} = ${_lang==='zh'?'含每日滞纳金估算':_lang==='en'?'Incl. estimated daily late fees':'រួមមានការប្រាក់ប្រចាំថ្ងៃ'}
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;background:#f8faff;padding:10px 14px;border-radius:8px;line-height:1.8">
+      📐 <b>${_lang==='km'?'រូបមន្ត':_lang==='en'?'Formula':'计算公式'}：</b><br>
+      <span style="color:var(--red)">▸ ${_lang==='km'?'អត្រាបំណុលអាក្រក់':_lang==='en'?'Bad Debt Rate':'坏账率'} = （总应收款 - 实际回款）÷ 总应收款 × 100</span><br>
+      <span style="color:var(--amber)">▸ ${_lang==='en'?'Incl. Late Fee Bad Debt Rate':'含滞纳金坏账率'} = （逾期金额 - 客户实际已付滞纳金）÷ 总应收款 × 100</span><br>
+      <span style="color:var(--muted);font-size:11px">
+        · ${_lang==='en'?'Total receivables':'总应收款'} = ${_lang==='en'?'sum of all scheduled (principal + interest + service fee)':'所有合同应还（本金+利息+手续费）之和'}<br>
+        · ${_lang==='en'?'Incl. late fee':'含滞纳金'} = ${_lang==='en'?'overdue amount minus actual late fees collected (reduces bad debt)':'逾期金额 - 客户实际还款的滞纳金（越多越小）'}<br>
+        · 7/15/30天 = ${_lang==='en'?'only count overdue periods exceeding that many days':'仅统计逾期超过该天数的未还期次'}
+      </span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
       ${rows[0] ? [
