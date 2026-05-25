@@ -2086,7 +2086,14 @@ function renderEarlyPayment() {
     const paidP = s.schedule.filter(p=>p.paid).reduce((a,p)=>a+(+p.paidPrincipal||0),0);
     const remainP = +s.installmentAmount - paidP;
     const remainI = s.schedule.filter(p=>!p.paid).reduce((a,p)=>a+(+p.interestDue),0);
-    return `<option value="${s.id}" data-remain-p="${remainP.toFixed(2)}" data-remain-i="${remainI.toFixed(2)}" data-customer="${esc(s.customer)}">#${s.id} — ${esc(s.customer)} (${t("remainPrincipal")} ${fmt(remainP)} / ${t("origRemainInterest")} ${fmt(remainI)})</option>`;
+    const remainSvc = s.schedule.filter(p=>!p.paid).reduce((a,p)=>a+(+p.serviceFeeDue||0),0);
+    const rebate = +s.storeRebate || 0;
+    return `<option value="${s.id}"
+      data-remain-p="${remainP.toFixed(2)}"
+      data-remain-i="${remainI.toFixed(2)}"
+      data-remain-svc="${remainSvc.toFixed(2)}"
+      data-rebate="${rebate.toFixed(2)}"
+      data-customer="${esc(s.customer)}">#${s.id} — ${esc(s.customer)} (${t("remainPrincipal")} ${fmt(remainP)})</option>`;
   }).join('');
   return `
   <div class="page-header">
@@ -2103,8 +2110,10 @@ function renderEarlyPayment() {
         <select id="epContract" onchange="calcEarlyProfit()">${opts||'<option>—</option>'}</select>
       </div>
       <div class="form-group"><label>${t("paymentDate")}</label><input type="date" id="epDate" value="${today()}"></div>
-      <div class="form-group"><label>${t("remainPrincipal")}</label><input id="epRemainP" readonly></div>
-      <div class="form-group"><label>${t("origRemainInterest")}</label><input id="epRemainI" readonly></div>
+      <div class="form-group"><label>${t("remainPrincipal")}</label><input id="epRemainP" readonly style="background:#f0f7ff"></div>
+      <div class="form-group"><label>${t("origRemainInterest")}</label><input id="epRemainI" readonly style="background:#f0faf0"></div>
+      <div class="form-group"><label>${_lang==='km'?'ថ្លៃសេវានៅសល់':_lang==='en'?'Remaining Service Fee ($)':'原剩余手续费 ($)'}</label><input id="epRemainSvc" readonly style="background:#fff8e1"></div>
+      <div class="form-group"><label>${_lang==='km'?'កាំចំណែករបស់ហាង':_lang==='en'?'Store Rebate ($)':'店家返点 ($)'}</label><input id="epRebate" readonly style="background:#fce4ec;color:var(--red);font-weight:600"></div>
     </div>
 
     <div style="background:#fff8e1;border-radius:10px;padding:16px;margin-top:14px;border-left:4px solid var(--amber)">
@@ -2144,15 +2153,25 @@ function renderEarlyPayment() {
 function buildEarlyTable(list) {
   if (!list.length) return `<div class="empty-state"><div class="ei">⚡</div><p>${t("noRecord")}</p></div>`;
   return `<div class="table-wrap"><table>
-    <tr><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>#</th><th>${t("remainPrincipal")}</th><th>${t("origRemainInterest")}</th><th>${t("negotiatedAmount").replace(" *","")}</th><th>${t("netProfit")}</th><th>${t("profitChange")}</th><th>${t("remarks")}</th></tr>
+    <tr>
+      <th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>#</th>
+      <th>${t("remainPrincipal")}</th><th>${t("origRemainInterest")}</th>
+      <th>${_lang==='km'?'ថ្លៃសេវា':_lang==='en'?'Svc Fee':'手续费'}</th>
+      <th>${_lang==='km'?'កាំចំណែក':_lang==='en'?'Rebate':'返点'}</th>
+      <th>${t("negotiatedAmount").replace(" *","")}</th>
+      <th>${t("netProfit")}</th><th>${t("profitChange")}</th><th>${t("remarks")}</th>
+    </tr>
     ${list.map(r => {
-      const diff = +r.actualProfit - +r.origRemainInterest;
+      const origIncome = (+r.origRemainInterest||0) + (+r.remainServiceFee||0);
+      const diff = +r.actualProfit - origIncome;
       return `<tr>
         <td>${r.date}</td>
         <td class="fw700">${esc(r.customer)}</td>
         <td class="text-blue">#${r.contractId}</td>
         <td>${fmt(r.remainPrincipal)}</td>
         <td>${fmt(r.origRemainInterest)}</td>
+        <td>${(+r.remainServiceFee||0)>0?fmt(r.remainServiceFee):'—'}</td>
+        <td class="text-red">${(+r.storeRebate||0)>0?'-'+fmt(r.storeRebate):'—'}</td>
         <td class="fw700 text-amber">${fmt(r.negotiatedAmount)}</td>
         <td class="fw700 text-green">${fmt(r.actualProfit)}</td>
         <td class="${diff >= 0 ? 'text-green' : 'text-red'}">${diff >= 0 ? '+' : ''}${fmt(diff)}</td>
@@ -2166,43 +2185,66 @@ window.calcEarlyProfit = function() {
   const sel = document.getElementById('epContract');
   const opt = sel?.selectedOptions[0];
   if (!opt) return;
-  const remainP = +(opt.dataset.remainP || 0);
-  const remainI = +(opt.dataset.remainI || 0);
-  const rpEl = document.getElementById('epRemainP');
-  const riEl = document.getElementById('epRemainI');
+  const remainP   = +(opt.dataset.remainP   || 0);
+  const remainI   = +(opt.dataset.remainI   || 0);
+  const remainSvc = +(opt.dataset.remainSvc || 0);
+  const rebate    = +(opt.dataset.rebate    || 0);
+
+  const rpEl  = document.getElementById('epRemainP');
+  const riEl  = document.getElementById('epRemainI');
+  const rsEl  = document.getElementById('epRemainSvc');
+  const rrEl  = document.getElementById('epRebate');
   if (rpEl) rpEl.value = remainP.toFixed(2);
   if (riEl) riEl.value = remainI.toFixed(2);
-  // Auto calc profit = negotiated - remaining principal
+  if (rsEl) rsEl.value = remainSvc.toFixed(2);
+  if (rrEl) rrEl.value = fmt(rebate);
+
   const neg = +(document.getElementById('epNegotiated')?.value || 0);
   if (neg > 0) {
-    const autoP = (neg - remainP).toFixed(2);
+    // Auto profit = negotiated - remaining principal - rebate
+    const autoP = (neg - remainP - rebate).toFixed(2);
     const apEl = document.getElementById('epAutoProfit');
     const mpEl = document.getElementById('epManualProfit');
     if (apEl) apEl.value = autoP;
     if (mpEl && !mpEl._manuallyEdited) mpEl.value = autoP;
-    updateProfitTip(remainP, remainI, neg, +(mpEl?.value || autoP));
+    updateProfitTip(remainP, remainI, remainSvc, rebate, neg, +(mpEl?.value || autoP));
   }
 };
 
 window.syncManualProfit = function() {
   const mpEl = document.getElementById('epManualProfit');
   if (mpEl) mpEl._manuallyEdited = true;
-  const remainP = +(document.getElementById('epRemainP')?.value || 0);
-  const remainI = +(document.getElementById('epRemainI')?.value || 0);
+  const sel = document.getElementById('epContract');
+  const opt = sel?.selectedOptions[0];
+  const remainP   = +(document.getElementById('epRemainP')?.value || 0);
+  const remainI   = +(document.getElementById('epRemainI')?.value || 0);
+  const remainSvc = +(opt?.dataset?.remainSvc || 0);
+  const rebate    = +(opt?.dataset?.rebate    || 0);
   const neg = +(document.getElementById('epNegotiated')?.value || 0);
   const mp = +(mpEl?.value || 0);
-  updateProfitTip(remainP, remainI, neg, mp);
+  updateProfitTip(remainP, remainI, remainSvc, rebate, neg, mp);
 };
 
-function updateProfitTip(remainP, remainI, neg, actualProfit) {
+function updateProfitTip(remainP, remainI, remainSvc, rebate, neg, actualProfit) {
   const tip = document.getElementById('epProfitTip');
   if (!tip) return;
-  const diff = actualProfit - remainI;
-  const pct = remainI > 0 ? ((actualProfit / remainI) * 100).toFixed(1) : 0;
+  const origIncome = remainI + remainSvc; // 原应收利息+手续费
+  const diff = actualProfit - origIncome;
+  const pct  = origIncome > 0 ? ((actualProfit / origIncome) * 100).toFixed(1) : '0';
   tip.innerHTML = `
-    <span style="margin-right:16px">💰 协商收回：${fmt(neg)} &nbsp;=&nbsp; 本金 ${fmt(remainP)} &nbsp;+&nbsp; 实际利润 ${fmt(actualProfit)}</span>
-    <span style="margin-right:16px">📉 原应收利息：${fmt(remainI)}</span>
-    <span class="${diff >= 0 ? '' : 'text-red'}">利润变化：${diff >= 0 ? '+' : ''}${fmt(diff)}（实收利润占原利息 ${pct}%）</span>`;
+    <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px">
+      <span>💰 ${_lang==='km'?'ចំនួនចរចា':_lang==='en'?'Negotiated':'协商收回'}：<b>${fmt(neg)}</b></span>
+      <span style="color:var(--muted)">= ${_lang==='km'?'ប្រាក់ដើម':_lang==='en'?'Principal':'本金'} ${fmt(remainP)}
+        + ${_lang==='km'?'ចំណេញ':_lang==='en'?'Profit':'利润'} ${fmt(actualProfit)}
+        + ${_lang==='km'?'កាំចំណែក':_lang==='en'?'Rebate':'返点'} ${fmt(rebate)}</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px;margin-top:6px">
+      <span>📉 ${_lang==='km'?'ការប្រាក់+ថ្លៃសេវានៅសល់':_lang==='en'?'Remain Interest+Fee':'原剩余利息+手续费'}：<b>${fmt(origIncome)}</b></span>
+      <span>🏪 ${_lang==='km'?'កាំចំណែករបស់ហាង':_lang==='en'?'Store Rebate (deducted)':'店家返点（已扣除）'}：<b class="text-red">-${fmt(rebate)}</b></span>
+      <span class="${diff >= 0 ? 'text-green' : 'text-red'}" style="font-weight:700">
+        ${_lang==='km'?'ការផ្លាស់ប្ដូរ':_lang==='en'?'Profit vs original':'利润变化'}：${diff >= 0 ? '+' : ''}${fmt(diff)}（${pct}%）
+      </span>
+    </div>`;
 }
 
 window.submitEarlyPayment = function() {
@@ -2212,10 +2254,12 @@ window.submitEarlyPayment = function() {
   if (!contractId) { showMsg('epMsg', t('msgFillContract'), 'red'); return; }
   const neg = +(document.getElementById('epNegotiated')?.value || 0);
   if (!neg) { showMsg('epMsg', t('msgFillAmount'), 'red'); return; }
-  const remainP = +(document.getElementById('epRemainP')?.value || 0);
-  const remainI = +(document.getElementById('epRemainI')?.value || 0);
+  const remainP   = +(document.getElementById('epRemainP')?.value   || 0);
+  const remainI   = +(document.getElementById('epRemainI')?.value   || 0);
+  const remainSvc = +(opt?.dataset?.remainSvc || 0);
+  const rebate    = +(opt?.dataset?.rebate    || 0);
   const mpEl = document.getElementById('epManualProfit');
-  const autoProfit = (neg - remainP);
+  const autoProfit = +(neg - remainP - rebate).toFixed(2);
   const actualProfit = mpEl?.value !== '' ? +(mpEl.value) : autoProfit;
   const date = document.getElementById('epDate')?.value || today();
   const note = document.getElementById('epNote')?.value || '';
@@ -2244,17 +2288,18 @@ window.submitEarlyPayment = function() {
   earlyPayments.push({
     id: newId(), contractId, customer, date,
     remainPrincipal: remainP, origRemainInterest: remainI,
+    remainServiceFee: remainSvc, storeRebate: rebate,
     negotiatedAmount: neg, actualProfit, autoProfit,
-    profitDiff: actualProfit - remainI, note
+    profitDiff: actualProfit - (remainI + remainSvc), note
   });
   DB_set('earlyPayments', earlyPayments);
 
-  showMsg('epMsg', `✅ 提前结清成功！${customer} 协商还款 ${fmt(neg)}，实际利润 ${fmt(actualProfit)}（原应收利息 ${fmt(remainI)}，差异 ${fmt(actualProfit - remainI)}）`, 'green');
+  showMsg('epMsg', `✅ ${_lang==='km'?'ការទូទាត់មុនបានទទួលជោគជ័យ':_lang==='en'?'Early settlement done':'提前结清成功！'} ${customer} — ${fmt(neg)} → ${_lang==='km'?'ចំណេញ':_lang==='en'?'Profit':'利润'} ${fmt(actualProfit)}`, 'green');
 
   // Reset form
   if (mpEl) { mpEl.value = ''; mpEl._manuallyEdited = false; }
-  ['epNegotiated', 'epNote', 'epAutoProfit', 'epRemainP', 'epRemainI'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  document.getElementById('epProfitTip').innerHTML = '';
+  ['epNegotiated','epNote','epAutoProfit','epRemainP','epRemainI','epRemainSvc','epRebate'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  if (document.getElementById('epProfitTip')) document.getElementById('epProfitTip').innerHTML = '';
   updateBadges();
   setTimeout(() => nav('early-payment'), 600);
 };
