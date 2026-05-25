@@ -2569,7 +2569,7 @@ function renderFinanceReport() {
             <td>${r.orderCount}</td>
             <td class="text-blue fw700">${fmt(r.totalLoan)}</td>
             <td class="text-green fw700">${fmt(r.totalRepay)}</td>
-            <td class="text-amber fw700">${fmt(r.mPending)}</td>
+            <td class="text-amber fw700">${isCurrent ? fmt(r.mPending) : '<span style="color:var(--muted)">—</span>'}</td>
             <td class="${r.mPenalty>0?'text-red':''}">${r.mPenalty>0?fmt(r.mPenalty):'—'}</td>
             <td class="text-red">${r.mExpenses>0?fmt(r.mExpenses):'—'}</td>
             <td class="fw700" style="color:${r.mProfit>=0?'var(--navy)':'var(--red)'}">${fmt(r.mProfit)}</td>
@@ -2582,7 +2582,7 @@ function renderFinanceReport() {
           <td>${totOrders}</td>
           <td class="text-blue">${fmt(totLoan)}</td>
           <td class="text-green">${fmt(totRepay)}</td>
-          <td class="text-amber">${fmt(rows.reduce((a,r)=>a+r.mPending,0))}</td>
+          <td class="text-amber">${fmt(rows[0]?.mPending||0)} <span style="font-size:10px;color:var(--muted)">(${_lang==='km'?'ឥឡូវ':_lang==='en'?'now':'当前'})</span></td>
           <td class="text-red">${fmt(rows.reduce((a,r)=>a+r.mPenalty,0))}</td>
           <td class="text-red">${fmt(totExpenses)}</td>
           <td style="color:var(--navy)">${fmt(totProfit)}</td>
