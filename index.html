@@ -1469,7 +1469,7 @@ window.deleteSale = function(id) {
 function renderPaymentAdd() {
   const sales = (DB_get('sales')||[]).filter(s => s.status !== '已结清');
   const opts = sales.map(s => `<option value="${s.id}">#${s.id} — ${esc(s.customer)} (${s.periods}期 每期${fmt(s.monthlyPayment)})</option>`).join('');
-  const pays = (DB_get('payments')||[]).slice(-15).reverse();
+  const pays = (DB_get('payments')||[]).slice().reverse();
   return `
   <div class="page-header"><div class="page-title">💳 ${t('paymentTitle')}</div></div>
   <div class="card">
@@ -1488,7 +1488,75 @@ function renderPaymentAdd() {
     </div>
     <div id="payMsg"></div>
   </div>
-  <div class="card"><div class="card-title" style="margin-bottom:14px">${t("recentPayments")}</div>${buildPayTable(pays)}</div>`;
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">${t("recentPayments")}（${pays.length}笔）</div>
+      <div class="search-row" style="margin:0">
+        <input id="paySearch" placeholder="${_lang==='km'?'ស្វែងរកអតិថិជន...':_lang==='en'?'Search customer...':'搜索客户...'}" oninput="filterPays()" style="max-width:200px">
+      </div>
+    </div>
+    <div id="payTableWrap">${buildPayTable(pays)}</div>
+  </div>`;
+}
+
+window.filterPays = function() {
+  const q = (document.getElementById('paySearch')?.value||'').toLowerCase();
+  let pays = (DB_get('payments')||[]).slice().reverse();
+  if (q) pays = pays.filter(p => p.customer.toLowerCase().includes(q) || String(p.contractId).includes(q));
+  const wrap = document.getElementById('payTableWrap');
+  if (wrap) wrap.innerHTML = buildPayTable(pays);
+};
+
+window.deletePayment = function(id) {
+  const pays = DB_get('payments')||[];
+  const pay = pays.find(p => p.id === id);
+  if (!pay) return;
+  if (!confirm(`${_lang==='km'?'លុបការបង់ប្រាក់?':_lang==='en'?'Delete payment record?':'确认删除此收款记录？'}\n${pay.customer} — ${t('period')} ${pay.period} — ${fmt((+pay.principal)+(+pay.interest))}`)) return;
+
+  // Remove payment record
+  const newPays = pays.filter(p => p.id !== id);
+  DB_set('payments', newPays);
+
+  // Also revert the schedule item to unpaid
+  const sales = DB_get('sales')||[];
+  const si = sales.findIndex(s => s.id === pay.contractId);
+  if (si >= 0) {
+    const pi = sales[si].schedule.findIndex(p => p.period === pay.period);
+    if (pi >= 0 && sales[si].schedule[pi].paid) {
+      sales[si].schedule[pi] = {
+        ...sales[si].schedule[pi],
+        paid: false, paidDate: null,
+        paidPrincipal: 0, paidInterest: 0, paidServiceFee: 0, penalty: 0
+      };
+      // Revert status if was settled
+      if (sales[si].status === '已结清') sales[si].status = '进行中';
+      DB_set('sales', sales);
+    }
+  }
+
+  // Refresh table
+  const allPays = (DB_get('payments')||[]).slice().reverse();
+  const wrap = document.getElementById('payTableWrap');
+  if (wrap) wrap.innerHTML = buildPayTable(allPays);
+  showMsg('payMsg', `✅ ${_lang==='km'?'បានលុបដោយជោគជ័យ':_lang==='en'?'Deleted successfully':'已删除，合同还款状态已还原'}`, 'green');
+  updateBadges();
+};
+
+function buildPayTable(pays) {
+  if (!pays.length) return `<div class="empty-state"><div class="ei">📝</div><p>${t('noRecord')}</p></div>`;
+  return `<div class="table-wrap"><table>
+    <tr><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>#</th><th>${t("period")}</th><th>${t("colPrincipalPaid")}</th><th>${t("colInterestPaid")}</th><th>${t("colTotal")}</th><th>${t("colAction")}</th></tr>
+    ${pays.map(p => `<tr>
+      <td>${p.date}</td>
+      <td class="fw700">${esc(p.customer)}</td>
+      <td class="text-blue">#${p.contractId}</td>
+      <td>${p.period} ${t("period")}</td>
+      <td>${fmt(p.principal)}</td>
+      <td>${fmt(p.interest)}</td>
+      <td class="fw700 text-green">${fmt((+p.principal)+(+p.interest)+(+p.penalty||0))}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deletePayment(${p.id})">${t('deleteBtn')}</button></td>
+    </tr>`).join('')}
+  </table></div>`;
 }
 
 window.loadContractPeriods = function() {
@@ -1530,15 +1598,6 @@ window.submitPayment = function() {
   ['pPenalty','pNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = id==='pPenalty'?'0':''; });
   loadContractPeriods(); updateBadges();
 };
-function buildPayTable(pays) {
-  if (!pays.length) return `<div class="empty-state"><div class="ei">📝</div><p>暂无记录</p></div>`;
-  return `<div class="table-wrap"><table><tr><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>#</th><th>${t("period")}</th><th>${t("colPrincipalPaid")}</th><th>${t("colInterestPaid")}</th><th>${t("colTotal")}</th></tr>
-    ${pays.map(p => `<tr><td>${p.date}</td><td class="fw700">${esc(p.customer)}</td><td class="text-blue">#${p.contractId}</td>
-      <td>${p.period} ${t("period")}</td><td>${fmt(p.principal)}</td><td>${fmt(p.interest)}</td>
-      <td class="fw700 text-green">${fmt((+p.principal)+(+p.interest)+(+p.penalty||0))}</td></tr>`).join('')}
-  </table></div>`;
-}
-
 // ══════════════════════════════════════════════════════
 // STATS
 // ══════════════════════════════════════════════════════
