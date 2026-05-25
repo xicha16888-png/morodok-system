@@ -1249,7 +1249,7 @@ function renderHome() {
   const overdue = [];
   sales.forEach(s => s.schedule.forEach(p => { if (!p.paid && p.dueDate < td) overdue.push({s, p}); }));
   const tPaid = pays.reduce((a, p) => a + (+p.principal) + (+p.interest), 0);
-  const pending = sales.reduce((a, s) => { const paid = s.schedule.filter(p => p.paid).reduce((x, p) => x + (+p.paidPrincipal || 0), 0); return a + (+s.installmentAmount - paid); }, 0);
+  const pending = sales.filter(s=>s.status==='进行中').reduce((a,s) => a + s.schedule.filter(p=>!p.paid).reduce((b,p) => b+(+p.principalDue||0)+(+p.interestDue||0)+(+p.serviceFeeDue||0), 0), 0);
   return `
   <div class="page-header">
     <div class="page-title">🏠 ${t('homeWelcome')}</div>
@@ -1761,10 +1761,8 @@ function renderStatsCollection() {
   const tSvc = pays.reduce((a,p)=>a+(+p.serviceFee||0),0);
   const tPen = pays.reduce((a,p)=>a+(+p.penalty||0),0);
   const tReb = sales.reduce((a,s)=>a+(+s.storeRebate||0),0);
-  const pending = sales.reduce((a,s)=>{
-    const paid = s.schedule.filter(p=>p.paid).reduce((x,p)=>x+(+p.paidPrincipal||0),0);
-    return a + (+s.installmentAmount - paid);
-  },0);
+  const pending = sales.filter(s=>s.status==='进行中').reduce((a,s) =>
+    a + s.schedule.filter(p=>!p.paid).reduce((b,p) => b+(+p.principalDue||0)+(+p.interestDue||0)+(+p.serviceFeeDue||0), 0), 0);
   const tGross = tI + tSvc + tPen - tReb;
 
   return `
@@ -2429,9 +2427,10 @@ function renderFinanceReport() {
     const repayRate = mDueBeforeToday.length > 0
       ? (mDuePaid.length / mDueBeforeToday.length * 100).toFixed(1) : '—';
 
-    // Monthly pending (total outstanding principal+interest for active contracts as of this month)
+    // 月总待收款 = 所有进行中合同未还期的 本金 + 利息 + 手续费
     const mPending = sales.filter(s => s.status === '进行中').reduce((a,s) => {
-      return a + s.schedule.filter(p => !p.paid).reduce((b,p) => b + (+p.principalDue||0) + (+p.interestDue||0), 0);
+      return a + s.schedule.filter(p => !p.paid).reduce((b,p) =>
+        b + (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0), 0);
     }, 0);
 
     // Bad debt calc helper
