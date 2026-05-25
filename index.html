@@ -2423,55 +2423,87 @@ function renderFinanceReport() {
     const mProfit = mInterest + mEarlyProfit + mServiceFee + mPenalty - mRebate - mExpenses;
     const mProfitBeforeExp = mInterest + mEarlyProfit + mServiceFee + mPenalty - mRebate;
 
-    const mDuePeriods   = sales.flatMap(s => s.schedule.filter(p => p.dueDate.slice(0,7) === m));
-    const mOverduePeriods = mDuePeriods.filter(p => !p.paid && p.dueDate < td);
-    const overdueRate   = mDuePeriods.length > 0
-      ? (mOverduePeriods.length / mDuePeriods.length * 100).toFixed(1) : '0.0';
-    const mDueBeforeToday  = mDuePeriods.filter(p => p.dueDate <= td);
-    const mDuePaid         = mDueBeforeToday.filter(p => p.paid);
-    const repayRate = mDueBeforeToday.length > 0
-      ? (mDuePaid.length / mDueBeforeToday.length * 100).toFixed(1) : '—';
+    // ── 新公式 ──
+    // 月总应收款 = 本月所有到期期次的（本金+利息+手续费）
+    const mDuePeriods = sales.flatMap(s => s.schedule.filter(p => p.dueDate.slice(0,7) === m));
+    const totalDueAmt = mDuePeriods.reduce((a,p) =>
+      a + (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0), 0);
 
-    // 月总待收款 = 所有进行中合同未还期的 本金 + 利息 + 手续费
-    const mPending = sales.filter(s => s.status === '进行中').reduce((a,s) => {
-      return a + s.schedule.filter(p => !p.paid).reduce((b,p) =>
-        b + (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0), 0);
-    }, 0);
+    // 实际回款 = 本月实际收到的（本金+利息+手续费，不含滞纳金）
+    const actualCollected = mPays.reduce((a,p) =>
+      a + (+p.principal) + (+p.interest) + (+p.serviceFee||0), 0)
+      + mEarly.reduce((a,r) => a + (+r.negotiatedAmount), 0);
 
-    // Bad debt calc helper
+    // 坏账率 = (总应收款 - 实际回款) / 总应收款 × 100
+    const badDebtRate = totalDueAmt > 0
+      ? ((totalDueAmt - actualCollected) / totalDueAmt * 100).toFixed(1) : '0.0';
+
+    // 回款率 = 实际回款 / 应收回款 × 100
+    const repayRate = totalDueAmt > 0
+      ? (actualCollected / totalDueAmt * 100).toFixed(1) : '—';
+
+    // 含滞纳金回款率 = (实际回款 + 滞纳金) / 应收回款 × 100
+    const repayRateWithPenalty = totalDueAmt > 0
+      ? ((actualCollected + mPenalty) / totalDueAmt * 100).toFixed(1) : '—';
+
+    // 逾期率（辅助）= 逾期未还期次 / 应还期次
+    const mDueBeforeToday   = mDuePeriods.filter(p => p.dueDate <= td);
+    const mOverduePeriods   = mDueBeforeToday.filter(p => !p.paid);
+    const overdueRate = mDueBeforeToday.length > 0
+      ? (mOverduePeriods.length / mDueBeforeToday.length * 100).toFixed(1) : '0.0';
+
+    // 月总待收款
+    const mPending = sales.filter(s => s.status === '进行中').reduce((a,s) =>
+      a + s.schedule.filter(p => !p.paid).reduce((b,p) =>
+        b + (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0), 0), 0);
+
+    // ── 坏账统计（7/15/30天，用新公式）──
+    // 总应收款（全部合同）
+    const allTotalDue = sales.reduce((a,s) =>
+      a + s.schedule.reduce((b,p) =>
+        b + (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0), 0), 0);
+    // 全部实际回款
+    const allActualCollected = pays.reduce((a,p) =>
+      a + (+p.principal) + (+p.interest) + (+p.serviceFee||0), 0)
+      + earlyPays.reduce((a,r) => a + (+r.negotiatedAmount), 0);
+    const allPenaltyCollected = pays.reduce((a,p) => a + (+p.penalty||0), 0);
+
+    // 7/15/30 天逾期金额
     const allOverdue7  = sales.flatMap(s => s.schedule.filter(p => !p.paid && daysDiff(p.dueDate, td) > 7));
     const allOverdue15 = sales.flatMap(s => s.schedule.filter(p => !p.paid && daysDiff(p.dueDate, td) > 15));
     const allOverdue30 = sales.flatMap(s => s.schedule.filter(p => !p.paid && daysDiff(p.dueDate, td) > 30));
-    const totalDueAmt  = sales.reduce((a,s) => a + s.schedule.reduce((b,p) => b + (+p.principalDue||0) + (+p.interestDue||0), 0), 0);
-    // Bad debt calc - without penalty (principal + interest only)
-    const bd7noP  = allOverdue7.reduce((a,p)=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
-    const bd15noP = allOverdue15.reduce((a,p)=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
-    const bd30noP = allOverdue30.reduce((a,p)=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
 
-    // Bad debt calc - with penalty (add estimated daily late fee × overdue days)
-    function bdWithPenalty(overdueList) {
-      return overdueList.reduce((a, p) => {
-        const base = (+p.principalDue||0) + (+p.interestDue||0);
-        // Find the sale to get dailyLateFee
+    function overdueAmt(list) {
+      return list.reduce((a,p) => a + (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0), 0);
+    }
+    function overdueAmtWithPenalty(list) {
+      return list.reduce((a, p) => {
+        const base = (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0);
         const sale = sales.find(s => s.schedule.some(sc => sc === p));
         const dailyFee = sale ? (+sale.dailyLateFee||0) : 0;
-        const days = Math.floor((new Date(td) - new Date(p.dueDate)) / 86400000);
-        return a + base + (dailyFee * Math.max(0, days));
+        const days = Math.max(0, Math.floor((new Date(td) - new Date(p.dueDate)) / 86400000));
+        return a + base + dailyFee * days;
       }, 0);
     }
-    const bd7withP  = bdWithPenalty(allOverdue7);
-    const bd15withP = bdWithPenalty(allOverdue15);
-    const bd30withP = bdWithPenalty(allOverdue30);
 
-    const bd7Rate   = totalDueAmt>0?(bd7noP/totalDueAmt*100).toFixed(1):'0.0';
-    const bd15Rate  = totalDueAmt>0?(bd15noP/totalDueAmt*100).toFixed(1):'0.0';
-    const bd30Rate  = totalDueAmt>0?(bd30noP/totalDueAmt*100).toFixed(1):'0.0';
-    const bd7RateP  = totalDueAmt>0?(bd7withP/totalDueAmt*100).toFixed(1):'0.0';
-    const bd15RateP = totalDueAmt>0?(bd15withP/totalDueAmt*100).toFixed(1):'0.0';
-    const bd30RateP = totalDueAmt>0?(bd30withP/totalDueAmt*100).toFixed(1):'0.0';
+    // 坏账率 = (总应收款 - 实际回款) / 总应收款 × 100（不含滞纳金）
+    const bd7noP  = overdueAmt(allOverdue7);
+    const bd15noP = overdueAmt(allOverdue15);
+    const bd30noP = overdueAmt(allOverdue30);
+    // 含滞纳金
+    const bd7withP  = overdueAmtWithPenalty(allOverdue7);
+    const bd15withP = overdueAmtWithPenalty(allOverdue15);
+    const bd30withP = overdueAmtWithPenalty(allOverdue30);
+    // 坏账率 = 逾期金额 / 总应收款 × 100
+    const bd7Rate   = allTotalDue>0?(bd7noP/allTotalDue*100).toFixed(1):'0.0';
+    const bd15Rate  = allTotalDue>0?(bd15noP/allTotalDue*100).toFixed(1):'0.0';
+    const bd30Rate  = allTotalDue>0?(bd30noP/allTotalDue*100).toFixed(1):'0.0';
+    const bd7RateP  = allTotalDue>0?(bd7withP/allTotalDue*100).toFixed(1):'0.0';
+    const bd15RateP = allTotalDue>0?(bd15withP/allTotalDue*100).toFixed(1):'0.0';
+    const bd30RateP = allTotalDue>0?(bd30withP/allTotalDue*100).toFixed(1):'0.0';
 
     return { m, orderCount, totalLoan, totalRepay, mProfit, mProfitBeforeExp, mExpenses,
-             mPenalty, mPending, overdueRate, repayRate,
+             mPenalty, mPending, overdueRate, repayRate, repayRateWithPenalty, badDebtRate,
              mDue: mDuePeriods.length, mOverdue: mOverduePeriods.length,
              bd7Rate, bd7noP, bd7RateP, bd7withP,
              bd15Rate, bd15noP, bd15RateP, bd15withP,
@@ -2571,10 +2603,23 @@ function renderFinanceReport() {
           <div style="font-size:18px;font-weight:700;color:${c}">${v}</div>
         </div>`).join('')}
     </div>
-    <div style="margin-top:12px;display:flex;gap:20px;font-size:12px;color:var(--muted)">
-      <span>${t("colRepayRate")}：<b style="color:${parseFloat(sel.repayRate||0)>=95?'var(--green)':parseFloat(sel.repayRate||0)>=80?'var(--amber)':'var(--red)'}">${sel.repayRate||'—'}%</b></span>
-      <span>${t("colOverdueRate")}：<b style="color:${parseFloat(sel.overdueRate||0)>10?'var(--red)':parseFloat(sel.overdueRate||0)>5?'var(--amber)':'var(--green)'}">${sel.overdueRate||'0.0'}%</b></span>
+    <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px">
+      <span>${_lang==='km'?'អត្រាប្រមូល':_lang==='en'?'Repayment Rate':'回款率'}：
+        <b style="color:${parseFloat(sel.repayRate||0)>=95?'var(--green)':parseFloat(sel.repayRate||0)>=80?'var(--amber)':'var(--red)'}">${sel.repayRate||'—'}%</b>
+      </span>
+      <span>${_lang==='km'?'រួមមានការពិន័យ':_lang==='en'?'Repayment Rate (incl. late fee)':'含滞纳金回款率'}：
+        <b style="color:var(--green)">${sel.repayRateWithPenalty||'—'}%</b>
+      </span>
+      <span>${_lang==='km'?'អត្រាបំណុលអាក្រក់':_lang==='en'?'Bad Debt Rate':'坏账率'}：
+        <b style="color:${parseFloat(sel.badDebtRate||0)>20?'var(--red)':parseFloat(sel.badDebtRate||0)>10?'var(--amber)':'var(--green)'}">${sel.badDebtRate||'0.0'}%</b>
+      </span>
       ${isCurrentM?`<span>${t("monthPending")}：<b class="text-amber">${fmt(sel.mPending||0)}</b></span>`:''}
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;background:#f8faff;padding:8px 12px;border-radius:6px">
+      📐 ${_lang==='km'?'រូបមន្ត':_lang==='en'?'Formulas':'计算公式'} &nbsp;|&nbsp;
+      ${_lang==='km'?'អត្រាប្រមូល':_lang==='en'?'Repayment Rate':'回款率'} = ${_lang==='en'?'Actual / Receivable':'实际回款 / 总应收款'} × 100 &nbsp;|&nbsp;
+      ${_lang==='km'?'រួមមានការពិន័យ':_lang==='en'?'Incl. Late Fee Rate':'含滞纳金回款率'} = ${_lang==='en'?'(Actual + Late Fee) / Receivable':'(实际回款 + 滞纳金) / 总应收款'} × 100 &nbsp;|&nbsp;
+      ${_lang==='km'?'អត្រាបំណុល':_lang==='en'?'Bad Debt Rate':'坏账率'} = ${_lang==='en'?'(Receivable - Actual) / Receivable':'(总应收款 - 实际回款) / 总应收款'} × 100
     </div>
   </div>
 
