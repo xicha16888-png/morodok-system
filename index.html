@@ -1204,7 +1204,8 @@ function initPage(page) {
     const fd = document.getElementById('sFirstDue'); if (fd) fd.value = nd.toISOString().slice(0, 10);
     calcInstall();
   }
-  if (page === 'payment-add') loadContractPeriods();
+  if (page === 'payment-add')  loadContractPeriods();
+  if (page === 'early-payment') calcEarlyProfit();
 }
 
 function updateBadges() {
@@ -1877,7 +1878,7 @@ function renderStatsProfit() {
           svcVal = +s.totalServiceFee||0;
         }
         rebateVal = +s.storeRebate||0;
-        net = gross + interestVal + svcVal - rebateVal;
+        net = interestVal + svcVal - rebateVal;
         const statusBadge = s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':'badge-blue';
         return`<tr>
           <td class="fw700 text-blue">#${s.id}</td>
