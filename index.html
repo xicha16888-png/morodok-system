@@ -2505,6 +2505,8 @@ function renderFinanceReport() {
 
     return { m, orderCount, totalLoan, totalRepay, mProfit, mProfitBeforeExp, mExpenses,
              mPenalty, mPending, overdueRate, repayRate, repayRateWithPenalty, badDebtRate,
+             totalDueAmt, actualCollected,
+             badDebtAmt: Math.max(0, totalDueAmt - actualCollected),
              mDue: mDuePeriods.length, mOverdue: mOverduePeriods.length,
              bd7Rate, bd7noP, bd7RateP, bd7withP,
              bd15Rate, bd15noP, bd15RateP, bd15withP,
@@ -2586,41 +2588,71 @@ function renderFinanceReport() {
 
   <!-- 选中月份详细数据 -->
   <div class="card" style="margin-bottom:14px">
-    <div class="card-title" style="margin-bottom:14px">📋 ${sel.m||selectedM} ${_lang==='km'?'ព័ត៌មានលម្អិត':_lang==='en'?'Detail':'详细数据'}</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-      ${[
-        [_lang==='km'?'ខែថ្មី':_lang==='en'?'New Orders':'新增单量',        sel.orderCount||0, 'var(--sky)'],
-        [_lang==='km'?'ការផ្ដល់':_lang==='en'?'Loans':'月总放款额',        fmt(sel.totalLoan||0), 'var(--blue)'],
-        [_lang==='km'?'ការប្រមូល':_lang==='en'?'Collections':'月总回款额',  fmt(sel.totalRepay||0), 'var(--green)'],
-        [_lang==='km'?'ប្រាក់ពិន័យ':_lang==='en'?'Late Fees':'月滞纳金',   fmt(sel.mPenalty||0), '#e91e63'],
-        [_lang==='km'?'ការចំណាយ':_lang==='en'?'Expenses':'日常开支',       fmt(sel.mExpenses||0), 'var(--red)'],
-        [_lang==='km'?'ប្រាក់ចំណេញ':_lang==='en'?'Net Profit':'月净利润',  fmt(sel.mProfit||0), (sel.mProfit||0)>=0?'var(--navy)':'var(--red)'],
-        [t('colDuePeriods'),                                                   sel.mDue||0, 'var(--muted)'],
-        [t('colPaidPeriods'),                                                   (sel.mDue||0)-(sel.mOverdue||0), 'var(--green)'],
-        [t('colOverduePeriods'),                                                sel.mOverdue||0, sel.mOverdue>0?'var(--red)':'var(--muted)'],
-      ].map(([l,v,c])=>`
-        <div style="background:#f8faff;border-radius:8px;padding:12px 14px;border-left:3px solid ${c}">
-          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${l}</div>
-          <div style="font-size:18px;font-weight:700;color:${c}">${v}</div>
-        </div>`).join('')}
+    <div class="card-title" style="margin-bottom:16px">📋 ${sel.m||selectedM} ${isCurrentM?`<span class="badge badge-blue">${t('thisMonth')}</span>`:''} ${_lang==='km'?'ព័ត៌មានលម្អិត':_lang==='en'?'Monthly Detail':'月度详细数据'}</div>
+
+    <!-- 第一行：应收 / 回款 -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px">
+      <div style="background:#e3f2fd;border-radius:10px;padding:14px;border-top:3px solid var(--sky)">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">📋 ${_lang==='km'?'ចំនួនត្រូវទទួល':_lang==='en'?'Monthly Receivables':'本月应收款'}</div>
+        <div style="font-size:22px;font-weight:700;color:var(--sky)">${fmt(sel.totalDueAmt||0)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">${_lang==='km'?'ដើម+ការប្រាក់+ថ្លៃសេវា':_lang==='en'?'Principal+Interest+Fee':'本金+利息+手续费'}</div>
+      </div>
+      <div style="background:#e8f5e9;border-radius:10px;padding:14px;border-top:3px solid var(--green)">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">💵 ${_lang==='km'?'ការប្រមូលជាក់ស្តែង':_lang==='en'?'Actual Collections':'本月实际回款'}</div>
+        <div style="font-size:22px;font-weight:700;color:var(--green)">${fmt(sel.actualCollected||0)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">${_lang==='km'?'មិនរាប់ប្រាក់ពិន័យ':_lang==='en'?'Excl. late fees':'不含滞纳金'}</div>
+      </div>
+      <div style="background:#fff8e1;border-radius:10px;padding:14px;border-top:3px solid var(--amber)">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">⏳ ${_lang==='km'?'ប្រាក់នៅតម្រូវ':_lang==='en'?'Pending Receivables':'本月待收款'}</div>
+        <div style="font-size:22px;font-weight:700;color:var(--amber)">${fmt(sel.mPending||0)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">${_lang==='km'?'ខែបច្ចុប្បន្ន':_lang==='en'?'Current snapshot':'当前时刻待收'}</div>
+      </div>
     </div>
-    <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px">
-      <span>${_lang==='km'?'អត្រាប្រមូល':_lang==='en'?'Repayment Rate':'回款率'}：
-        <b style="color:${parseFloat(sel.repayRate||0)>=95?'var(--green)':parseFloat(sel.repayRate||0)>=80?'var(--amber)':'var(--red)'}">${sel.repayRate||'—'}%</b>
-      </span>
-      <span>${_lang==='km'?'រួមមានការពិន័យ':_lang==='en'?'Repayment Rate (incl. late fee)':'含滞纳金回款率'}：
-        <b style="color:var(--green)">${sel.repayRateWithPenalty||'—'}%</b>
-      </span>
-      <span>${_lang==='km'?'អត្រាបំណុលអាក្រក់':_lang==='en'?'Bad Debt Rate':'坏账率'}：
-        <b style="color:${parseFloat(sel.badDebtRate||0)>20?'var(--red)':parseFloat(sel.badDebtRate||0)>10?'var(--amber)':'var(--green)'}">${sel.badDebtRate||'0.0'}%</b>
-      </span>
-      ${isCurrentM?`<span>${t("monthPending")}：<b class="text-amber">${fmt(sel.mPending||0)}</b></span>`:''}
+
+    <!-- 第二行：坏账 / 滞纳金 / 回款率 -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px">
+      <div style="background:#ffebee;border-radius:10px;padding:14px;border-top:3px solid var(--red)">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">📉 ${_lang==='km'?'ចំនួនបំណុលអាក្រក់':_lang==='en'?'Bad Debt Amount':'本月坏账金额'}</div>
+        <div style="font-size:22px;font-weight:700;color:var(--red)">${fmt(sel.badDebtAmt||0)}</div>
+        <div style="font-size:11px;color:var(--red);margin-top:4px;font-weight:600">${_lang==='km'?'អត្រា':_lang==='en'?'Rate':'坏账率'} ${sel.badDebtRate||'0.0'}%</div>
+      </div>
+      <div style="background:#fce4ec;border-radius:10px;padding:14px;border-top:3px solid #e91e63">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">⚠️ ${_lang==='km'?'ប្រាក់ពិន័យ':_lang==='en'?'Late Fees Collected':'本月滞纳金'}</div>
+        <div style="font-size:22px;font-weight:700;color:#e91e63">${fmt(sel.mPenalty||0)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">${_lang==='km'?'ប្រាក់ពិន័យដែលទទួលបាន':_lang==='en'?'Actually received':'实际收到的滞纳金'}</div>
+      </div>
+      <div style="background:#f3e5f5;border-radius:10px;padding:14px;border-top:3px solid #9c27b0">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">📊 ${_lang==='km'?'អត្រាប្រមូល':_lang==='en'?'Repayment Rate':'本月回款率'}</div>
+        <div style="font-size:22px;font-weight:700;color:#9c27b0">${sel.repayRate||'—'}%</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">${_lang==='km'?'រួមមានការពិន័យ':_lang==='en'?'Incl. late fee':'含滞纳金'} ${sel.repayRateWithPenalty||'—'}%</div>
+      </div>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px;background:#f8faff;padding:8px 12px;border-radius:6px">
-      📐 ${_lang==='km'?'រូបមន្ត':_lang==='en'?'Formulas':'计算公式'} &nbsp;|&nbsp;
-      ${_lang==='km'?'អត្រាប្រមូល':_lang==='en'?'Repayment Rate':'回款率'} = ${_lang==='en'?'Actual / Receivable':'实际回款 / 总应收款'} × 100 &nbsp;|&nbsp;
-      ${_lang==='km'?'រួមមានការពិន័យ':_lang==='en'?'Incl. Late Fee Rate':'含滞纳金回款率'} = ${_lang==='en'?'(Actual + Late Fee) / Receivable':'(实际回款 + 滞纳金) / 总应收款'} × 100 &nbsp;|&nbsp;
-      ${_lang==='km'?'អត្រាបំណុល':_lang==='en'?'Bad Debt Rate':'坏账率'} = ${_lang==='en'?'(Receivable - Actual) / Receivable':'(总应收款 - 实际回款) / 总应收款'} × 100
+
+    <!-- 第三行：开支 / 盈利 / 放款 -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
+      <div style="background:#fff3e0;border-radius:10px;padding:14px;border-top:3px solid var(--amber)">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">🧾 ${_lang==='km'?'ការចំណាយ':_lang==='en'?'Monthly Expenses':'本月开支'}</div>
+        <div style="font-size:22px;font-weight:700;color:var(--amber)">${fmt(sel.mExpenses||0)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">${_lang==='km'?'ពន្ធ':_lang==='en'?'Pre-tax profit':'税前利润'} ${fmt(sel.mProfitBeforeExp||0)}</div>
+      </div>
+      <div style="background:${(sel.mProfit||0)>=0?'#e8f5e9':'#ffebee'};border-radius:10px;padding:14px;border-top:3px solid ${(sel.mProfit||0)>=0?'var(--green)':'var(--red)'}">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">💰 ${_lang==='km'?'ប្រាក់ចំណេញ':_lang==='en'?'Monthly Profit':'本月盈利'}</div>
+        <div style="font-size:22px;font-weight:700;color:${(sel.mProfit||0)>=0?'var(--green)':'var(--red)'}">${fmt(sel.mProfit||0)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">${_lang==='km'?'ការប្រាក់+ថ្លៃ-ការចំណាយ':_lang==='en'?'Interest+Fee−Rebate−Exp':'利息+手续费-返点-开支'}</div>
+      </div>
+      <div style="background:#e3f2fd;border-radius:10px;padding:14px;border-top:3px solid var(--blue)">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">💸 ${_lang==='km'?'ការផ្ដល់ប្រជ:':_lang==='en'?'Loans Issued':'本月放款额'}</div>
+        <div style="font-size:22px;font-weight:700;color:var(--blue)">${fmt(sel.totalLoan||0)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">${sel.orderCount||0} ${t('newContracts')}</div>
+      </div>
+    </div>
+
+    <!-- 公式说明 -->
+    <div style="font-size:11px;color:var(--muted);background:#f8faff;padding:10px 14px;border-radius:8px;line-height:2">
+      📐 <b>${_lang==='en'?'Formulas':'计算公式'}</b> &nbsp;|&nbsp;
+      ${_lang==='en'?'Bad Debt Rate':'坏账率'} = (${_lang==='en'?'Receivable − Actual':'应收款 − 实际回款'}) ÷ ${_lang==='en'?'Receivable':'应收款'} × 100 &nbsp;|&nbsp;
+      ${_lang==='en'?'Repayment Rate':'回款率'} = ${_lang==='en'?'Actual':'实际回款'} ÷ ${_lang==='en'?'Receivable':'应收款'} × 100 &nbsp;|&nbsp;
+      ${_lang==='en'?'Incl. Late Fee Rate':'含滞纳金回款率'} = (${_lang==='en'?'Actual + Late Fee':'实际回款 + 滞纳金'}) ÷ ${_lang==='en'?'Receivable':'应收款'} × 100
     </div>
   </div>
 
