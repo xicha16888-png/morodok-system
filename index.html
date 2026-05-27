@@ -3096,10 +3096,110 @@ function renderCompany() {
   <div class="btn-row"><button class="btn btn-success" onclick="saveCompany()">${t('saveInfo')}</button></div>
   <div id="coMsg"></div></div>
   <div class="card" style="background:#f0f7ff"><div class="card-title">${t("dataMgmt")}</div>
-  <div class="btn-row" style="margin-top:14px">
-    <button class="btn btn-outline" onclick="window.open('/api/backup')">${t('downloadBackup')}</button>
+  <div class="btn-row" style="margin-top:14px;flex-wrap:wrap;gap:10px">
+    <button class="btn btn-outline" onclick="window.open('/api/backup')">📤 ${_lang==='km'?'ទាញយក JSON':_lang==='en'?'Download JSON Backup':'下载 JSON 备份'}</button>
+    <button class="btn btn-primary" onclick="exportExcel()" style="background:#1e7e34">📊 ${_lang==='km'?'នាំចេញ Excel':_lang==='en'?'Export to Excel':'导出 Excel 报表'}</button>
+  </div>
+  <div style="font-size:12px;color:var(--muted);margin-top:10px">
+    📊 ${_lang==='km'?'Excel រួមមាន: កិច្ចសន្យា, ការបង់ប្រាក់, ការចំណាយ':_lang==='en'?'Excel includes: Contracts, Payments, Expenses, Summary':'Excel 包含：合同列表、还款记录、开支记录、月度汇总 4 个工作表，可直接用 WPS/Excel 打开'}
+  </div>
   </div></div>`;
 }
+window.exportExcel = function() {
+  const sales     = DB_get('sales')    || [];
+  const pays      = DB_get('payments') || [];
+  const expenses  = DB_get('expenses') || [];
+  const earlyPays = DB_get('earlyPayments') || [];
+  const td        = today();
+
+  // ── Sheet 1: 合同列表 ──
+  const s1Header = ['合同#','日期','客户姓名','客户电话','店铺名称','业务员','手机型号','售价($)','首付($)','分期本金($)','期数','利息月利率(%)','手续费月利率(%)','每期还款($)','利息总额($)','手续费总额($)','每日滞纳金($)','店家返点($)','已还期数','总期数','状态','备注'];
+  const s1Rows = sales.map(s => {
+    const paidP = s.schedule.filter(p=>p.paid).length;
+    return [s.id, s.date, s.customer, s.customerPhone||'', s.shopName||'', s.salesperson||'', s.modelName||'',
+      s.salePrice, s.deposit, s.installmentAmount, s.periods,
+      s.interestRate, s.serviceFeeRate, s.monthlyPayment,
+      s.totalInterest||0, s.totalServiceFee||0, s.dailyLateFee||0, s.storeRebate||0,
+      paidP, s.periods, s.status, s.note||''];
+  });
+
+  // ── Sheet 2: 还款记录 ──
+  const s2Header = ['记录#','合同#','日期','客户','期次','实收本金($)','实收利息($)','实收手续费($)','滞纳金($)','合计($)','备注'];
+  const s2Rows = pays.map(p => [p.id, p.contractId, p.date, p.customer, p.period,
+    p.principal, p.interest, p.serviceFee||0, p.penalty||0,
+    (+p.principal)+(+p.interest)+(+p.serviceFee||0)+(+p.penalty||0), p.note||'']);
+
+  // ── Sheet 3: 提前还款 ──
+  const s3Header = ['记录#','合同#','日期','客户','剩余本金($)','原剩余利息($)','手续费($)','返点($)','协商还款额($)','实际利润($)','备注'];
+  const s3Rows = earlyPays.map(r => [r.id, r.contractId, r.date, r.customer,
+    r.remainPrincipal, r.origRemainInterest, r.remainServiceFee||0, r.storeRebate||0,
+    r.negotiatedAmount, r.actualProfit, r.note||'']);
+
+  // ── Sheet 4: 开支记录 ──
+  const s4Header = ['记录#','日期','类别','金额($)','说明','经手人'];
+  const s4Rows = expenses.map(e => [e.id, e.date, e.cat, e.amount, e.note||'', e.person||'']);
+
+  // ── Sheet 5: 月度汇总 ──
+  const monthSet = new Set([...sales.map(s=>s.date.slice(0,7)), ...pays.map(p=>p.date.slice(0,7))]);
+  const s5Header = ['月份','新增单量','月总放款额($)','月总回款额($)','月利息($)','月手续费($)','月滞纳金($)','月开支($)','月净利润($)','回款率(%)','坏账率(%)'];
+  const s5Rows = [...monthSet].sort().reverse().map(m => {
+    const mS = sales.filter(s=>s.date.slice(0,7)===m);
+    const mP = pays.filter(p=>p.date.slice(0,7)===m);
+    const mE = earlyPays.filter(r=>r.date.slice(0,7)===m);
+    const loan   = mS.reduce((a,s)=>a+(+s.installmentAmount),0);
+    const repay  = mP.reduce((a,p)=>a+(+p.principal)+(+p.interest)+(+p.serviceFee||0)+(+p.penalty||0),0)
+                 + mE.reduce((a,r)=>a+(+r.negotiatedAmount),0);
+    const mInt   = mP.reduce((a,p)=>a+(+p.interest),0);
+    const mSvc   = mP.reduce((a,p)=>a+(+p.serviceFee||0),0);
+    const mPen   = mP.reduce((a,p)=>a+(+p.penalty||0),0);
+    const mExp   = expenses.filter(e=>e.date.slice(0,7)===m).reduce((a,e)=>a+(+e.amount),0);
+    const mReb   = mS.reduce((a,s)=>a+(+s.storeRebate||0),0);
+    const profit = mInt + mSvc + mPen + mE.reduce((a,r)=>a+(+r.actualProfit),0) - mReb - mExp;
+    const mDue   = sales.flatMap(s=>s.schedule.filter(p=>p.dueDate.slice(0,7)===m));
+    const mDueAmt= mDue.reduce((a,p)=>a+(+p.principalDue||0)+(+p.interestDue||0)+(+p.serviceFeeDue||0),0);
+    const actual = mP.reduce((a,p)=>a+(+p.principal)+(+p.interest)+(+p.serviceFee||0),0);
+    const repayR = mDueAmt>0?(actual/mDueAmt*100).toFixed(1):'—';
+    const bdR    = mDueAmt>0?((mDueAmt-actual)/mDueAmt*100).toFixed(1):'—';
+    return [m, mS.length, loan.toFixed(2), repay.toFixed(2), mInt.toFixed(2), mSvc.toFixed(2), mPen.toFixed(2), mExp.toFixed(2), profit.toFixed(2), repayR, bdR];
+  });
+
+  // ── Build CSV with multiple sheets (use tab as separator within, newline between sheets) ──
+  // Actually build as HTML table which Excel can open directly
+  const sheets = [
+    ['合同列表', s1Header, s1Rows],
+    ['还款记录', s2Header, s2Rows],
+    ['提前还款', s3Header, s3Rows],
+    ['开支记录', s4Header, s4Rows],
+    ['月度汇总', s5Header, s5Rows],
+  ];
+
+  let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>`;
+  sheets.forEach(([name]) => {
+    html += `<x:ExcelWorksheet><x:Name>${name}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet>`;
+  });
+  html += `</x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body>`;
+
+  sheets.forEach(([name, header, rows]) => {
+    html += `<table><tr><td colspan="${header.length}" style="font-weight:bold;font-size:14px;background:#0f2d5c;color:white">${name}</td></tr>`;
+    html += `<tr>${header.map(h=>`<td style="background:#1565c0;color:white;font-weight:bold;border:1px solid #ccc">${h}</td>`).join('')}</tr>`;
+    rows.forEach((row,i) => {
+      const bg = i%2===0?'#ffffff':'#f5f8ff';
+      html += `<tr>${row.map(v=>`<td style="border:1px solid #ddd;background:${bg}">${v??''}</td>`).join('')}</tr>`;
+    });
+    html += `<tr><td colspan="${header.length}"></td></tr><tr><td colspan="${header.length}"></td></tr></table>`;
+  });
+  html += '</body></html>';
+
+  const blob = new Blob(['\uFEFF'+html], {type:'application/vnd.ms-excel;charset=utf-8'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `MORODOK_Excel_${td}.xls`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
 window.saveCompany = function() {
   const name=document.getElementById('coName')?.value||'';
   DB_set('company',{name,phone:document.getElementById('coPhone')?.value||'',address:document.getElementById('coAddr')?.value||'',note:document.getElementById('coNote')?.value||''});
