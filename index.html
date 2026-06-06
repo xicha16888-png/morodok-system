@@ -1639,7 +1639,7 @@ window.saveEditSale = function(id) {
   const s = sales[idx];
   const phones = DB_get('phones') || [];
 
-  const salePrice   = +(document.getElementById('eS'+'alePrice')?.value || 0);
+  const salePrice   = +(document.getElementById('eSalePrice')?.value || 0);
   const deposit     = +(document.getElementById('eDeposit')?.value || 0);
   const periods     = +(document.getElementById('ePeriods')?.value || s.periods);
   const svcPeriods  = +(document.getElementById('eSvcPeriods')?.value || s.svcPeriods);
