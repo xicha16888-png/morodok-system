@@ -3259,6 +3259,7 @@ function renderInventory() {
 }
 
 function renderCompany() {
+  setTimeout(checkBackupReminder, 100);
   const c=DB_get('company')||{};
   return `<div class="page-header"><div class="page-title">⚙️ ${t('companyTitle')}</div></div>
   <div class="card"><div class="form-grid">
@@ -3273,12 +3274,45 @@ function renderCompany() {
   <div class="btn-row" style="margin-top:14px;flex-wrap:wrap;gap:10px">
     <button class="btn btn-outline" onclick="window.open('/api/backup')">📤 ${_lang==='km'?'ទាញយក JSON':_lang==='en'?'Download JSON Backup':'下载 JSON 备份'}</button>
     <button class="btn btn-primary" onclick="exportExcel()" style="background:#1e7e34">📊 ${_lang==='km'?'នាំចេញ Excel':_lang==='en'?'Export to Excel':'导出 Excel 报表'}</button>
+    <button class="btn btn-primary" onclick="localBackup()" style="background:#7b1fa2">💾 ${_lang==='km'?'បម្រុងទុកខែនេះ':_lang==='en'?'Monthly Backup':'月度备份下载'}</button>
   </div>
-  <div style="font-size:12px;color:var(--muted);margin-top:10px">
+  <div id="backupReminder" style="margin-top:10px"></div>
+  <div style="font-size:12px;color:var(--muted);margin-top:6px">
     📊 ${_lang==='km'?'Excel រួមមាន: កិច្ចសន្យា, ការបង់ប្រាក់, ការចំណាយ':_lang==='en'?'Excel includes: Contracts, Payments, Expenses, Summary':'Excel 包含：合同列表、还款记录、开支记录、月度汇总 4 个工作表，可直接用 WPS/Excel 打开'}
   </div>
   </div></div>`;
 }
+
+window.localBackup = function() {
+  const td = today();
+  const ym = td.slice(0,7); // 2026-06
+  const data = JSON.stringify(_db, null, 2);
+  const blob = new Blob([data], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'MORODOK-backup-' + ym + '.json';
+  a.click();
+  // 记录最后备份时间
+  localStorage.setItem('lastBackupMonth', ym);
+  const el = document.getElementById('backupReminder');
+  if (el) el.innerHTML = '<div style="color:var(--green);font-size:12px;margin-top:6px">✅ 备份已下载：MORODOK-backup-' + ym + '.json，请保存到安全位置</div>';
+};
+
+// 月度备份提醒：每月检查一次
+function checkBackupReminder() {
+  const el = document.getElementById('backupReminder');
+  if (!el) return;
+  const lastBackup = localStorage.getItem('lastBackupMonth') || '';
+  const td = today();
+  const currentYM = td.slice(0,7);
+  const dayOfMonth = +td.slice(8,10);
+  if (lastBackup !== currentYM && dayOfMonth >= 25) {
+    el.innerHTML = '<div style="background:#fff3e0;border:1px solid var(--amber);border-radius:8px;padding:10px;font-size:12px;color:#e65100;margin-top:6px">⚠️ 本月还未做备份！建议每月底点击「月度备份下载」保存数据到本地电脑。</div>';
+  } else if (lastBackup === currentYM) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--green);margin-top:6px">✅ 本月已备份（' + lastBackup + '）</div>';
+  }
+}
+
 window.exportExcel = function() {
   const sales     = DB_get('sales')    || [];
   const pays      = DB_get('payments') || [];
