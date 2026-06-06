@@ -1290,7 +1290,7 @@ function periodSelect(id, defaultVal, onchange) {
 
 function renderSaleAdd() {
   const phones = DB_get('phones') || [];
-  const opts = phones.map(p => `<option value="${p.id}">${esc(p.brand)} ${esc(p.model)} — ${_lang==='zh'?'库存':'Stock'}${p.stock}${_lang==='zh'?'台':'pcs'} (${_lang==='zh'?'建议':'Suggested'}${fmt(p.price)})</option>`).join('');
+  const opts = phones.map(p => `<option value="${p.id}">${esc(p.brand)} ${esc(p.model)} ${esc(p.storage||'')} — ${_lang==='zh'?'库存':'Stock'}${p.stock}${_lang==='zh'?'台':'pcs'} (${_lang==='zh'?'建议':'Suggested'}${fmt(p.price)})</option>`).join('');
   return `
   <div class="page-header"><div class="page-title">➕ ${t('newContract')}</div><div class="page-sub">${t('newContractSub')}</div></div>
   <div class="card">
@@ -1537,6 +1537,7 @@ function buildSalesTable(sales) {
         <td><span class="badge ${s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':'badge-blue'}">${s.status}</span></td>
         <td style="white-space:nowrap">
           <button class="btn btn-outline btn-sm" onclick="viewSchedule(${s.id})">${t('repaySchedule')}</button>
+          <button class="btn btn-primary btn-sm" style="margin-left:4px" onclick="editSale(${s.id})">${_lang==='zh'?'编辑':_lang==='km'?'កែប្រែ':'Edit'}</button>
           <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSale(${s.id})">${t('deleteBtn')}</button>
         </td>
       </tr>`;}).join('')}
@@ -1577,6 +1578,97 @@ window.viewSchedule = function(id) {
       <span>${t("totalServiceFee")}：<b class="text-amber">${fmt(s.totalServiceFee||0)}</b></span>
       <span>${t("storeRebate")}：<b class="text-red">-${fmt(s.storeRebate||0)}</b></span>
     </div>`);
+};
+
+
+window.editSale = function(id) {
+  const sales = DB_get('sales') || [];
+  const s = sales.find(x => x.id === id);
+  if (!s) return;
+  const phones = DB_get('phones') || [];
+  const phoneOpts = phones.map(p => `<option value="${p.id}" ${p.id===s.modelId?'selected':''}>${p.brand} ${p.model} ${p.storage||''}</option>`).join('');
+  const periodOpts = [1,2,3,4,5,6,7,8,9,10,11,12,18,24].map(n=>`<option value="${n}" ${n===s.periods?'selected':''}>${n}期</option>`).join('');
+  const svcPeriodOpts = [1,2,3,4,5,6,7,8,9,10,11,12,18,24].map(n=>`<option value="${n}" ${n===(s.svcPeriods||s.periods)?'selected':''}>${n}期</option>`).join('');
+
+  showModal(`✏️ 编辑合同 #${s.id} — ${s.customer}`,
+    `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:13px">
+      <div><label style="font-size:11px;color:var(--muted)">合同日期</label><input id="eDate" type="date" value="${s.date}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">客户姓名</label><input id="eCust" value="${s.customer}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">客户电话</label><input id="eCustPhone" value="${s.customerPhone||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">店铺名称</label><input id="eShop" value="${s.shopName||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">业务员</label><input id="eSalesperson" value="${s.salesperson||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">手机型号</label><select id="eModel" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${phoneOpts}</select></div>
+      <div><label style="font-size:11px;color:var(--muted)">销售价格 ($)</label><input id="eSalePrice" type="number" value="${s.salePrice}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">首付金额 ($)</label><input id="eDeposit" type="number" value="${s.deposit}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">分期期数</label><select id="ePeriods" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${periodOpts}</select></div>
+      <div><label style="font-size:11px;color:var(--muted)">首次还款日</label><input id="eFirstDue" type="date" value="${s.firstDue||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">每期利息 ($)</label><input id="eMonthlyInt" type="number" value="${s.totalInterest&&s.periods?(+s.totalInterest/s.periods).toFixed(2):0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">手续费期数</label><select id="eSvcPeriods" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${svcPeriodOpts}</select></div>
+      <div><label style="font-size:11px;color:var(--muted)">每期手续费 ($)</label><input id="eMonthlySvc" type="number" value="${s.totalServiceFee&&s.svcPeriods?(+s.totalServiceFee/(s.svcPeriods||s.periods)).toFixed(2):0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">每期还款合计 ($)</label><input id="eMonthly" type="number" value="${s.monthlyPayment||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">每日滞纳金 ($)</label><input id="eDailyFee" type="number" value="${s.dailyLateFee||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">店家返点 ($)</label><input id="eRebate" type="number" value="${s.storeRebate||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div style="grid-column:span 3"><label style="font-size:11px;color:var(--muted)">备注</label><input id="eNote" value="${s.note||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+    </div>
+    <div id="editMsg" style="margin-top:10px"></div>
+    <div style="margin-top:14px;display:flex;gap:10px">
+      <button class="btn btn-primary" onclick="saveEditSale(${id})" style="flex:1">💾 保存更改</button>
+      <button class="btn btn-outline" onclick="document.getElementById('modalOverlay').style.display='none'" style="flex:1">取消</button>
+    </div>`
+  );
+};
+
+window.saveEditSale = function(id) {
+  const sales = DB_get('sales') || [];
+  const idx = sales.findIndex(x => x.id === id);
+  if (idx < 0) return;
+  const s = sales[idx];
+  const phones = DB_get('phones') || [];
+
+  const salePrice   = +(document.getElementById('eS'+'alePrice')?.value || 0);
+  const deposit     = +(document.getElementById('eDeposit')?.value || 0);
+  const periods     = +(document.getElementById('ePeriods')?.value || s.periods);
+  const svcPeriods  = +(document.getElementById('eSvcPeriods')?.value || s.svcPeriods);
+  const monthlyInt  = +(document.getElementById('eMonthlyInt')?.value || 0);
+  const monthlySvc  = +(document.getElementById('eMonthlySvc')?.value || 0);
+  const manualMonthly = +(document.getElementById('eMonthly')?.value || 0);
+  const rebate      = +(document.getElementById('eRebate')?.value || 0);
+  const modelId     = +(document.getElementById('eModel')?.value || s.modelId);
+  const ph          = phones.find(p => p.id === modelId);
+  const principal   = salePrice - deposit;
+
+  const totalInt    = monthlyInt * periods;
+  const totalSvc    = monthlySvc * svcPeriods;
+  const autoMonthly = principal > 0 ? (principal / periods) + monthlyInt + monthlySvc : 0;
+  const monthly     = manualMonthly > 0 ? manualMonthly : autoMonthly;
+  const intRate     = principal > 0 ? (monthlyInt / principal) * 100 : 0;
+  const svcRate     = principal > 0 ? (monthlySvc / principal) * 100 : 0;
+  const contractNetProfit = (monthly * periods) - principal - rebate;
+
+  sales[idx] = {
+    ...s,
+    date:         document.getElementById('eDate')?.value || s.date,
+    customer:     document.getElementById('eCust')?.value?.trim() || s.customer,
+    customerPhone:document.getElementById('eCustPhone')?.value?.trim() || s.customerPhone,
+    shopName:     document.getElementById('eShop')?.value?.trim() || s.shopName,
+    salesperson:  document.getElementById('eSalesperson')?.value?.trim() || s.salesperson,
+    firstDue:     document.getElementById('eFirstDue')?.value || s.firstDue,
+    note:         document.getElementById('eNote')?.value || '',
+    modelId, modelName: ph ? `${ph.brand} ${ph.model} ${ph.storage||''}`.trim() : s.modelName,
+    salePrice, deposit, installmentAmount: principal,
+    periods, svcPeriods,
+    interestRate: intRate, serviceFeeRate: svcRate,
+    monthlyPayment: monthly,
+    totalInterest: totalInt, totalServiceFee: totalSvc,
+    contractNetProfit,
+    dailyLateFee: +(document.getElementById('eDailyFee')?.value || 0),
+    storeRebate: rebate,
+  };
+
+  DB_set('sales', sales);
+  document.getElementById('modalOverlay').style.display = 'none';
+  nav('sale-list');
+  setTimeout(() => showMsg && showMsg('', '', ''), 100);
 };
 
 window.deleteSale = function(id) {
@@ -2079,14 +2171,53 @@ function renderPhones() {
 }
 function buildPhonesTable(phones) {
   if (!phones.length) return `<div class="empty-state"><div class="ei">📱</div><p>暂无型号</p></div>`;
-  return `<div class="table-wrap"><table><tr><th>${t("colBrand")}</th><th>${t("colPhoneModel")}</th><th>${t("colCostPrice")}</th><th>${t("colSellPrice")}</th><th>${t("colStock")}</th><th>${t("colAction")}</th></tr>
-    ${phones.map(p=>`<tr><td class="fw700">${esc(p.brand)}</td><td>${esc(p.model)}</td>
+  return `<div class="table-wrap"><table id="phoneSortTable"><tr><th style="width:32px"></th><th>${t("colBrand")}</th><th>${t("colPhoneModel")}</th><th>${t("colCostPrice")}</th><th>${t("colSellPrice")}</th><th>${t("colStock")}</th><th>${t("colAction")}</th></tr>
+    ${phones.map(p=>`<tr draggable="true" data-pid="${p.id}" style="cursor:grab">
+      <td style="text-align:center;color:#888;font-size:16px;user-select:none">⠿</td>
+      <td class="fw700">${esc(p.brand)}</td><td>${esc(p.model)}</td>
       <td><span class="badge badge-blue">${esc(p.storage||p.cost||'-')}</span></td>
       <td>${fmt(p.price)}</td>
       <td><span class="badge ${p.stock===0?'badge-red':p.stock<=2?'badge-amber':'badge-green'}">${p.stock} ${_lang==='km'?'គ្រឿង':_lang==='en'?'pcs':'台'}</span></td>
       <td><button class="btn btn-danger btn-sm" onclick="deletePhone(${p.id})">${t('deleteBtn')}</button></td></tr>`).join('')}
   </table></div>`;
 }
+
+// 拖拽排序逻辑
+let _dragSrcId = null;
+document.addEventListener('dragstart', e => {
+  const tr = e.target.closest('tr[data-pid]');
+  if (!tr) return;
+  _dragSrcId = +tr.dataset.pid;
+  tr.style.opacity = '0.5';
+});
+document.addEventListener('dragend', e => {
+  const tr = e.target.closest('tr[data-pid]');
+  if (tr) tr.style.opacity = '1';
+});
+document.addEventListener('dragover', e => {
+  const tr = e.target.closest('tr[data-pid]');
+  if (tr) { e.preventDefault(); tr.style.background = 'rgba(255,200,50,0.15)'; }
+});
+document.addEventListener('dragleave', e => {
+  const tr = e.target.closest('tr[data-pid]');
+  if (tr) tr.style.background = '';
+});
+document.addEventListener('drop', e => {
+  const tr = e.target.closest('tr[data-pid]');
+  if (!tr || !_dragSrcId) return;
+  tr.style.background = '';
+  const targetId = +tr.dataset.pid;
+  if (_dragSrcId === targetId) return;
+  const phones = DB_get('phones') || [];
+  const srcIdx = phones.findIndex(p => p.id === _dragSrcId);
+  const tgtIdx = phones.findIndex(p => p.id === targetId);
+  if (srcIdx < 0 || tgtIdx < 0) return;
+  const [moved] = phones.splice(srcIdx, 1);
+  phones.splice(tgtIdx, 0, moved);
+  DB_set('phones', phones);
+  document.getElementById('phoneTable').innerHTML = buildPhonesTable(phones);
+  _dragSrcId = null;
+});
 window.addPhone = function() {
   const brand = document.getElementById('phBrand')?.value?.trim(), model = document.getElementById('phModel')?.value?.trim();
   if (!brand||!model) { showMsg('phoneMsg',t('msgFillName'),'red'); return; }
