@@ -1305,6 +1305,14 @@ function periodSelect(id, defaultVal, onchange) {
 function renderSaleAdd() {
   const phones = DB_get('phones') || [];
   const opts = phones.map(p => `<option value="${p.id}">${esc(p.brand)} ${esc(p.model)} ${esc(p.storage||'')} — ${_lang==='zh'?'库存':'Stock'}${p.stock}${_lang==='zh'?'台':'pcs'} (${_lang==='zh'?'建议':'Suggested'}${fmt(p.price)})</option>`).join('');
+  // 店铺选项：从 stores 数据 + 历史合同中提取
+  const stores = DB_get('stores') || [];
+  const allSales = DB_get('sales') || [];
+  const shopNames = [...new Set([...stores.map(s=>s.name), ...allSales.map(s=>s.shopName||'').filter(Boolean)])].sort();
+  const shopOpts = shopNames.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  // 业务员选项：从历史合同中提取
+  const staffNames = [...new Set(allSales.map(s=>s.salesperson||'').filter(Boolean))].sort();
+  const staffOpts = staffNames.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
   return `
   <div class="page-header"><div class="page-title">➕ ${t('newContract')}</div><div class="page-sub">${t('newContractSub')}</div></div>
   <div class="card">
@@ -1313,8 +1321,14 @@ function renderSaleAdd() {
       <div class="form-group"><label>${t('contractDate')}</label><input type="date" id="sDate" value="${today()}"></div>
       <div class="form-group"><label>${t('customerName')}</label><input id="sCust" placeholder="${_lang==='km'?'វាយឈ្មោះ':_lang==='zh'?'输入客户全名':'Enter full name'}"></div>
       <div class="form-group"><label>${t('customerPhone')}</label><input id="sCustPhone" placeholder="${_lang==='km'?'លេខទូរស័ព្ទ':_lang==='zh'?'联系电话':'Contact number'}" oninput="checkPhoneDup()"></div>
-      <div class="form-group"><label>${t('shopName')}</label><input id="sShopName" placeholder="${_lang==='km'?'ឈ្មោះហាង':_lang==='en'?'Store name':'店铺名称'}"></div>
-      <div class="form-group"><label>${t('salesperson')}</label><input id="sSalesperson" placeholder="${_lang==='km'?'ឈ្មោះអ្នកលក់':_lang==='en'?'Staff name':'业务员姓名'}"></div>
+      <div class="form-group"><label>${t('shopName')}</label>
+        <input id="sShopName" list="shopList" placeholder="${_lang==='km'?'ឈ្មោះហាង':_lang==='en'?'Store name':'店铺名称'}" autocomplete="off">
+        <datalist id="shopList">${shopOpts}</datalist>
+      </div>
+      <div class="form-group"><label>${t('salesperson')}</label>
+        <input id="sSalesperson" list="staffList" placeholder="${_lang==='km'?'ឈ្មោះអ្នកលក់':_lang==='en'?'Staff name':'业务员姓名'}" autocomplete="off">
+        <datalist id="staffList">${staffOpts}</datalist>
+      </div>
       <div id="phoneDupMsg" style="grid-column:span 3"></div>
       <div class="form-group span2"><label>${t('phoneModel')}</label><select id="sModel" onchange="calcInstall()">${opts || `<option>${_lang==='km'?'សូមបន្ថែមគំរូ':_lang==='zh'?'请先添加手机型号':'Please add phone models first'}</option>`}</select></div>
       <div class="form-group"><label>${t('salePrice')}</label><input type="number" id="sSalePrice" placeholder="0.00" step="0.01" oninput="calcInstall()"></div>
