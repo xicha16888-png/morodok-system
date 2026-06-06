@@ -1627,7 +1627,7 @@ window.editSale = function(id) {
     <div id="editMsg" style="margin-top:10px"></div>
     <div style="margin-top:14px;display:flex;gap:10px">
       <button class="btn btn-primary" onclick="saveEditSale('${id}')" style="flex:1">💾 保存更改</button>
-      <button class="btn btn-outline" onclick="document.getElementById('modalOverlay').style.display='none'" style="flex:1">取消</button>
+      <button class="btn btn-outline" onclick="closeModal()" style="flex:1">取消</button>
     </div>`
   );
 };
@@ -1680,7 +1680,7 @@ window.saveEditSale = function(id) {
   };
 
   DB_set('sales', sales);
-  document.getElementById('modalOverlay').style.display = 'none';
+  closeModal();
   nav('sale-list');
   setTimeout(() => showMsg && showMsg('', '', ''), 100);
 };
