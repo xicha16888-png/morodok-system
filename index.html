@@ -1340,7 +1340,7 @@ function renderSaleAdd() {
       <div style="font-size:12px;color:var(--sky);font-weight:700;margin-bottom:12px">📊 ${t('summarySection')}</div>
       <div class="form-grid">
         <div class="form-group"><label>${t('installPrincipal')}</label><input id="sInstAmt" readonly></div>
-        <div class="form-group"><label>${t('monthlyTotal')}</label><input id="sMonthly" readonly style="background:#e3f2fd;font-weight:700"></div>
+        <div class="form-group"><label>${t('monthlyTotal')}</label><input type="number" id="sMonthly" step="0.01" placeholder="0.00" oninput="calcInstall()" style="background:#e3f2fd;font-weight:700"></div>
         <div class="form-group"><label>${t('netProfitEst')}</label><input id="sNetProfit" readonly style="background:#e3f2fd;font-weight:700"></div>
       </div>
     </div>
@@ -1390,10 +1390,15 @@ window.calcInstall = function() {
   // 总计
   const totalInt    = monthlyInt * periods;
   const totalSvc    = monthlySvc * svcPeriods;
-  const monthly     = periods > 0 ? (principal / periods) + monthlyInt + monthlySvc : 0;
+  const autoMonthly = periods > 0 ? (principal / periods) + monthlyInt + monthlySvc : 0;
 
-  // Net profit = interest + service fee - rebate
-  const netProfit = totalInt + totalSvc - rebate;
+  // 每期还款合计：用户手动输入，若为0则自动填入计算值
+  const monthlyEl = document.getElementById('sMonthly');
+  const manualMonthly = +(monthlyEl?.value || 0);
+  const monthly = manualMonthly > 0 ? manualMonthly : autoMonthly;
+
+  // 净利润 = 每期还款合计 × 期数 - 本金 - 店家返点
+  const netProfit = (monthly * periods) - principal - rebate;
 
   const set     = (id, v) => { const el = document.getElementById(id); if (el) el.value = isNaN(v) ? '0.00' : v.toFixed(2); };
   const setRate = (id, v) => { const el = document.getElementById(id); if (el) el.value = isNaN(v) ? '0.0000' : v.toFixed(4); };
@@ -1402,7 +1407,8 @@ window.calcInstall = function() {
   setRate('sInterestRate', intRate);
   set('sTotalService', totalSvc);
   setRate('sServiceRate', svcRate);
-  set('sMonthly', monthly);
+  // 只在未手动填写时才自动填入每期还款
+  if (!manualMonthly) set('sMonthly', autoMonthly);
   set('sNetProfit', netProfit);
   const npEl = document.getElementById('sNetProfit');
   if (npEl) npEl.style.color = netProfit >= 0 ? 'var(--green)' : 'var(--red)';
@@ -1440,7 +1446,11 @@ window.submitSale = function() {
   const principal = price - dep;
   const totalInt  = monthlyInt * periods;
   const totalSvc  = monthlySvc * svcPeriods;
-  const monthly   = (principal / periods) + monthlyInt + monthlySvc;
+  const autoMonthly = (principal / periods) + monthlyInt + monthlySvc;
+  const manualMonthly = +(document.getElementById('sMonthly')?.value || 0);
+  const monthly   = manualMonthly > 0 ? manualMonthly : autoMonthly;
+  // 净利润 = 每期还款合计 × 期数 - 本金 - 返点
+  const contractNetProfit = (monthly * periods) - principal - rebate;
 
   // Generate schedule
   const schedule = [];
@@ -1468,6 +1478,7 @@ window.submitSale = function() {
     interestRate: intRate * 100, serviceFeeRate: svcRate * 100,
     monthlyPayment: monthly,
     totalInterest: totalInt, totalServiceFee: totalSvc,
+    contractNetProfit: contractNetProfit,
     dailyLateFee: dailyFee, storeRebate: rebate,
     firstDue, note, schedule, status: '进行中'
   };
@@ -1482,7 +1493,7 @@ window.submitSale = function() {
   DB_set('sales', sales);
   showMsg('saleMsg', `✅ ${t('saved')} #${sale.id} — ${cust}，${periods}${t('period')}，${fmt(monthly)}/${t('period')}`, 'green');
   ['sCust','sCustPhone','sSalePrice','sNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  ['sDeposit','sMonthlyInt','sMonthlyService','sDailyFee','sRebate'].forEach(id => { const el = document.getElementById(id); if (el) el.value = '0'; });
+  ['sDeposit','sMonthlyInt','sMonthlyService','sMonthly','sDailyFee','sRebate'].forEach(id => { const el = document.getElementById(id); if (el) el.value = '0'; });
   calcInstall(); updateBadges();
 };
 
@@ -1845,11 +1856,16 @@ function renderStatsProfit() {
   const expenses  = DB_get('expenses')||[];
 
   const normalSales = sales.filter(s => s.status !== '提前结清');
-  // Interest & service fee totals
+  // 用 contractNetProfit（每期还款×期数-本金-返点）计算合同利润
   const tInterest    = normalSales.reduce((a,s)=>a+(+s.totalInterest||0),0);
   const tServiceFee  = normalSales.reduce((a,s)=>a+(+s.totalServiceFee||0),0);
   const tRebate      = sales.reduce((a,s)=>a+(+s.storeRebate||0),0);
   const tPenalty     = pays.reduce((a,p)=>a+(+p.penalty||0),0);
+  // 合同净利润：优先用保存的 contractNetProfit，兼容旧数据
+  const tContractProfit = normalSales.reduce((a,s)=>{
+    if (s.contractNetProfit != null) return a + (+s.contractNetProfit);
+    return a + (+s.totalInterest||0) + (+s.totalServiceFee||0) - (+s.storeRebate||0);
+  }, 0);
 
   // Early repayment
   const tEarlyProfit   = earlyPays.reduce((a,r)=>a+(+r.actualProfit),0);
@@ -1859,8 +1875,8 @@ function renderStatsProfit() {
   // Expenses
   const tExpenses = expenses.reduce((a,e)=>a+(+e.amount),0);
 
-  // Net profit = gross + interest + service fee + penalty + early profit - rebate - expenses
-  const tProfitBeforeExp = tInterest + tServiceFee + tPenalty + tEarlyProfit - tRebate;
+  // Net profit = 合同利润 + 滞纳金 + 提前还款利润 - 开支
+  const tProfitBeforeExp = tContractProfit + tPenalty + tEarlyProfit;
   const tNet = tProfitBeforeExp - tExpenses;
 
   const byCat = {};
@@ -2426,10 +2442,15 @@ function renderFinanceReport() {
     const mServiceFee  = mPays.reduce((a,p) => a + (+p.serviceFee||0), 0);
     const mRebate      = mSales.reduce((a,s)=>a+(+s.storeRebate||0),0);
     const mPenalty     = mPays.reduce((a,p)=>a+(+p.penalty||0),0);
+    // 合同利润：优先用 contractNetProfit，兼容旧数据
+    const mContractProfit = mSales.filter(s=>s.status!=='提前结清').reduce((a,s)=>{
+      if (s.contractNetProfit != null) return a + (+s.contractNetProfit);
+      return a + (+s.totalInterest||0) + (+s.totalServiceFee||0) - (+s.storeRebate||0);
+    }, 0);
     const totalRepay = mPays.reduce((a,p) => a + (+p.principal) + (+p.interest) + (+p.serviceFee||0) + (+p.penalty||0), 0)
                      + mEarly.reduce((a,r) => a + (+r.negotiatedAmount), 0);
-    const mProfit = mInterest + mEarlyProfit + mServiceFee + mPenalty - mRebate - mExpenses;
-    const mProfitBeforeExp = mInterest + mEarlyProfit + mServiceFee + mPenalty - mRebate;
+    const mProfit = mContractProfit + mEarlyProfit + mPenalty - mExpenses;
+    const mProfitBeforeExp = mContractProfit + mEarlyProfit + mPenalty;
 
     // ── 新公式 ──
     // 月总应收款 = 本月所有到期期次的（本金+利息+手续费）
