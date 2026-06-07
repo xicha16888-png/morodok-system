@@ -2136,40 +2136,115 @@ function renderStatsProfit() {
   </div>` : ''}
 
   <div class="card">
-    <div class="card-title" style="margin-bottom:14px">📋 ${t("contractDetails")}</div>
-    ${sales.length?`<div class="table-wrap"><table>
-      <tr><th>${t("colNo")}</th><th>${t("colCustomer")}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colInterest")}</th><th>${t("colServiceFee")}</th><th>${t("colRebateCol")}</th><th>${t("colNetProfit")}</th><th>${t("colStatus")}</th></tr>
-      ${sales.slice().reverse().map(s=>{
-        let interestVal, svcVal, rebateVal, net;
-        if (s.status === '提前结清') {
-          const ep = earlyPays.find(r => r.contractId === s.id);
-          interestVal = ep ? +ep.actualProfit : 0;
-          svcVal = 0;
-        } else {
-          interestVal = +s.totalInterest||0;
-          svcVal = +s.totalServiceFee||0;
-        }
-        rebateVal = +s.storeRebate||0;
-        net = interestVal + svcVal - rebateVal;
-        const statusBadge = s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':'badge-blue';
-        return`<tr>
-          <td class="fw700 text-blue">#${s.id}</td>
-          <td class="fw700">${esc(s.customer)}</td>
-          <td>${esc(s.modelName||'-')}</td>
-          <td>${fmt(s.salePrice)}</td>
-          <td class="text-green">${s.status==='提前结清'?'<span class="badge badge-amber" style="font-size:10px">⚡'+t('earlySettled')+'</span> ':''} ${fmt(interestVal)}</td>
-          <td class="text-amber">${fmt(svcVal)}</td>
-          <td class="text-red">${rebateVal>0?'-'+fmt(rebateVal):'-'}</td>
-          <td><b style="color:${net>=0?'var(--navy)':'var(--red)'}">${fmt(net)}</b></td>
-          <td><span class="badge ${statusBadge}">${s.status}</span></td>
-        </tr>`;}).join('')}
-    </table></div>`:`<div class="empty-state"><div class="ei">💰</div><p>${t("noData")}</p></div>`}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div class="card-title" style="margin:0">📋 ${t("contractDetails")}</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="profitMonthFilter" onchange="filterProfitTable()" style="min-width:130px;font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:7px">
+          <option value="">${_lang==='zh'?'全部月份':_lang==='en'?'All Months':'ខែទាំងអស់'}</option>
+          ${[...new Set(sales.map(s=>s.date.slice(0,7)))].sort().reverse().map(m=>`<option value="${m}">${m}</option>`).join('')}
+        </select>
+        <select id="profitStatusFilter" onchange="filterProfitTable()" style="min-width:110px;font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:7px">
+          <option value="">${t('allStatus')}</option>
+          <option value="进行中">${t('active')}</option>
+          <option value="已结清">${t('settled')}</option>
+          <option value="提前结清">${_lang==='zh'?'提前结清':'Early Settled'}</option>
+        </select>
+        <span id="profitFilterCount" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+    </div>
+    <div id="profitMonthSummary"></div>
+    <div id="profitTableWrap">
+    ${buildProfitTable(sales, earlyPays)}
+    </div>
   </div>`;
+}
+
+function buildProfitTable(filteredSales, earlyPays) {
+  if (!filteredSales.length) return `<div class="empty-state"><div class="ei">💰</div><p>${t("noData")}</p></div>`;
+  let totalInterest=0, totalSvc=0, totalRebate=0, totalNet=0;
+  const rows = filteredSales.slice().reverse().map(s=>{
+    let interestVal, svcVal, rebateVal, net;
+    if (s.status === '提前结清') {
+      const ep = earlyPays.find(r => r.contractId === s.id);
+      interestVal = ep ? +ep.actualProfit : 0;
+      svcVal = 0;
+    } else {
+      interestVal = +s.totalInterest||0;
+      svcVal = +s.totalServiceFee||0;
+    }
+    rebateVal = +s.storeRebate||0;
+    net = interestVal + svcVal - rebateVal;
+    totalInterest+=interestVal; totalSvc+=svcVal; totalRebate+=rebateVal; totalNet+=net;
+    const statusBadge = s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':'badge-blue';
+    return `<tr>
+      <td class="fw700 text-blue">#${s.id}</td>
+      <td style="font-size:11px;color:var(--muted)">${s.date}</td>
+      <td class="fw700">${esc(s.customer)}</td>
+      <td>${esc(s.modelName||'-')}</td>
+      <td>${fmt(s.salePrice)}</td>
+      <td class="text-green">${s.status==='提前结清'?'<span class="badge badge-amber" style="font-size:10px">⚡</span> ':''} ${fmt(interestVal)}</td>
+      <td class="text-amber">${fmt(svcVal)}</td>
+      <td class="text-red">${rebateVal>0?'-'+fmt(rebateVal):'-'}</td>
+      <td><b style="color:${net>=0?'var(--navy)':'var(--red)'}">${fmt(net)}</b></td>
+      <td><span class="badge ${statusBadge}">${s.status}</span></td>
+    </tr>`;
+  }).join('');
+
+  // 合计行
+  const total = `<tr style="background:#f0f7ff;font-weight:700;border-top:2px solid var(--border)">
+    <td colspan="5" style="text-align:right;color:var(--muted);font-size:12px">${_lang==='zh'?'合计（'+filteredSales.length+'笔）':_lang==='en'?'Total ('+filteredSales.length+')':'សរុប'}</td>
+    <td class="text-green">${fmt(totalInterest)}</td>
+    <td class="text-amber">${fmt(totalSvc)}</td>
+    <td class="text-red">−${fmt(totalRebate)}</td>
+    <td style="color:var(--navy)">${fmt(totalNet)}</td>
+    <td></td>
+  </tr>`;
+
+  return `<div class="table-wrap"><table>
+    <tr><th>#</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colInterest")}</th><th>${t("colServiceFee")}</th><th>${t("colRebateCol")}</th><th>${t("colNetProfit")}</th><th>${t("colStatus")}</th></tr>
+    ${rows}${total}
+  </table></div>`;
 }
 
 // ══════════════════════════════════════════════════════
 // REMINDERS
 // ══════════════════════════════════════════════════════
+window.filterProfitTable = function() {
+  const month = document.getElementById('profitMonthFilter')?.value||'';
+  const status = document.getElementById('profitStatusFilter')?.value||'';
+  const earlyPays = DB_get('earlyPayments')||[];
+  let filtered = DB_get('sales')||[];
+  if (month) filtered = filtered.filter(s => s.date.slice(0,7) === month);
+  if (status) filtered = filtered.filter(s => s.status === status);
+
+  const wrap = document.getElementById('profitTableWrap');
+  if (wrap) wrap.innerHTML = buildProfitTable(filtered, earlyPays);
+
+  // 月份汇总
+  const summary = document.getElementById('profitMonthSummary');
+  const countEl = document.getElementById('profitFilterCount');
+  if (countEl) countEl.textContent = filtered.length + (month ? ` 笔 | ${month}` : ' 笔');
+  if (summary && month) {
+    const totalInt = filtered.filter(s=>s.status!=='提前结清').reduce((a,s)=>a+(+s.totalInterest||0),0);
+    const totalSvc = filtered.filter(s=>s.status!=='提前结清').reduce((a,s)=>a+(+s.totalServiceFee||0),0);
+    const totalRebate = filtered.reduce((a,s)=>a+(+s.storeRebate||0),0);
+    const totalNet = totalInt + totalSvc - totalRebate;
+    summary.innerHTML = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+      ${[
+        ['📋 合同数', filtered.length+'笔', 'var(--navy)'],
+        ['💹 利息+手续费', fmt(totalInt+totalSvc), 'var(--green)'],
+        ['↩️ 返点', '-'+fmt(totalRebate), 'var(--red)'],
+        ['🏆 净利润', fmt(totalNet), totalNet>=0?'var(--navy)':'var(--red)'],
+      ].map(([l,v,c])=>`<div style="background:#f0f7ff;border-radius:8px;padding:10px 12px;border-left:3px solid ${c}">
+        <div style="font-size:11px;color:var(--muted)">${l}</div>
+        <div style="font-weight:700;color:${c};font-size:15px">${v}</div>
+      </div>`).join('')}
+    </div>`;
+  } else if (summary) {
+    summary.innerHTML = '';
+  }
+};
+
 function renderReminderTomorrow() {
   const tomorrow = addDays(today(), 1), sales = DB_get('sales')||[], items = [];
   sales.forEach(s => s.schedule.forEach(p => { if (!p.paid && p.dueDate === tomorrow) items.push({s,p}); }));
