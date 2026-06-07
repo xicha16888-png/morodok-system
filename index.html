@@ -1294,7 +1294,7 @@ function renderHome() {
 // ══════════════════════════════════════════════════════
 // SALE ADD
 // ══════════════════════════════════════════════════════
-const PERIOD_OPTS = [1,3,5,8,11,12];
+const PERIOD_OPTS = [3,5,8,11];
 
 function periodSelect(id, defaultVal, onchange) {
   return `<select id="${id}" onchange="${onchange}">
@@ -1561,7 +1561,7 @@ function renderSaleList() {
 
 function buildSalesTable(sales) {
   if (!sales.length) return `<div class="empty-state"><div class="ei">📭</div><p>${t('noContract')}</p></div>`;
-  const ptc = {1:'pt3',3:'pt3',5:'pt6',8:'pt9',11:'pt12',12:'pt12',6:'pt6',9:'pt9',18:'pt9',24:'pt12'};
+  const ptc = {3:'pt3',5:'pt6',8:'pt9',11:'pt12'};
   return `<div class="table-wrap"><table>
     <tr><th>${t("colNo")}</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>🏪 ${_lang==="zh"?"店家":_lang==="en"?"Store":"ហាង"}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colDeposit")}</th><th>${t("colPrincipal")}</th><th>${t("colPeriods")}</th><th>${t("colMonthly")}</th><th>${t("colProgress")}</th><th>${t("colStatus")}</th><th>${t("colAction")}</th></tr>
     ${sales.slice().reverse().map(s => {
@@ -1656,8 +1656,8 @@ window.editSale = function(id) {
   if (!s) return;
   const phones = DB_get('phones') || [];
   const phoneOpts = phones.map(p => `<option value="${p.id}" ${p.id===s.modelId?'selected':''}>${p.brand} ${p.model} ${p.storage||''}</option>`).join('');
-  const periodOpts = [1,2,3,4,5,6,7,8,9,10,11,12,18,24].map(n=>`<option value="${n}" ${n===s.periods?'selected':''}>${n}期</option>`).join('');
-  const svcPeriodOpts = [1,2,3,4,5,6,7,8,9,10,11,12,18,24].map(n=>`<option value="${n}" ${n===(s.svcPeriods||s.periods)?'selected':''}>${n}期</option>`).join('');
+  const periodOpts = [3,5,8,11].map(n=>`<option value="${n}" ${n===s.periods?'selected':''}>${n}期</option>`).join('');
+  const svcPeriodOpts = [3,5,8,11].map(n=>`<option value="${n}" ${n===(s.svcPeriods||s.periods)?'selected':''}>${n}期</option>`).join('');
 
   showModal(`✏️ 编辑合同 #${s.id} — ${s.customer}`,
     `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:13px">
@@ -2875,7 +2875,8 @@ function renderFinanceReport() {
              mDue: mDuePeriods.length, mOverdue: mOverduePeriods.length,
              bd7Rate, bd7noP, bd7RateP, bd7withP,
              bd15Rate, bd15noP, bd15RateP, bd15withP,
-             bd30Rate, bd30noP, bd30RateP, bd30withP };
+             bd30Rate, bd30noP, bd30RateP, bd30withP,
+             mSales };
   });
 
   // ── totals ──
@@ -3099,48 +3100,72 @@ function renderFinanceReport() {
 
   <!-- 单量分析 -->
   <div class="card">
-    <div class="card-title" style="margin-bottom:14px">${t('orderAnalysis')}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div class="card-title" style="margin:0">${t('orderAnalysis')}</div>
+      <div style="font-size:12px;color:var(--muted)">${sel.m||selectedM} · 共 ${sel.mSales?sel.mSales.length:0} 笔</div>
+    </div>
+    ${!sel.mSales || sel.mSales.length === 0 ? `
+      <div class="empty-state"><div class="ei">📦</div><p>该月暂无合同数据</p></div>
+    ` : `
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
-      ${[3,6,9,12].map(p => {
-        const cnt = sales.filter(s => s.periods === p).length;
-        const loan = sales.filter(s => s.periods === p).reduce((a,s) => a + (+s.installmentAmount), 0);
-        const pct = sales.length > 0 ? (cnt/sales.length*100).toFixed(0) : 0;
-        const cls = {3:'pt3',6:'pt6',9:'pt9',12:'pt12'}[p];
-        return `<div style="background:#f8faff;border-radius:8px;padding:14px;border-left:3px solid ${p===6?'#2e7d32':p===9?'#1565c0':p===12?'#6a1b9a':'#e65100'}">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span class="${cls}">${p}期</span><span style="font-size:11px;color:var(--muted)">${pct}%</span>
-          </div>
-          <div style="font-size:22px;font-weight:700;color:var(--navy)">${cnt} 笔</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">${t('totalLoan')} ${fmt(loan)}</div>
-        </div>`;
-      }).join('')}
+      ${(() => {
+        const periodGroups = {};
+        (sel.mSales||[]).forEach(s => {
+          const p = s.periods;
+          if (!periodGroups[p]) periodGroups[p] = [];
+          periodGroups[p].push(s);
+        });
+        const allPeriods = Object.keys(periodGroups).map(Number).sort((a,b)=>a-b);
+        const colors = ['#e65100','#2e7d32','#1565c0','#6a1b9a','#c62828','#00695c'];
+        return allPeriods.map((p,i) => {
+          const cnt = periodGroups[p].length;
+          const loan = periodGroups[p].reduce((a,s)=>a+(+s.installmentAmount),0);
+          const pct = sel.mSales.length > 0 ? (cnt/sel.mSales.length*100).toFixed(0) : 0;
+          const cls = {3:'pt3',5:'pt6',8:'pt9',11:'pt12'}[p]||'pt6';
+          const color = colors[i % colors.length];
+          return `<div style="background:#f8faff;border-radius:8px;padding:14px;border-left:3px solid ${color}">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <span class="${cls}">${p}期</span><span style="font-size:11px;color:var(--muted)">${pct}%</span>
+            </div>
+            <div style="font-size:22px;font-weight:700;color:var(--navy)">${cnt} 笔</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">${t('totalLoan')} ${fmt(loan)}</div>
+          </div>`;
+        }).join('');
+      })()}
     </div>
     <div class="table-wrap">
       <table>
         <tr><th>期别</th><th>合同数</th><th>占比</th><th>放款总额</th><th>预期利息</th><th>已结清</th><th>提前结清</th><th>进行中</th></tr>
-        ${[3,6,9,12,18,24].map(p => {
-          const pSales = sales.filter(s => s.periods === p);
-          if (!pSales.length) return '';
-          const pct = (pSales.length/sales.length*100).toFixed(1);
-          const loan = pSales.reduce((a,s) => a+(+s.installmentAmount),0);
-          const interest = pSales.reduce((a,s) => a+(+s.totalInterest),0);
-          const done = pSales.filter(s => s.status==='已结清').length;
-          const early = pSales.filter(s => s.status==='提前结清').length;
-          const active = pSales.filter(s => s.status==='进行中').length;
-          const cls = {3:'pt3',6:'pt6',9:'pt9',12:'pt12',18:'pt9',24:'pt12'}[p]||'pt6';
-          return `<tr>
-            <td><span class="${cls}">${p}期</span></td>
-            <td class="fw700">${pSales.length}</td>
-            <td>${pct}%</td>
-            <td class="text-blue">${fmt(loan)}</td>
-            <td class="text-amber">${fmt(interest)}</td>
-            <td><span class="badge badge-green">${done}</span></td>
-            <td><span class="badge badge-amber">${early}</span></td>
-            <td><span class="badge badge-blue">${active}</span></td>
-          </tr>`;
-        }).join('')}
+        ${(() => {
+          const periodGroups = {};
+          (sel.mSales||[]).forEach(s => {
+            const p = s.periods;
+            if (!periodGroups[p]) periodGroups[p] = [];
+            periodGroups[p].push(s);
+          });
+          return Object.keys(periodGroups).map(Number).sort((a,b)=>a-b).map(p => {
+            const pSales = periodGroups[p];
+            const pct = sel.mSales.length > 0 ? (pSales.length/sel.mSales.length*100).toFixed(1) : 0;
+            const loan = pSales.reduce((a,s)=>a+(+s.installmentAmount),0);
+            const interest = pSales.reduce((a,s)=>a+(+s.totalInterest),0);
+            const done = pSales.filter(s=>s.status==='已结清').length;
+            const early = pSales.filter(s=>s.status==='提前结清').length;
+            const active = pSales.filter(s=>s.status==='进行中').length;
+            const cls = {3:'pt3',5:'pt6',8:'pt9',11:'pt12'}[p]||'pt6';
+            return `<tr>
+              <td><span class="${cls}">${p}期</span></td>
+              <td class="fw700">${pSales.length}</td>
+              <td>${pct}%</td>
+              <td class="text-blue">${fmt(loan)}</td>
+              <td class="text-amber">${fmt(interest)}</td>
+              <td><span class="badge badge-green">${done}</span></td>
+              <td><span class="badge badge-amber">${early}</span></td>
+              <td><span class="badge badge-blue">${active}</span></td>
+            </tr>`;
+          }).join('');
+        })()}
       </table>
-    </div>
+    </div>`}
   </div>`;
 }
 
