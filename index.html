@@ -1529,15 +1529,33 @@ window.submitSale = function() {
 // SALE LIST
 // ══════════════════════════════════════════════════════
 function renderSaleList() {
+  const allSales = DB_get('sales') || [];
+  const stores = DB_get('stores') || [];
+  // 从销售记录和店家列表合并所有店家名
+  const shopNames = [...new Set([
+    ...stores.map(s => s.name),
+    ...allSales.map(s => s.shopName||'').filter(Boolean)
+  ])].sort();
+  const shopOpts = shopNames.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
   return `
   <div class="page-header"><div class="page-title">🔍 ${t('saleListTitle')}</div></div>
   <div class="card">
     <div class="search-row">
       <input id="saleSearch" placeholder="${t('searchPlaceholder')}" oninput="filterSales()">
-      <select id="saleStatusFilter" onchange="filterSales()"><option value="">${t('allStatus')}</option><option value="进行中">${t('active')}</option><option value="已结清">${t('settled')}</option></select>
+      <select id="saleStatusFilter" onchange="filterSales()">
+        <option value="">${t('allStatus')}</option>
+        <option value="进行中">${t('active')}</option>
+        <option value="已结清">${t('settled')}</option>
+        <option value="提前结清">${_lang==='zh'?'提前结清':_lang==='en'?'Early Settled':'សងមុន'}</option>
+      </select>
+      <select id="saleShopFilter" onchange="filterSales()" style="min-width:120px">
+        <option value="">${_lang==='zh'?'全部店家':_lang==='en'?'All Stores':'ហាងទាំងអស់'}</option>
+        ${shopOpts}
+      </select>
       <button class="btn btn-primary btn-sm" onclick="nav('sale-add')">${t('newContractBtn')}</button>
     </div>
-    <div id="saleTableWrap">${buildSalesTable(DB_get('sales') || [])}</div>
+    <div id="saleShopBadge" style="margin-bottom:8px"></div>
+    <div id="saleTableWrap">${buildSalesTable(allSales)}</div>
   </div>`;
 }
 
@@ -1545,19 +1563,17 @@ function buildSalesTable(sales) {
   if (!sales.length) return `<div class="empty-state"><div class="ei">📭</div><p>${t('noContract')}</p></div>`;
   const ptc = {1:'pt3',3:'pt3',5:'pt6',8:'pt9',11:'pt12',12:'pt12',6:'pt6',9:'pt9',18:'pt9',24:'pt12'};
   return `<div class="table-wrap"><table>
-    <tr><th>${t("colNo")}</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colDeposit")}</th><th>${t("colPrincipal")}</th><th>${t("colPeriods")}</th><th>${t("colIntRate")}</th><th>${t("colSvcRate")}</th><th>${t("colMonthly")}</th><th>${t("colRebate")}</th><th>${t("colProgress")}</th><th>${t("colStatus")}</th><th>${t("colAction")}</th></tr>
+    <tr><th>${t("colNo")}</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>🏪 ${_lang==="zh"?"店家":_lang==="en"?"Store":"ហាង"}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colDeposit")}</th><th>${t("colPrincipal")}</th><th>${t("colPeriods")}</th><th>${t("colMonthly")}</th><th>${t("colProgress")}</th><th>${t("colStatus")}</th><th>${t("colAction")}</th></tr>
     ${sales.slice().reverse().map(s => {
       const paid = s.schedule.filter(p => p.paid).length;
       return `<tr>
         <td class="fw700 text-blue">#${s.id}</td><td>${s.date}</td>
         <td><div class="fw700">${esc(s.customer)}</div><div class="text-muted" style="font-size:11px">${esc(s.customerPhone||'')}</div></td>
+        <td><span style="font-size:12px;background:#e3f2fd;color:var(--navy);padding:2px 8px;border-radius:12px;white-space:nowrap;cursor:pointer" onclick="document.getElementById('saleShopFilter').value='${esc(s.shopName||'')}';filterSales()">${esc(s.shopName||'-')}</span></td>
         <td>${esc(s.modelName||'-')}</td><td>${fmt(s.salePrice)}</td><td>${fmt(s.deposit)}</td>
         <td class="fw700">${fmt(s.installmentAmount)}</td>
         <td><span class="${ptc[s.periods]||'pt6'}">${s.periods}${t('period')}</span></td>
-        <td>${(+s.interestRate||0).toFixed(2)}%</td>
-        <td>${(+s.serviceFeeRate||0).toFixed(2)}%<span style="font-size:10px;color:var(--muted)">×${s.svcPeriods||s.periods}${t("period")}</span></td>
         <td class="fw700">${fmt(s.monthlyPayment)}</td>
-        <td class="${(+s.storeRebate||0)>0?'text-red':''}">${(+s.storeRebate||0)>0?'-'+fmt(s.storeRebate):'-'}</td>
         <td><span style="font-size:12px">${paid}/${s.periods}</span>
           <div style="background:#e3f2fd;height:4px;border-radius:2px;margin-top:4px;width:60px">
             <div style="background:var(--sky);height:4px;border-radius:2px;width:${Math.round(paid/s.periods*100)}%"></div>
@@ -1575,11 +1591,36 @@ function buildSalesTable(sales) {
 window.filterSales = function() {
   const q = (document.getElementById('saleSearch')?.value||'').toLowerCase();
   const st = document.getElementById('saleStatusFilter')?.value||'';
+  const shop = document.getElementById('saleShopFilter')?.value||'';
   let sales = DB_get('sales')||[];
-  if (q) sales = sales.filter(s => s.customer.toLowerCase().includes(q)||String(s.id).includes(q)||(s.modelName||'').toLowerCase().includes(q));
+  if (q) sales = sales.filter(s =>
+    s.customer.toLowerCase().includes(q) ||
+    String(s.id).includes(q) ||
+    (s.modelName||'').toLowerCase().includes(q) ||
+    (s.shopName||'').toLowerCase().includes(q)
+  );
   if (st) sales = sales.filter(s => s.status === st);
+  if (shop) sales = sales.filter(s => (s.shopName||'') === shop);
   const wrap = document.getElementById('saleTableWrap');
   if (wrap) wrap.innerHTML = buildSalesTable(sales);
+  // 显示当前筛选店家的快速统计
+  const badge = document.getElementById('saleShopBadge');
+  if (badge && shop) {
+    const total = sales.length;
+    const active = sales.filter(s=>s.status==='进行中').length;
+    const settled = sales.filter(s=>s.status==='已结清'||s.status==='提前结清').length;
+    const totalAmt = sales.reduce((a,s)=>a+(+s.installmentAmount||0),0);
+    badge.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap;padding:8px 12px;background:#e3f2fd;border-radius:8px;font-size:12px">
+      <span>🏪 <b>${esc(shop)}</b></span>
+      <span>📋 共 <b>${total}</b> 笔</span>
+      <span>🔄 进行中 <b class="text-blue">${active}</b></span>
+      <span>✅ 已结清 <b class="text-green">${settled}</b></span>
+      <span>💰 贷款总额 <b>${fmt(totalAmt)}</b></span>
+      <a href="#" onclick="nav('store-stats');return false" style="color:var(--sky);text-decoration:none">📊 查看坏账率 →</a>
+    </div>`;
+  } else if (badge) {
+    badge.innerHTML = '';
+  }
 };
 
 window.viewSchedule = function(id) {
@@ -3095,6 +3136,8 @@ window.deleteExpense = function(id) {
 // STORE STATS 店家统计
 // ══════════════════════════════════════════════════════
 function renderStoreStats() {
+  // 自动把销售记录里的店家同步进来
+  syncShopsFromSales();
   const stores = DB_get('stores') || [];
   const sales  = DB_get('sales')  || [];
   const td     = today();
@@ -3168,7 +3211,12 @@ function renderStoreStats() {
               </div>
             </div>
           </div>
-          ${storeInfo ? `<button class="btn btn-danger btn-sm" onclick="deleteStore('${esc(name)}')">🗑️</button>` : ''}
+          <div style="display:flex;gap:6px;align-items:center">
+            <button class="btn btn-outline btn-sm" onclick="nav('sale-list');setTimeout(()=>{const el=document.getElementById('saleShopFilter');if(el){el.value='${esc(name)}';filterSales();}},100)" title="查看该店销售记录">
+              🔍 ${_lang==='zh'?'查看订单':_lang==='en'?'View Orders':'មើលបញ្ជា'}
+            </button>
+            ${storeInfo ? `<button class="btn btn-danger btn-sm" onclick="deleteStore('${esc(name)}')">🗑️</button>` : ''}
+          </div>
         </div>
 
         <!-- 单量统计 -->
@@ -3224,6 +3272,26 @@ function renderStoreStats() {
 function daysDiff(dateStr, today) {
   return Math.floor((new Date(today) - new Date(dateStr)) / 86400000);
 }
+
+// 自动同步销售记录里的店家到stores列表
+window.syncShopsFromSales = function() {
+  const sales = DB_get('sales') || [];
+  const stores = DB_get('stores') || [];
+  const existNames = new Set(stores.map(s => s.name));
+  let added = 0;
+  sales.forEach(s => {
+    const shop = (s.shopName || '').trim();
+    if (shop && !existNames.has(shop)) {
+      stores.push({ name: shop, qr: '', createdAt: s.date || today(), autoAdded: true });
+      existNames.add(shop);
+      added++;
+    }
+  });
+  if (added > 0) {
+    DB_set('stores', stores);
+    console.log(`✅ 自动同步了 ${added} 个店家到店家统计`);
+  }
+};
 
 window.addStore = function() {
   const name = document.getElementById('stName')?.value?.trim();
