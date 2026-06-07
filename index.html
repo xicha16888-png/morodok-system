@@ -420,7 +420,7 @@ const I18N = {
     // Finance report
     financeTitle: '月度财务报表', financeSub: '月总放款 · 月总回款 · 月利润 · 月逾期率 · 月回款率 · 单量统计',
     thisMonth: '本月', realtime: '实时数据',
-    monthLoan: '本月放款额', newContracts: '${t("newContracts")}',
+    monthLoan: '本月放款额', newContracts: '笔新合同',
     monthRepay: '本月回款额', repayRate: '回款率',
     monthProfit: '本月净利润', deductedExp: '扣除开支',
     monthExpense: '本月日常开支', preTaxProfitMonth: '税前利润',
@@ -2780,11 +2780,9 @@ function renderFinanceReport() {
     const mServiceFee  = mPays.reduce((a,p) => a + (+p.serviceFee||0), 0);
     const mRebate      = mSales.reduce((a,s)=>a+(+s.storeRebate||0),0);
     const mPenalty     = mPays.reduce((a,p)=>a+(+p.penalty||0),0);
-    // 合同利润：优先用 contractNetProfit，兼容旧数据
-    const mContractProfit = mSales.filter(s=>s.status!=='提前结清').reduce((a,s)=>{
-      if (s.contractNetProfit != null) return a + (+s.contractNetProfit);
-      return a + (+s.totalInterest||0) + (+s.totalServiceFee||0) - (+s.storeRebate||0);
-    }, 0);
+    // 合同利润：统一用 totalInterest + totalServiceFee - storeRebate（与利润统计页面一致）
+    const mContractProfit = mSales.filter(s=>s.status!=='提前结清').reduce((a,s)=>
+      a + (+s.totalInterest||0) + (+s.totalServiceFee||0) - (+s.storeRebate||0), 0);
     const totalRepay = mPays.reduce((a,p) => a + (+p.principal) + (+p.interest) + (+p.serviceFee||0) + (+p.penalty||0), 0)
                      + mEarly.reduce((a,r) => a + (+r.negotiatedAmount), 0);
     const mProfit = mContractProfit + mEarlyProfit + mPenalty - mExpenses;
