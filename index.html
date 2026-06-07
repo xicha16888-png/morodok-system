@@ -3163,7 +3163,33 @@ function renderStoreStats() {
   // All stores from sales (even if not in stores list)
   const allShopNames = [...new Set(sales.map(s=>s.shopName||'').filter(Boolean))];
   // Combine registered stores + stores from sales
-  const storeNames = [...new Set([...stores.map(s=>s.name), ...allShopNames])];
+  const storeNames = [...new Set([...stores.map(s=>s.name), ...allShopNames])].sort();
+
+  // 预计算所有店家数据
+  const storeData = storeNames.map(name => {
+    const storeSales = sales.filter(s => s.shopName === name);
+    const bd30 = calcBadDebt(storeSales, 30);
+    const byMonth = {};
+    storeSales.forEach(s => { const m = s.date.slice(0,7); byMonth[m]=(byMonth[m]||0)+1; });
+    return {
+      name,
+      total: storeSales.length,
+      active: storeSales.filter(s=>s.status==='进行中').length,
+      settled: storeSales.filter(s=>s.status==='已结清'||s.status==='提前结清').length,
+      thisMonth: byMonth[td.slice(0,7)]||0,
+      lastMonth: byMonth[Object.keys(byMonth).sort().reverse()[1]]||0,
+      bd30Rate: +bd30.rateWithP,
+      bd30Amt: bd30.bdWithP,
+      storeSales, byMonth,
+    };
+  });
+
+  // 汇总统计
+  const totalStores = storeData.length;
+  const totalContracts = storeData.reduce((a,s)=>a+s.total,0);
+  const totalActive = storeData.reduce((a,s)=>a+s.active,0);
+  const highRiskStores = storeData.filter(s=>s.bd30Rate>10).length;
+  const thisMonthAll = storeData.reduce((a,s)=>a+s.thisMonth,0);
 
   return `
   <div class="page-header">
@@ -3171,107 +3197,190 @@ function renderStoreStats() {
     <div class="page-sub">${_lang==='km'?'ស្ថិតិតាមហាង':_lang==='en'?'Per-store order & bad debt analysis':'按店铺统计单量及坏账'}</div>
   </div>
 
-  <div class="card">
-    <div class="card-title" style="margin-bottom:14px">${t('addStore')}</div>
-    <div class="form-grid">
-      <div class="form-group"><label>${t('storeName')}</label><input id="stName" placeholder="${_lang==='km'?'ឈ្មោះហាង':_lang==='en'?'Store name':'店铺名称'}"></div>
-      <div class="form-group"><label>${t('storeQR')} (${_lang==='km'?'ជ្រើសរូបភាព':_lang==='en'?'Upload image':'上传图片'})</label>
-        <input type="file" id="stQR" accept="image/*" style="border:1.5px solid var(--border);border-radius:7px;padding:8px;font-size:13px">
-      </div>
-    </div>
-    <div class="btn-row"><button class="btn btn-primary" onclick="addStore()">➕ ${t('addStore')}</button></div>
-    <div id="storeMsg"></div>
+  <!-- 顶部汇总 KPI -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+    ${[
+      ['🏪', _lang==='zh'?'店家总数':_lang==='en'?'Total Stores':'ចំនួនហាង', totalStores, 'var(--sky)'],
+      ['📋', _lang==='zh'?'总合同数':_lang==='en'?'Total Contracts':'ម្ចាស់បំណុល', totalContracts, 'var(--navy)'],
+      ['🔄', _lang==='zh'?'进行中':_lang==='en'?'Active':'កំពុងដំណើរ', totalActive, 'var(--green)'],
+      ['⚠️', _lang==='zh'?'高风险店家':_lang==='en'?'High Risk':'ហាងហានិភ័យ', highRiskStores, 'var(--red)'],
+    ].map(([icon,label,val,color])=>`
+      <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+        <div style="font-size:20px">${icon}</div>
+        <div style="font-size:11px;color:var(--muted);margin:4px 0">${label}</div>
+        <div style="font-size:24px;font-weight:800;color:${color}">${val}</div>
+      </div>`).join('')}
   </div>
 
-  ${storeNames.length === 0 ? `<div class="card"><div class="empty-state"><div class="ei">🏪</div><p>${t('noData')}</p></div></div>` :
-    storeNames.map(name => {
-      const storeInfo  = stores.find(s => s.name === name);
-      const storeSales = sales.filter(s => s.shopName === name);
-      const activeSales= storeSales.filter(s => s.status === '进行中');
-      const bd7  = calcBadDebt(storeSales, 7);
-      const bd15 = calcBadDebt(storeSales, 15);
-      const bd30 = calcBadDebt(storeSales, 30);
-
-      // Monthly breakdown
-      const byMonth = {};
-      storeSales.forEach(s => { const m = s.date.slice(0,7); byMonth[m]=(byMonth[m]||0)+1; });
-      const months = Object.keys(byMonth).sort().reverse();
-
-      return `<div class="card" style="margin-bottom:14px">
-        <div class="card-header">
-          <div style="display:flex;align-items:center;gap:12px">
-            ${storeInfo?.qr ? `<img src="${storeInfo.qr}" style="width:64px;height:64px;border-radius:8px;object-fit:cover;border:1px solid var(--border)">` :
-              '<div style="width:64px;height:64px;border-radius:8px;background:#f0f7ff;display:flex;align-items:center;justify-content:center;font-size:28px">🏪</div>'}
-            <div>
-              <div style="font-size:17px;font-weight:700;color:var(--navy)">${esc(name)}</div>
-              <div style="font-size:12px;color:var(--muted);margin-top:2px">
-                ${t('storeTotal')}：<b>${storeSales.length}</b> ${_lang==='km'?'ករណី':_lang==='en'?'contracts':'笔'} &nbsp;|&nbsp;
-                ${_lang==='km'?'កំពុងដំណើរ':_lang==='en'?'Active':'进行中'}：<b class="text-blue">${activeSales.length}</b> &nbsp;|&nbsp;
-                ${_lang==='km'?'បានទូទាត់':_lang==='en'?'Settled':'已结清'}：<b class="text-green">${storeSales.filter(s=>s.status==='已结清'||s.status==='提前结清').length}</b>
-              </div>
-            </div>
-          </div>
-          <div style="display:flex;gap:6px;align-items:center">
-            <button class="btn btn-outline btn-sm" onclick="nav('sale-list');setTimeout(()=>{const el=document.getElementById('saleShopFilter');if(el){el.value='${esc(name)}';filterSales();}},100)" title="查看该店销售记录">
-              🔍 ${_lang==='zh'?'查看订单':_lang==='en'?'View Orders':'មើលបញ្ជា'}
-            </button>
-            ${storeInfo ? `<button class="btn btn-danger btn-sm" onclick="deleteStore('${esc(name)}')">🗑️</button>` : ''}
-          </div>
+  <!-- 添加店家（折叠） -->
+  <div class="card" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('.toggle-icon').textContent=this.nextElementSibling.style.display==='none'?'▶':'▼'">
+      <div class="card-title" style="margin:0">➕ ${t('addStore')}</div>
+      <span class="toggle-icon" style="color:var(--muted);font-size:12px">▶</span>
+    </div>
+    <div style="display:none;margin-top:14px">
+      <div class="form-grid">
+        <div class="form-group"><label>${t('storeName')}</label><input id="stName" placeholder="${_lang==='km'?'ឈ្មោះហាង':_lang==='en'?'Store name':'店铺名称'}"></div>
+        <div class="form-group"><label>${t('storeQR')} (${_lang==='km'?'ជ្រើសរូបភាព':_lang==='en'?'Upload image':'上传图片'})</label>
+          <input type="file" id="stQR" accept="image/*" style="border:1.5px solid var(--border);border-radius:7px;padding:8px;font-size:13px">
         </div>
+      </div>
+      <div class="btn-row"><button class="btn btn-primary" onclick="addStore()">➕ ${t('addStore')}</button></div>
+      <div id="storeMsg"></div>
+    </div>
+  </div>
 
-        <!-- 单量统计 -->
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0 14px">
-          <div style="background:#e3f2fd;border-radius:8px;padding:12px;text-align:center">
-            <div style="font-size:11px;color:var(--muted)">${t('storeTotal')}</div>
-            <div style="font-size:22px;font-weight:700;color:var(--sky)">${storeSales.length}</div>
-          </div>
-          <div style="background:#e8f5e9;border-radius:8px;padding:12px;text-align:center">
-            <div style="font-size:11px;color:var(--muted)">${_lang==='km'?'ខែនេះ':_lang==='en'?'This Month':'本月'}</div>
-            <div style="font-size:22px;font-weight:700;color:var(--green)">${byMonth[td.slice(0,7)]||0}</div>
-          </div>
-          <div style="background:#fff8e1;border-radius:8px;padding:12px;text-align:center">
-            <div style="font-size:11px;color:var(--muted)">${_lang==='km'?'ខែមុន':_lang==='en'?'Last Month':'上月'}</div>
-            <div style="font-size:22px;font-weight:700;color:var(--amber)">${byMonth[months[1]]||0}</div>
-          </div>
-        </div>
+  <!-- 搜索+筛选栏 -->
+  <div class="card" style="margin-bottom:14px">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input id="storeSearch" placeholder="🔍 ${_lang==='zh'?'搜索店家名称...':_lang==='en'?'Search store...':'ស្វែងរកហាង...'}" oninput="filterStoreTable()" style="flex:1;min-width:200px">
+      <select id="storeRiskFilter" onchange="filterStoreTable()" style="min-width:130px">
+        <option value="">${_lang==='zh'?'全部风险':_lang==='en'?'All Risk':'ហានិភ័យទាំងអស់'}</option>
+        <option value="high">${_lang==='zh'?'⚠️ 高风险(>10%)':_lang==='en'?'⚠️ High Risk(>10%)':'⚠️ ហានិភ័យខ្ពស់'}</option>
+        <option value="mid">${_lang==='zh'?'🟡 中风险(5-10%)':_lang==='en'?'🟡 Mid Risk(5-10%)':'🟡 ហានិភ័យកណ្ដាល'}</option>
+        <option value="low">${_lang==='zh'?'🟢 低风险(<5%)':_lang==='en'?'🟢 Low Risk(<5%)':'🟢 ហានិភ័យទាប'}</option>
+        <option value="active">${_lang==='zh'?'有进行中合同':_lang==='en'?'Has Active Contracts':'មានកិច្ចសន្យា'}</option>
+      </select>
+      <select id="storeSort" onchange="filterStoreTable()" style="min-width:130px">
+        <option value="name">${_lang==='zh'?'按名称排序':_lang==='en'?'Sort by Name':'តាមឈ្មោះ'}</option>
+        <option value="total">${_lang==='zh'?'按总单量':_lang==='en'?'Sort by Total':'តាមចំនួន'}</option>
+        <option value="active">${_lang==='zh'?'按进行中':_lang==='en'?'Sort by Active':'តាមដំណើរការ'}</option>
+        <option value="bd">${_lang==='zh'?'按坏账率':_lang==='en'?'Sort by Bad Debt':'តាមអន្តរការ'}</option>
+        <option value="thisMonth">${_lang==='zh'?'按本月单量':_lang==='en'?'Sort by This Month':'តាមខែនេះ'}</option>
+      </select>
+      <span style="font-size:12px;color:var(--muted)" id="storeCount">${totalStores} ${_lang==='zh'?'家店':'stores'}</span>
+    </div>
+  </div>
 
-        <!-- 坏账率 -->
-        <div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:8px">📉 ${t('badDebtSection')}</div>
-        <div class="table-wrap"><table>
-          <tr>
-            <th>${t('badDebtSection')}</th>
-            <th>${t('badDebtRate')} (${t('withoutPenalty')})</th>
-            <th>${t('badDebtAmt')} (${t('withoutPenalty')})</th>
-            <th>${t('badDebtRate')} (${t('withPenalty')})</th>
-            <th>${t('badDebtAmt')} (${t('withPenalty')})</th>
+  <!-- 店家总览表格 -->
+  ${storeNames.length === 0 ? `<div class="card"><div class="empty-state"><div class="ei">🏪</div><p>${t('noData')}</p></div></div>` : `
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap" id="storeTableWrap">
+      <table id="storeTable">
+        <tr style="position:sticky;top:0;z-index:2">
+          <th style="min-width:160px">${_lang==='zh'?'店家名称':_lang==='en'?'Store':'ឈ្មោះហាង'}</th>
+          <th style="text-align:center">${_lang==='zh'?'总单量':_lang==='en'?'Total':'សរុប'}</th>
+          <th style="text-align:center">${_lang==='zh'?'本月':_lang==='en'?'This Mo.':'ខែនេះ'}</th>
+          <th style="text-align:center">${_lang==='zh'?'上月':_lang==='en'?'Last Mo.':'ខែមុន'}</th>
+          <th style="text-align:center">${_lang==='zh'?'进行中':_lang==='en'?'Active':'ដំណើរការ'}</th>
+          <th style="text-align:center">${_lang==='zh'?'已结清':_lang==='en'?'Settled':'រួចរាល់'}</th>
+          <th style="text-align:center;min-width:120px">${_lang==='zh'?'坏账率(30天)':_lang==='en'?'Bad Debt 30d':'អន្តរការ30ថ្ងៃ'}</th>
+          <th style="text-align:center">${_lang==='zh'?'坏账金额':_lang==='en'?'Bad Debt Amt':'ចំនួនអន្តរការ'}</th>
+          <th>${_lang==='zh'?'操作':_lang==='en'?'Action':'សកម្មភាព'}</th>
+        </tr>
+        ${storeData.map((d,i) => {
+          const riskClass = d.bd30Rate>10?'text-red':d.bd30Rate>5?'text-amber':'text-green';
+          const riskBg = d.bd30Rate>10?'#fff0f0':d.bd30Rate>5?'#fffbe6':'';
+          const storeInfo = stores.find(s=>s.name===d.name);
+          return `<tr data-name="${esc(d.name)}" data-total="${d.total}" data-active="${d.active}" data-bd="${d.bd30Rate}" data-month="${d.thisMonth}" style="cursor:pointer;${riskBg?'background:'+riskBg:''}">
+            <td onclick="toggleStoreDetail('detail-${i}')" style="font-weight:600;color:var(--navy)">
+              <span style="margin-right:6px;font-size:10px;color:var(--muted)" id="arrow-${i}">▶</span>
+              ${storeInfo?.qr?`<img src="${storeInfo.qr}" style="width:22px;height:22px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-right:6px">`:''}
+              ${esc(d.name)}
+            </td>
+            <td style="text-align:center;font-weight:700">${d.total}</td>
+            <td style="text-align:center;color:var(--green);font-weight:600">${d.thisMonth}</td>
+            <td style="text-align:center;color:var(--amber)">${d.lastMonth}</td>
+            <td style="text-align:center"><span class="badge badge-blue">${d.active}</span></td>
+            <td style="text-align:center"><span class="badge badge-green">${d.settled}</span></td>
+            <td style="text-align:center">
+              <span class="fw700 ${riskClass}" style="font-size:14px">${d.bd30Rate.toFixed(1)}%</span>
+              ${d.bd30Rate>10?'<span style="font-size:10px;margin-left:4px">⚠️</span>':''}
+            </td>
+            <td style="text-align:center;${d.bd30Amt>0?'color:var(--red)':''}">${d.bd30Amt>0?fmt(d.bd30Amt):'-'}</td>
+            <td style="white-space:nowrap">
+              <button class="btn btn-outline btn-sm" onclick="nav('sale-list');setTimeout(()=>{const el=document.getElementById('saleShopFilter');if(el){el.value='${esc(d.name)}';filterSales();}},100)">🔍</button>
+              ${storeInfo?`<button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteStore('${esc(d.name)}')">🗑️</button>`:''}
+            </td>
           </tr>
-          ${[[7,bd7],[15,bd15],[30,bd30]].map(([d,bd])=>`<tr>
-            <td><span class="badge ${+bd.rateWithP>10?'badge-red':+bd.rateWithP>5?'badge-amber':'badge-green'}">${d}${_lang==='km'?'ថ្ងៃ':_lang==='en'?'-Day':'天'}</span></td>
-            <td class="${+bd.rateNoP>10?'text-red':+bd.rateNoP>5?'text-amber':'text-green'} fw700">${bd.rateNoP}%</td>
-            <td>${fmt(bd.bdNoP)}</td>
-            <td class="${+bd.rateWithP>10?'text-red':+bd.rateWithP>5?'text-amber':'text-green'} fw700">${bd.rateWithP}%</td>
-            <td>${fmt(bd.bdWithP)}</td>
-          </tr>`).join('')}
-        </table></div>
-
-        <!-- 月度单量 -->
-        ${months.length > 0 ? `
-        <div style="font-size:12px;font-weight:600;color:var(--navy);margin:14px 0 8px">${t('storeMonthly')}</div>
-        <div class="table-wrap"><table>
-          <tr><th>${t('colMonth')}</th><th>${t('storeTotal')}</th><th>${_lang==='km'?'ចំណែក':_lang==='en'?'Share':'占比'}</th></tr>
-          ${months.map(m=>`<tr>
-            <td>${m}${m===td.slice(0,7)?` <span class="badge badge-blue" style="font-size:10px">${t('thisMonth')}</span>`:''}</td>
-            <td class="fw700">${byMonth[m]}</td>
-            <td style="color:var(--muted)">${storeSales.length>0?(byMonth[m]/storeSales.length*100).toFixed(0):'0'}%</td>
-          </tr>`).join('')}
-        </table></div>` : ''}
-      </div>`;
-    }).join('')}`;
+          <tr id="detail-${i}" style="display:none;background:#f8fbff">
+            <td colspan="9" style="padding:16px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                <!-- 坏账详情 -->
+                <div>
+                  <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px">📉 ${t('badDebtSection')}</div>
+                  <table style="width:100%;font-size:12px">
+                    <tr><th>${_lang==='zh'?'时段':'Period'}</th><th>${_lang==='zh'?'坏账率':'Rate'}</th><th>${_lang==='zh'?'坏账金额':'Amount'}</th><th>${_lang==='zh'?'含滞纳金率':'w/Penalty'}</th></tr>
+                    ${[7,15,30].map(days=>{
+                      const bd=calcBadDebt(d.storeSales,days);
+                      return `<tr>
+                        <td><span class="badge ${+bd.rateWithP>10?'badge-red':+bd.rateWithP>5?'badge-amber':'badge-green'}">${days}${_lang==='zh'?'天':'d'}</span></td>
+                        <td class="${+bd.rateNoP>10?'text-red':+bd.rateNoP>5?'text-amber':'text-green'} fw700">${bd.rateNoP}%</td>
+                        <td>${fmt(bd.bdNoP)}</td>
+                        <td class="${+bd.rateWithP>10?'text-red':+bd.rateWithP>5?'text-amber':'text-green'} fw700">${bd.rateWithP}%</td>
+                      </tr>`;
+                    }).join('')}
+                  </table>
+                </div>
+                <!-- 月度单量 -->
+                <div>
+                  <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px">📅 ${t('storeMonthly')}</div>
+                  ${Object.keys(d.byMonth).length>0?`<table style="width:100%;font-size:12px">
+                    <tr><th>${t('colMonth')}</th><th>${t('storeTotal')}</th><th>${_lang==='zh'?'占比':'Share'}</th></tr>
+                    ${Object.keys(d.byMonth).sort().reverse().slice(0,6).map(m=>`<tr>
+                      <td>${m}${m===td.slice(0,7)?` <span class="badge badge-blue" style="font-size:9px">${t('thisMonth')}</span>`:''}</td>
+                      <td class="fw700">${d.byMonth[m]}</td>
+                      <td style="color:var(--muted)">${d.total>0?(d.byMonth[m]/d.total*100).toFixed(0):0}%</td>
+                    </tr>`).join('')}
+                  </table>`:`<div style="color:var(--muted);font-size:12px">${t('noData')}</div>`}
+                </div>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>
+  </div>`}`;
 }
 
 function daysDiff(dateStr, today) {
   return Math.floor((new Date(today) - new Date(dateStr)) / 86400000);
 }
+
+window.toggleStoreDetail = function(id) {
+  const row = document.getElementById(id);
+  if (!row) return;
+  const idx = id.replace('detail-','');
+  const arrow = document.getElementById('arrow-'+idx);
+  const isOpen = row.style.display !== 'none';
+  row.style.display = isOpen ? 'none' : 'table-row';
+  if (arrow) arrow.textContent = isOpen ? '▶' : '▼';
+};
+
+window.filterStoreTable = function() {
+  const q = (document.getElementById('storeSearch')?.value||'').toLowerCase();
+  const risk = document.getElementById('storeRiskFilter')?.value||'';
+  const sort = document.getElementById('storeSort')?.value||'name';
+  const table = document.getElementById('storeTable');
+  if (!table) return;
+
+  const rows = [...table.querySelectorAll('tr[data-name]')];
+  let visible = 0;
+
+  rows.forEach(tr => {
+    const name = (tr.dataset.name||'').toLowerCase();
+    const total = +tr.dataset.total||0;
+    const active = +tr.dataset.active||0;
+    const bd = +tr.dataset.bd||0;
+    const month = +tr.dataset.month||0;
+    const detailId = tr.querySelector('[id^="arrow-"]')?.id?.replace('arrow-','');
+    const detailRow = detailId ? document.getElementById('detail-'+detailId) : null;
+
+    let show = true;
+    if (q && !name.includes(q)) show = false;
+    if (risk === 'high' && bd <= 10) show = false;
+    if (risk === 'mid' && (bd <= 5 || bd > 10)) show = false;
+    if (risk === 'low' && bd >= 5) show = false;
+    if (risk === 'active' && active === 0) show = false;
+
+    tr.style.display = show ? '' : 'none';
+    if (detailRow && !show) detailRow.style.display = 'none';
+    if (show) visible++;
+  });
+
+  const countEl = document.getElementById('storeCount');
+  if (countEl) countEl.textContent = visible + ' ' + (_lang==='zh'?'家店':'stores');
+};
 
 // 自动同步销售记录里的店家到stores列表
 window.syncShopsFromSales = function() {
