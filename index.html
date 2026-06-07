@@ -3163,7 +3163,13 @@ function renderStoreStats() {
   // All stores from sales (even if not in stores list)
   const allShopNames = [...new Set(sales.map(s=>s.shopName||'').filter(Boolean))];
   // Combine registered stores + stores from sales
-  const storeNames = [...new Set([...stores.map(s=>s.name), ...allShopNames])].sort();
+  // 按名称末尾数字从大到小排序（如MPIN00046 > MPIN00012）
+  const storeNames = [...new Set([...stores.map(s=>s.name), ...allShopNames])].sort((a,b) => {
+    const numA = parseInt((a.match(/\d+$/) || ['0'])[0]);
+    const numB = parseInt((b.match(/\d+$/) || ['0'])[0]);
+    if (numA !== numB) return numA - numB; // 数字从小到大
+    return b.localeCompare(a); // 数字相同则按名称倒序
+  });
 
   // 预计算所有店家数据
   const storeData = storeNames.map(name => {
