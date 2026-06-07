@@ -2159,11 +2159,12 @@ function renderStatsProfit() {
   </div>`;
 }
 
-function buildProfitTable(filteredSales, earlyPays) {
+function buildProfitTable(filteredSales, earlyPays, groupByMonth) {
   if (!filteredSales.length) return `<div class="empty-state"><div class="ei">💰</div><p>${t("noData")}</p></div>`;
-  let totalInterest=0, totalSvc=0, totalRebate=0, totalNet=0;
-  const rows = filteredSales.slice().reverse().map(s=>{
-    let interestVal, svcVal, rebateVal, net;
+
+  // 计算每笔合同数据
+  function calcRow(s) {
+    let interestVal, svcVal;
     if (s.status === '提前结清') {
       const ep = earlyPays.find(r => r.contractId === s.id);
       interestVal = ep ? +ep.actualProfit : 0;
@@ -2172,9 +2173,13 @@ function buildProfitTable(filteredSales, earlyPays) {
       interestVal = +s.totalInterest||0;
       svcVal = +s.totalServiceFee||0;
     }
-    rebateVal = +s.storeRebate||0;
-    net = interestVal + svcVal - rebateVal;
-    totalInterest+=interestVal; totalSvc+=svcVal; totalRebate+=rebateVal; totalNet+=net;
+    const rebateVal = +s.storeRebate||0;
+    const net = interestVal + svcVal - rebateVal;
+    return { interestVal, svcVal, rebateVal, net };
+  }
+
+  function buildRow(s) {
+    const { interestVal, svcVal, rebateVal, net } = calcRow(s);
     const statusBadge = s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':'badge-blue';
     return `<tr>
       <td class="fw700 text-blue">#${s.id}</td>
@@ -2188,21 +2193,67 @@ function buildProfitTable(filteredSales, earlyPays) {
       <td><b style="color:${net>=0?'var(--navy)':'var(--red)'}">${fmt(net)}</b></td>
       <td><span class="badge ${statusBadge}">${s.status}</span></td>
     </tr>`;
-  }).join('');
+  }
 
-  // 合计行
-  const total = `<tr style="background:#f0f7ff;font-weight:700;border-top:2px solid var(--border)">
-    <td colspan="5" style="text-align:right;color:var(--muted);font-size:12px">${_lang==='zh'?'合计（'+filteredSales.length+'笔）':_lang==='en'?'Total ('+filteredSales.length+')':'សរុប'}</td>
-    <td class="text-green">${fmt(totalInterest)}</td>
-    <td class="text-amber">${fmt(totalSvc)}</td>
-    <td class="text-red">−${fmt(totalRebate)}</td>
-    <td style="color:var(--navy)">${fmt(totalNet)}</td>
+  const thead = `<tr><th>#</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colInterest")}</th><th>${t("colServiceFee")}</th><th>${t("colRebateCol")}</th><th>${t("colNetProfit")}</th><th>${t("colStatus")}</th></tr>`;
+
+  // 按月分组显示
+  const sorted = filteredSales.slice().reverse();
+  const byMonth = {};
+  sorted.forEach(s => {
+    const m = s.date.slice(0,7);
+    if (!byMonth[m]) byMonth[m] = [];
+    byMonth[m].push(s);
+  });
+  const months = Object.keys(byMonth).sort().reverse();
+
+  let grandInt=0, grandSvc=0, grandRebate=0, grandNet=0;
+  sorted.forEach(s => {
+    const r = calcRow(s);
+    grandInt+=r.interestVal; grandSvc+=r.svcVal; grandRebate+=r.rebateVal; grandNet+=r.net;
+  });
+
+  const grandTotal = `<tr style="background:#e8f5e9;font-weight:700;border-top:2px solid var(--green)">
+    <td colspan="5" style="text-align:right;color:var(--muted);font-size:12px">📊 ${_lang==='zh'?'总计（'+filteredSales.length+'笔）':'Total ('+filteredSales.length+')'}</td>
+    <td class="text-green">${fmt(grandInt)}</td>
+    <td class="text-amber">${fmt(grandSvc)}</td>
+    <td class="text-red">−${fmt(grandRebate)}</td>
+    <td style="color:var(--green);font-size:15px">${fmt(grandNet)}</td>
     <td></td>
   </tr>`;
 
+  // 每个月生成一个分组
+  const monthBlocks = months.map(m => {
+    const mSales = byMonth[m];
+    let mInt=0, mSvc=0, mRebate=0, mNet=0;
+    mSales.forEach(s => {
+      const r = calcRow(s);
+      mInt+=r.interestVal; mSvc+=r.svcVal; mRebate+=r.rebateVal; mNet+=r.net;
+    });
+    const mSubTotal = `<tr style="background:#f0f7ff;font-weight:700;border-top:1px solid var(--border)">
+      <td colspan="5" style="text-align:right;color:var(--muted);font-size:12px">${m} ${_lang==='zh'?'小计（'+mSales.length+'笔）':'Subtotal ('+mSales.length+')'}</td>
+      <td class="text-green">${fmt(mInt)}</td>
+      <td class="text-amber">${fmt(mSvc)}</td>
+      <td class="text-red">−${fmt(mRebate)}</td>
+      <td style="color:var(--navy)">${fmt(mNet)}</td>
+      <td></td>
+    </tr>`;
+    return `
+      <!-- 月份标题行 -->
+      <tr style="background:var(--navy)">
+        <td colspan="10" style="color:#fff;font-weight:700;font-size:13px;padding:8px 12px">
+          📅 ${m} &nbsp;
+          <span style="font-size:11px;font-weight:400;opacity:.8">${mSales.length}笔 · 净利润 ${fmt(mNet)}</span>
+        </td>
+      </tr>
+      ${mSales.map(s=>buildRow(s)).join('')}
+      ${mSubTotal}`;
+  }).join('');
+
   return `<div class="table-wrap"><table>
-    <tr><th>#</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colInterest")}</th><th>${t("colServiceFee")}</th><th>${t("colRebateCol")}</th><th>${t("colNetProfit")}</th><th>${t("colStatus")}</th></tr>
-    ${rows}${total}
+    ${thead}
+    ${monthBlocks}
+    ${grandTotal}
   </table></div>`;
 }
 
