@@ -3134,63 +3134,87 @@ function renderFinanceReport() {
     </div>
   </div>
 
-  <!-- 坏账统计（基于选中月份合同）-->
+  <!-- 逾期单量统计 -->
   <div class="card">
-    <div class="card-title" style="margin-bottom:14px">📉 ${t('badDebtSection')}</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;background:#f8faff;padding:10px 14px;border-radius:8px;line-height:1.8">
-      📐 <b>${_lang==='km'?'រូបមន្ត':_lang==='en'?'Formula':'计算公式'}：</b><br>
-      <span style="color:var(--red)">▸ ${_lang==='km'?'អត្រាបំណុលអាក្រក់':_lang==='en'?'Bad Debt Rate':'坏账率'} = （总应收款 - 实际回款）÷ 总应收款 × 100</span><br>
-      <span style="color:var(--amber)">▸ ${_lang==='en'?'Incl. Late Fee Bad Debt Rate':'含滞纳金坏账率'} = （逾期金额 - 客户实际已付滞纳金）÷ 总应收款 × 100</span><br>
-      <span style="color:var(--muted);font-size:11px">
-        · ${_lang==='en'?'Total receivables':'总应收款'} = ${_lang==='en'?'sum of all scheduled (principal + interest + service fee)':'所有合同应还（本金+利息+手续费）之和'}<br>
-        · ${_lang==='en'?'Incl. late fee':'含滞纳金'} = ${_lang==='en'?'overdue amount minus actual late fees collected (reduces bad debt)':'逾期金额 - 客户实际还款的滞纳金（越多越小）'}<br>
-        · 7/15/30天 = ${_lang==='en'?'only count overdue periods exceeding that many days':'仅统计逾期超过该天数的未还期次'}
-      </span>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
-      ${rows[0] ? [
-        ['7',  rows[0].bd7Rate,  rows[0].bd7noP,  rows[0].bd7RateP,  rows[0].bd7withP],
-        ['15', rows[0].bd15Rate, rows[0].bd15noP, rows[0].bd15RateP, rows[0].bd15withP],
-        ['30', rows[0].bd30Rate, rows[0].bd30noP, rows[0].bd30RateP, rows[0].bd30withP],
-      ].map(([d,rN,aN,rP,aP])=>`
-        <div style="background:#fff5f5;border-radius:10px;padding:14px;border-top:3px solid ${+rP>10?'var(--red)':'var(--amber)'}">
-          <div style="font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600">${d}${_lang==='km'?'ថ្ងៃ':_lang==='en'?'-Day':'天'} ${t('badDebtSection')}</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px">
-            <div style="background:#fff;border-radius:6px;padding:8px;text-align:center">
-              <div style="font-size:10px;color:var(--muted)">${t('withoutPenalty')}</div>
-              <div style="font-size:18px;font-weight:700;color:${+rN>10?'var(--red)':+rN>5?'var(--amber)':'var(--green)'}">${rN}%</div>
-              <div style="font-size:11px;color:var(--muted)">${fmt(aN)}</div>
-            </div>
-            <div style="background:#fff3e0;border-radius:6px;padding:8px;text-align:center">
-              <div style="font-size:10px;color:var(--muted)">${t('withPenalty')}</div>
-              <div style="font-size:18px;font-weight:700;color:${+rP>10?'var(--red)':+rP>5?'var(--amber)':'var(--green)'}">${rP}%</div>
-              <div style="font-size:11px;color:var(--muted)">${fmt(aP)}</div>
-            </div>
-          </div>
-        </div>`).join('') : ''}
-    </div>
-    <div class="table-wrap"><table>
-      <tr>
-        <th>${t('badDebtSection')}</th>
-        <th>${t('badDebtRate')} (${t('withoutPenalty')})</th>
-        <th>${t('badDebtAmt')} (${t('withoutPenalty')})</th>
-        <th>${t('badDebtRate')} (${t('withPenalty')})</th>
-        <th>${t('badDebtAmt')} (${t('withPenalty')})</th>
-      </tr>
-      ${[
-        ['7', rows[0]?.bd7Rate||'0.0', rows[0]?.bd7noP||0, rows[0]?.bd7RateP||'0.0', rows[0]?.bd7withP||0],
-        ['15', rows[0]?.bd15Rate||'0.0', rows[0]?.bd15noP||0, rows[0]?.bd15RateP||'0.0', rows[0]?.bd15withP||0],
-        ['30', rows[0]?.bd30Rate||'0.0', rows[0]?.bd30noP||0, rows[0]?.bd30RateP||'0.0', rows[0]?.bd30withP||0],
-      ].map(([d,rN,aN,rP,aP])=>`<tr>
-        <td><span class="badge ${+rP>10?'badge-red':+rP>5?'badge-amber':'badge-green'}">${d}${_lang==='km'?'ថ្ងៃ':_lang==='en'?'-Day':'天'}</span></td>
-        <td class="${+rN>10?'text-red':+rN>5?'text-amber':'text-green'} fw700">${rN}%</td>
-        <td>${fmt(aN)}</td>
-        <td class="${+rP>10?'text-red':+rP>5?'text-amber':'text-green'} fw700">${rP}%</td>
-        <td>${fmt(aP)}</td>
-      </tr>`).join('')}
-    </table></div>
-  </div>
+    <div class="card-title" style="margin-bottom:14px">⚠️ ${_lang==='zh'?'逾期单量统计':_lang==='en'?'Overdue Orders':'ស្ថិតិការបញ្ជាទិញហួសសំណត់'}</div>
+    ${(() => {
+      const td = today();
+      const allSales = DB_get('sales')||[];
+      // 找出所有逾期未还的期次
+      const overduePeriods = [];
+      allSales.forEach(s => {
+        if (s.status === '已结清' || s.status === '提前结清') return;
+        s.schedule.forEach(p => {
+          if (!p.paid && p.dueDate < td) {
+            const diffDays = Math.floor((new Date(td) - new Date(p.dueDate)) / 86400000);
+            overduePeriods.push({ sale: s, period: p, diffDays });
+          }
+        });
+      });
 
+      // 按合同去重，取最大逾期天数
+      const overdueMap = {};
+      overduePeriods.forEach(({sale, period, diffDays}) => {
+        if (!overdueMap[sale.id] || overdueMap[sale.id].maxDays < diffDays) {
+          overdueMap[sale.id] = { sale, maxDays: diffDays, periods: [] };
+        }
+        overdueMap[sale.id].periods.push({period, diffDays});
+      });
+      const overdueContracts = Object.values(overdueMap);
+
+      const o7  = overdueContracts.filter(x => x.maxDays >= 7);
+      const o15 = overdueContracts.filter(x => x.maxDays >= 15);
+      const o30 = overdueContracts.filter(x => x.maxDays >= 30);
+
+      function renderTable(list) {
+        if (!list.length) return `<div style="text-align:center;color:var(--green);padding:16px;font-size:13px">✅ ${_lang==='zh'?'暂无逾期单':_lang==='en'?'No overdue orders':'មិនមានការបញ្ជាទិញហួសសំណត់'}</div>`;
+        return `<div class="table-wrap" style="margin-top:8px"><table>
+          <tr>
+            <th>#</th>
+            <th>${_lang==='zh'?'客户':_lang==='en'?'Customer':'អតិថិជន'}</th>
+            <th>${_lang==='zh'?'手机号':_lang==='en'?'Phone':'ទូរស័ព្ទ'}</th>
+            <th>${_lang==='zh'?'型号':_lang==='en'?'Model':'ម៉ូដែល'}</th>
+            <th>${_lang==='zh'?'期数':_lang==='en'?'Periods':'រយៈ'}</th>
+            <th>${_lang==='zh'?'逾期天数':_lang==='en'?'Overdue Days':'ថ្ងៃហួសសំណត់'}</th>
+            <th>${_lang==='zh'?'未还金额':_lang==='en'?'Amount Due':'ចំនួនដែលត្រូវបង់'}</th>
+          </tr>
+          ${list.map(({sale, maxDays, periods}) => {
+            const unpaid = sale.schedule.filter(p => !p.paid);
+            const unpaidAmt = unpaid.reduce((a,p) => a + (+p.totalDue||0), 0);
+            return `<tr>
+              <td class="fw700 text-blue">#${sale.id}</td>
+              <td><div class="fw700">${esc(sale.customer)}</div></td>
+              <td>${esc(sale.customerPhone||'')}</td>
+              <td style="font-size:12px">${esc(sale.modelName||'-')}</td>
+              <td>${sale.periods}${t('period')}</td>
+              <td><span style="background:${maxDays>=30?'#ffebee':maxDays>=15?'#fff3e0':'#fff8e1'};color:${maxDays>=30?'var(--red)':maxDays>=15?'var(--amber)':'#f57f17'};padding:2px 10px;border-radius:12px;font-weight:700;font-size:12px">${maxDays} ${_lang==='zh'?'天':_lang==='en'?'days':'ថ្ងៃ'}</span></td>
+              <td class="fw700" style="color:var(--red)">${fmt(unpaidAmt)}</td>
+            </tr>`;
+          }).join('')}
+        </table></div>`;
+      }
+
+      // Tab state
+      const tabId = 'overdueTab';
+      return `
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+          ${[
+            {label: _lang==='zh'?'逾期7天+':_lang==='en'?'7+ Days':'ហួស 7 ថ្ងៃ+', count: o7.length, color: '#f57f17', bg: '#fff8e1'},
+            {label: _lang==='zh'?'逾期15天+':_lang==='en'?'15+ Days':'ហួស 15 ថ្ងៃ+', count: o15.length, color: 'var(--amber)', bg: '#fff3e0'},
+            {label: _lang==='zh'?'逾期30天+':_lang==='en'?'30+ Days':'ហួស 30 ថ្ងៃ+', count: o30.length, color: 'var(--red)', bg: '#ffebee'},
+          ].map((item,i) => `
+            <div style="background:${item.bg};border-radius:10px;padding:16px;text-align:center;cursor:pointer;border:2px solid ${item.color}" onclick="document.querySelectorAll('.overdue-panel').forEach((el,j)=>{el.style.display=j===${i}?'':'none'});this.parentElement.querySelectorAll('div[style*=cursor]').forEach((el,j)=>{el.style.opacity=j===${i}?'1':'0.6'})">
+              <div style="font-size:13px;color:${item.color};font-weight:600">${item.label}</div>
+              <div style="font-size:32px;font-weight:700;color:${item.color}">${item.count}</div>
+              <div style="font-size:12px;color:var(--muted)">${_lang==='zh'?'笔':_lang==='en'?'orders':'ករណី'}</div>
+            </div>`).join('')}
+        </div>
+        <div class="overdue-panel">${renderTable(o7)}</div>
+        <div class="overdue-panel" style="display:none">${renderTable(o15)}</div>
+        <div class="overdue-panel" style="display:none">${renderTable(o30)}</div>
+      `;
+    })()}
+  </div>
   <!-- 单量分析 -->
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
