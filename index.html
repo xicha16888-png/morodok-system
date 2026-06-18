@@ -1562,11 +1562,33 @@ function renderSaleList() {
 function buildSalesTable(sales) {
   if (!sales.length) return `<div class="empty-state"><div class="ei">📭</div><p>${t('noContract')}</p></div>`;
   const ptc = {3:'pt3',5:'pt6',8:'pt9',11:'pt12'};
-  return `<div class="table-wrap"><table>
-    <tr><th>${t("colNo")}</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>🏪 ${_lang==="zh"?"店家":_lang==="en"?"Store":"ហាង"}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colDeposit")}</th><th>${t("colPrincipal")}</th><th>${t("colPeriods")}</th><th>${t("colMonthly")}</th><th>${t("colProgress")}</th><th>${t("colStatus")}</th><th>${t("colAction")}</th></tr>
-    ${sales.slice().reverse().map(s => {
-      const paid = s.schedule.filter(p => p.paid).length;
-      return `<tr>
+  // 按日期分组（倒序）
+  const sorted = sales.slice().reverse();
+  const groups = {};
+  const groupOrder = [];
+  sorted.forEach(s => {
+    if (!groups[s.date]) { groups[s.date] = []; groupOrder.push(s.date); }
+    groups[s.date].push(s);
+  });
+  const uniqueDates = [...new Set(groupOrder)];
+
+  let html = `<div class="table-wrap"><table>
+    <tr><th>${t("colNo")}</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>🏪 ${_lang==="zh"?"店家":_lang==="en"?"Store":"ហាង"}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colDeposit")}</th><th>${t("colPrincipal")}</th><th>${t("colPeriods")}</th><th>${t("colMonthly")}</th><th>${t("colProgress")}</th><th>${t("colStatus")}</th><th>${t("colAction")}</th></tr>`;
+
+  uniqueDates.forEach(date => {
+    const rows = groups[date];
+    const groupId = 'dg_' + date.replace(/-/g,'');
+    html += `<tr style="background:var(--navy);cursor:pointer" onclick="toggleDateGroup('${groupId}')">
+      <td colspan="13" style="color:#fff;font-weight:700;padding:8px 12px;font-size:13px">
+        📅 ${date} &nbsp;
+        <span style="background:rgba(255,255,255,0.2);border-radius:12px;padding:2px 10px;font-size:12px">${rows.length} ${_lang==='zh'?'单':_lang==='en'?'orders':'ដំណើរ'}</span>
+        <span id="${groupId}_icon" style="float:right;font-size:16px">▼</span>
+      </td>
+    </tr>`;
+    html += `<tbody id="${groupId}" style="display:none">`;
+    rows.forEach(s => {
+      const paid = (s.schedule||[]).filter(p => p.paid).length;
+      html += `<tr>
         <td class="fw700 text-blue">#${s.id}</td><td>${s.date}</td>
         <td><div class="fw700">${esc(s.customer)}</div><div class="text-muted" style="font-size:11px">${esc(s.customerPhone||'')}</div></td>
         <td><span style="font-size:12px;background:#e3f2fd;color:var(--navy);padding:2px 8px;border-radius:12px;white-space:nowrap;cursor:pointer" onclick="document.getElementById('saleShopFilter').value='${esc(s.shopName||'')}';filterSales()">${esc(s.shopName||'-')}</span></td>
@@ -1584,9 +1606,26 @@ function buildSalesTable(sales) {
           <button class="btn btn-primary btn-sm" style="margin-left:4px" onclick="editSale('${s.id}')">${_lang==='zh'?'编辑':_lang==='km'?'កែប្រែ':'Edit'}</button>
           <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSale('${s.id}')">${t('deleteBtn')}</button>
         </td>
-      </tr>`;}).join('')}
-  </table></div>`;
+      </tr>`;
+    });
+    html += `</tbody>`;
+  });
+  html += `</table></div>`;
+  return html;
 }
+
+window.toggleDateGroup = function(id) {
+  const el = document.getElementById(id);
+  const icon = document.getElementById(id + '_icon');
+  if (!el) return;
+  if (el.style.display === 'none') {
+    el.style.display = '';
+    if (icon) icon.textContent = '▲';
+  } else {
+    el.style.display = 'none';
+    if (icon) icon.textContent = '▼';
+  }
+};
 
 window.filterSales = function() {
   const q = (document.getElementById('saleSearch')?.value||'').toLowerCase();
