@@ -1811,7 +1811,7 @@ window.deleteSale = function(id) {
 // ══════════════════════════════════════════════════════
 function renderPaymentAdd() {
   const sales = (DB_get('sales')||[]).filter(s => s.status !== '已结清');
-  const opts = sales.map(s => `<option value="${s.id}">#${s.id} — ${esc(s.customer)} (${s.periods}期 每期${fmt(s.monthlyPayment)})</option>`).join('');
+  const opts = sales.filter(s=>s.status==='进行中').map(s => `<option value="${s.id}">#${s.id} — ${esc(s.customer)} (${s.periods}期 每期${fmt(s.monthlyPayment)})</option>`).join('');
   const pays = (DB_get('payments')||[]).slice().reverse();
   return `
   <div class="page-header"><div class="page-title">💳 ${t('paymentTitle')}</div></div>
@@ -1912,14 +1912,14 @@ function buildPayTable(pays) {
 }
 
 window.loadContractPeriods = function() {
-  const id = +(document.getElementById('pContract')?.value||0);
+  const id = (document.getElementById('pContract')?.value||'');
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
   const sel = document.getElementById('pPeriod'); if (!s||!sel) return;
   sel.innerHTML = s.schedule.filter(p => !p.paid).map(p => `<option value="${p.period}">${p.period} ${t("period")} (到期:${p.dueDate})</option>`).join('');
   autoFillPayment();
 };
 window.autoFillPayment = function() {
-  const id = +(document.getElementById('pContract')?.value||0);
+  const id = (document.getElementById('pContract')?.value||'');
   const period = +(document.getElementById('pPeriod')?.value||0);
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
   const p = s?.schedule.find(x => x.period === period);
@@ -1943,7 +1943,7 @@ window.calcPayTotal = function() {
   if (tot) tot.value = fmt(p + i + sf + pe);
 };
 window.submitPayment = function() {
-  const contractId = +(document.getElementById('pContract')?.value||0);
+  const contractId = (document.getElementById('pContract')?.value||'');
   const periodNo = +(document.getElementById('pPeriod')?.value||0);
   const pDate = document.getElementById('pDate')?.value||today();
   const principal  = +(document.getElementById('pPrincipal')?.value||0);
