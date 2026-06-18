@@ -1215,7 +1215,13 @@ document.querySelectorAll('.nav-item[data-page]').forEach(el => el.addEventListe
 function initPage(page) {
   if (page === 'sale-add') {
     const nd = new Date(); nd.setMonth(nd.getMonth() + 1);
-    const fd = document.getElementById('sFirstDue'); if (fd) fd.value = nd.toISOString().slice(0, 10);
+    const fd = document.getElementById('sFirstDue');
+    if (fd) {
+      // min = 下个月1日
+      const minD = new Date(); minD.setDate(1); minD.setMonth(minD.getMonth()+1);
+      fd.min = minD.toISOString().slice(0,10);
+      fd.value = nd.toISOString().slice(0, 10);
+    }
     calcInstall();
   }
   if (page === 'payment-add')  loadContractPeriods();
@@ -1349,7 +1355,7 @@ function renderSaleAdd() {
       <div class="form-group"><label>${t('salePrice')}</label><input type="number" id="sSalePrice" placeholder="0.00" step="0.01" oninput="calcInstall()"></div>
       <div class="form-group"><label>${t('deposit')}</label><input type="number" id="sDeposit" value="0" step="0.01" oninput="calcInstall()"></div>
       <div class="form-group"><label>${t('installPeriods')}</label>${periodSelect('sPeriods', 3, 'calcInstall()')}</div>
-      <div class="form-group"><label>${t('firstDueDate')}</label><input type="date" id="sFirstDue"></div>
+      <div class="form-group"><label>${t('firstDueDate')}</label><input type="date" id="sFirstDue" onchange="validateFirstDue()"></div>
     </div>
 
     <div style="background:#e8f5e9;border-radius:8px;padding:14px;margin-top:14px;border-left:3px solid var(--green)">
@@ -1469,6 +1475,13 @@ window.submitSale = function() {
   const dailyFee    = +(document.getElementById('sDailyFee')?.value || 0);
   const rebate      = +(document.getElementById('sRebate')?.value || 0);
   const firstDue    = document.getElementById('sFirstDue')?.value || '';
+  const sDateVal    = document.getElementById('sDate')?.value || '';
+  if (firstDue && sDateVal && firstDue.slice(0,7) <= sDateVal.slice(0,7)) {
+    showMsg('saleMsg', _lang==='zh'?'首次还款日不能在合同当月！':
+      _lang==='en'?'First due date cannot be in contract month!':
+      'កាលបរិច្ឆេទទូទាត់ដំបូងមិនអាចស្ថិតនៅក្នុងខែតែមួយ!', 'red');
+    return;
+  }
   const note        = document.getElementById('sNote')?.value || '';
   const modelId     = +(document.getElementById('sModel')?.value || 0);
   const sDate       = document.getElementById('sDate')?.value || today();
