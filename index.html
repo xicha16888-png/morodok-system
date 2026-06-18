@@ -1539,6 +1539,26 @@ function renderSaleList() {
   const shopOpts = shopNames.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
   return `
   <div class="page-header"><div class="page-title">🔍 ${t('saleListTitle')}</div></div>
+  <div class="card" style="margin-bottom:10px;padding:10px 16px">
+    ${(() => {
+      const allS = DB_get('sales')||[];
+      const td2 = new Date().toISOString().slice(0,7);
+      const thisMonthSales = allS.filter(s => s.date && s.date.slice(0,7) === td2);
+      const totalAll = allS.length;
+      return `<div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
+        <div style="font-size:13px;color:var(--navy)">
+          📦 <b>${_lang==='zh'?'本月单量':_lang==='en'?'This Month':'ខែនេះ'}：</b>
+          <span style="font-size:18px;font-weight:700;color:var(--sky)">${thisMonthSales.length}</span>
+          <span style="color:var(--muted);font-size:12px"> ${_lang==='zh'?'单':_lang==='en'?'orders':'ដំណើរ'}</span>
+        </div>
+        <div style="font-size:13px;color:var(--navy)">
+          📋 <b>${_lang==='zh'?'总单量':_lang==='en'?'Total':'សរុប'}：</b>
+          <span style="font-size:18px;font-weight:700;color:var(--navy)">${totalAll}</span>
+          <span style="color:var(--muted);font-size:12px"> ${_lang==='zh'?'单':_lang==='en'?'orders':'ដំណើរ'}</span>
+        </div>
+      </div>`;
+    })()}
+  </div>
   <div class="card">
     <div class="search-row">
       <input id="saleSearch" placeholder="${t('searchPlaceholder')}" oninput="filterSales()">
@@ -2988,6 +3008,12 @@ function renderFinanceReport() {
       <div class="stat-label">${t("monthExpense")}</div>
       <div class="stat-value">${fmt(sel.mExpenses||0)}</div>
       <div class="stat-sub">${t("preTaxProfitMonth")} ${fmt(sel.mProfitBeforeExp||0)}</div>
+    </div>
+    <div class="stat-card" style="background:linear-gradient(135deg,#667eea,#764ba2);color:#fff">
+      <span class="stat-icon">📦</span>
+      <div class="stat-label" style="color:rgba(255,255,255,0.85)">${_lang==='zh'?'本月总单量':_lang==='en'?'Monthly Orders':'ចំនួនបញ្ជាទិញ'}</div>
+      <div class="stat-value" style="color:#fff">${sel.orderCount||0}</div>
+      <div class="stat-sub" style="color:rgba(255,255,255,0.75)">${_lang==='zh'?'笔新合同':_lang==='en'?'new contracts':'កិច្ចសន្យាថ្មី'}</div>
     </div>
   </div>
 
