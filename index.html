@@ -1246,10 +1246,25 @@ setInterval(async () => {
   if (FORM_PAGES.includes(page)) return;
   const result = await loadDB();
   if (result.ok && page && PAGES[page]) {
+    // 如果是销售查询页，先记住展开状态
+    const openGroups = new Set();
+    if (page === 'sale-list') {
+      document.querySelectorAll('[id^="dg_"]').forEach(el => {
+        if (el.style.display !== 'none') openGroups.add(el.id);
+      });
+    }
     document.getElementById('mainContent').innerHTML = PAGES[page]();
     initPage(page);
     updateBadges();
     updateSyncTimeAgo();
+    // 恢复展开状态
+    if (page === 'sale-list' && openGroups.size > 0) {
+      openGroups.forEach(id => {
+        const el = document.getElementById(id);
+        const icon = document.getElementById(id + '_icon');
+        if (el) { el.style.display = ''; if (icon) icon.textContent = '▲'; }
+      });
+    }
   }
 }, 15000);
 
