@@ -2913,8 +2913,8 @@ function renderFinanceReport() {
 
     // 实际回款 = 本月实际收到的（本金+利息+手续费，不含滞纳金）
     const actualCollected = mPays.reduce((a,p) =>
-      a + (+p.principal) + (+p.interest) + (+p.serviceFee||0), 0)
-      + mEarly.reduce((a,r) => a + (+r.negotiatedAmount), 0);
+      a + (+p.principal||0) + (+p.interest||0) + (+p.serviceFee||0), 0)
+      + mEarly.reduce((a,r) => a + (+r.negotiated||+r.negotiatedAmount||0), 0);
 
     // 坏账率 = (总应收款 - 实际回款) / 总应收款 × 100
     const badDebtRate = totalDueAmt > 0
@@ -2934,10 +2934,8 @@ function renderFinanceReport() {
     const overdueRate = mDueBeforeToday.length > 0
       ? (mOverduePeriods.length / mDueBeforeToday.length * 100).toFixed(1) : '0.0';
 
-    // 月总待收款
-    const mPending = sales.filter(s => s.status === '进行中').reduce((a,s) =>
-      a + s.schedule.filter(p => !p.paid).reduce((b,p) =>
-        b + (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0), 0), 0);
+    // 月总待收款 = 本月应收 - 本月已收（到期未还）
+    const mPending = Math.max(0, totalDueAmt - actualCollected);
 
     // ── 坏账统计（7/15/30天，用新公式）──
     // 总应收款（全部合同）
@@ -2946,8 +2944,8 @@ function renderFinanceReport() {
         b + (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0), 0), 0);
     // 全部实际回款
     const allActualCollected = pays.reduce((a,p) =>
-      a + (+p.principal) + (+p.interest) + (+p.serviceFee||0), 0)
-      + earlyPays.reduce((a,r) => a + (+r.negotiatedAmount), 0);
+      a + (+p.principal||0) + (+p.interest||0) + (+p.serviceFee||0), 0)
+      + earlyPays.reduce((a,r) => a + (+r.negotiated||+r.negotiatedAmount||0), 0);
     const allPenaltyCollected = pays.reduce((a,p) => a + (+p.penalty||0), 0);
 
     // 7/15/30 天逾期金额
