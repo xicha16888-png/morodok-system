@@ -2912,9 +2912,9 @@ function renderFinanceReport() {
 
     // 本月实收 = dueDate在本月的期次中已收到的（与应收同一批）
     const mDuePaid = mDuePeriods.filter(p => p.paid);
+    // 本月实收 = dueDate在本月的已还期次实收（不含提前还款，提前还款单独统计）
     const actualCollected = mDuePaid.reduce((a,p) =>
-      a + (+p.paidPrincipal||0) + (+p.paidInterest||0) + (+p.paidServiceFee||0), 0)
-      + mEarly.reduce((a,r) => a + (+r.negotiated||+r.negotiatedAmount||0), 0);
+      a + (+p.paidPrincipal||0) + (+p.paidInterest||0) + (+p.paidServiceFee||0), 0);
 
     // 本月回款总额（顶部卡片用）
     const totalRepay = actualCollected;
