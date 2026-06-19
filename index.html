@@ -2900,27 +2900,31 @@ function renderFinanceReport() {
     // 合同利润：统一用 totalInterest + totalServiceFee - storeRebate（与利润统计页面一致）
     const mContractProfit = mSales.filter(s=>s.status!=='提前结清').reduce((a,s)=>
       a + (+s.totalInterest||0) + (+s.totalServiceFee||0) - (+s.storeRebate||0), 0);
-    const totalRepay = mPays.reduce((a,p) => a + (+p.principal) + (+p.interest) + (+p.serviceFee||0) + (+p.penalty||0), 0)
-                     + mEarly.reduce((a,r) => a + (+r.negotiatedAmount), 0);
+    // 本月回款总额 = dueDate在本月已还的期次实收 + 提前还款
+    const totalRepay = actualCollected;
     const mProfit = mContractProfit + mEarlyProfit + mPenalty - mExpenses;
     const mProfitBeforeExp = mContractProfit + mEarlyProfit + mPenalty;
 
     // ── 新公式 ──
     // 月总应收款 = 本月所有到期期次的（本金+利息+手续费）
-    const mDuePeriods = sales.flatMap(s => s.schedule.filter(p => p.dueDate.slice(0,7) === m));
+    // 本月应收 = dueDate在本月的所有期次
+    const mDuePeriods = sales.flatMap(s => s.schedule.filter(p => p.dueDate && p.dueDate.slice(0,7) === m));
     const totalDueAmt = mDuePeriods.reduce((a,p) =>
       a + (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0), 0);
 
-    // 实际回款 = 本月实际收到的（本金+利息+手续费，不含滞纳金）
-    const actualCollected = mPays.reduce((a,p) =>
-      a + (+p.principal||0) + (+p.interest||0) + (+p.serviceFee||0), 0)
+    // 本月实收 = dueDate在本月的期次中已收到的（与应收同一批）
+    const mDuePaid = mDuePeriods.filter(p => p.paid);
+    const actualCollected = mDuePaid.reduce((a,p) =>
+      a + (+p.paidPrincipal||0) + (+p.paidInterest||0) + (+p.paidServiceFee||0), 0)
       + mEarly.reduce((a,r) => a + (+r.negotiated||+r.negotiatedAmount||0), 0);
 
-    // 坏账率 = (总应收款 - 实际回款) / 总应收款 × 100
+    // 坏账金额 = 本月应收 - 本月实收（只取正数）
+    const badDebtAmt2 = Math.max(0, totalDueAmt - actualCollected);
+    // 坏账率
     const badDebtRate = totalDueAmt > 0
-      ? ((totalDueAmt - actualCollected) / totalDueAmt * 100).toFixed(1) : '0.0';
+      ? (badDebtAmt2 / totalDueAmt * 100).toFixed(1) : '0.0';
 
-    // 回款率 = 实际回款 / 应收回款 × 100
+    // 回款率 = 本月实收 / 本月应收
     const repayRate = totalDueAmt > 0
       ? (actualCollected / totalDueAmt * 100).toFixed(1) : '—';
 
@@ -2934,8 +2938,9 @@ function renderFinanceReport() {
     const overdueRate = mDueBeforeToday.length > 0
       ? (mOverduePeriods.length / mDueBeforeToday.length * 100).toFixed(1) : '0.0';
 
-    // 月总待收款 = 本月应收 - 本月已收（到期未还）
-    const mPending = Math.max(0, totalDueAmt - actualCollected);
+    // 月总待收款 = 本月到期但未收到的期次金额
+    const mPending = mDuePeriods.filter(p => !p.paid).reduce((a,p) =>
+      a + (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0), 0);
 
     // ── 坏账统计（7/15/30天，用新公式）──
     // 总应收款（全部合同）
@@ -2986,7 +2991,7 @@ function renderFinanceReport() {
     return { m, orderCount, totalLoan, totalRepay, mProfit, mProfitBeforeExp, mExpenses,
              mPenalty, mPending, overdueRate, repayRate, repayRateWithPenalty, badDebtRate,
              totalDueAmt, actualCollected,
-             badDebtAmt: Math.max(0, totalDueAmt - actualCollected),
+             badDebtAmt: badDebtAmt2,
              mDue: mDuePeriods.length, mOverdue: mOverduePeriods.length,
              bd7Rate, bd7noP, bd7RateP, bd7withP,
              bd15Rate, bd15noP, bd15RateP, bd15withP,
