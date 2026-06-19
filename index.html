@@ -2875,13 +2875,14 @@ function renderFinanceReport() {
   const expenses  = DB_get('expenses')   || [];
   const td      = today();
 
-  // ── build month list ──
+  // ── build month list (只显示今天以前的月份) ──
+  const todayMonth = td.slice(0,7);
   const monthSet = new Set();
-  sales.forEach(s  => monthSet.add(s.date.slice(0,7)));
-  pays.forEach(p   => monthSet.add(p.date.slice(0,7)));
-  earlyPays.forEach(r => monthSet.add(r.date.slice(0,7)));
-  expenses.forEach(e  => monthSet.add(e.date.slice(0,7)));
-  if (!monthSet.size) monthSet.add(td.slice(0,7));
+  sales.forEach(s  => { if (s.date.slice(0,7) <= todayMonth) monthSet.add(s.date.slice(0,7)); });
+  pays.forEach(p   => { if (p.date.slice(0,7) <= todayMonth) monthSet.add(p.date.slice(0,7)); });
+  earlyPays.forEach(r => { if (r.date.slice(0,7) <= todayMonth) monthSet.add(r.date.slice(0,7)); });
+  expenses.forEach(e  => { if (e.date.slice(0,7) <= todayMonth) monthSet.add(e.date.slice(0,7)); });
+  if (!monthSet.size) monthSet.add(todayMonth);
   const months = [...monthSet].sort().reverse();
 
   // ── per-month calc ──
