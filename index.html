@@ -1648,7 +1648,7 @@ function buildSalesTable(sales) {
           <div style="background:#e3f2fd;height:4px;border-radius:2px;margin-top:4px;width:60px">
             <div style="background:var(--sky);height:4px;border-radius:2px;width:${Math.round(paid/s.periods*100)}%"></div>
           </div></td>
-        <td><span class="badge ${s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':'badge-blue'}">${s.status}</span></td>
+        <td><span class="badge ${s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':s.status==='逾期'?'badge-red':'badge-blue'}">${s.status}</span></td>
         <td style="white-space:nowrap">
           <button class="btn btn-outline btn-sm" onclick="viewSchedule('${s.id}')">${t('repaySchedule')}</button>
           <button class="btn btn-primary btn-sm" style="margin-left:4px" onclick="editSale('${s.id}')">${_lang==='zh'?'编辑':_lang==='km'?'កែប្រែ':'Edit'}</button>
@@ -1723,16 +1723,36 @@ window.viewSchedule = function(id) {
       <tr><th>${t('period')}</th><th>${t('colDate')}</th><th>${t('colPrincipalPaid')}</th><th>${t('colInterestPaid')}</th><th>${t('colServiceFee')}</th><th>${t('colTotal')}</th><th>${t('colStatus')}</th></tr>
       ${s.schedule.map(p => `<tr>
         <td>${p.period} ${t("period")}</td><td>${p.dueDate}</td>
-        <td>${fmt(p.principalDue)}</td><td>${fmt(p.interestDue||0)}</td>
-        <td>${fmt(p.serviceFeeDue||0)}</td>
-        <td class="fw700">${fmt((+p.principalDue)+(+p.interestDue||0)+(+p.serviceFeeDue||0))}</td>
-        <td><span class="badge ${p.paid?'badge-green':'badge-amber'}">${p.paid?t('settled')+' '+p.paidDate:t('pending')}</span></td>
+        <td>${p.paid ? fmt(p.paidPrincipal||0) : fmt(p.principalDue)}</td>
+        <td>${p.paid ? fmt(p.paidInterest||0) : fmt(p.interestDue||0)}</td>
+        <td>${p.paid ? fmt(p.paidServiceFee||0) : fmt(p.serviceFeeDue||0)}</td>
+        <td class="fw700">${p.paid
+          ? fmt((+p.paidPrincipal||0)+(+p.paidInterest||0)+(+p.paidServiceFee||0)+(+p.penalty||0))
+          : fmt((+p.principalDue)+(+p.interestDue||0)+(+p.serviceFeeDue||0))}</td>
+        <td>
+          ${p.paid
+            ? (p.earlySettled
+                ? `<span class="badge badge-amber">${_lang==='zh'?'提前结清':_lang==='en'?'Early Settled':'សងមុន'}</span>`
+                : `<span class="badge badge-green">${t('settled')} ${p.paidDate}</span>`)
+            : (p.dueDate < today()
+                ? `<span class="badge badge-red">${_lang==='zh'?'逾期':_lang==='en'?'Overdue':'ហួសសំណត់'}</span>`
+                : `<span class="badge badge-amber">${t('pending')}</span>`)
+          }
+        </td>
       </tr>`).join('')}
     </table></div>
-    <div style="margin-top:10px;font-size:12px;display:flex;gap:20px">
+    <div style="margin-top:10px;font-size:12px;display:flex;gap:20px;flex-wrap:wrap">
       <span>${t("totalInterest")}：<b class="text-green">${fmt(s.totalInterest||0)}</b></span>
       <span>${t("totalServiceFee")}：<b class="text-amber">${fmt(s.totalServiceFee||0)}</b></span>
       <span>${t("storeRebate")}：<b class="text-red">-${fmt(s.storeRebate||0)}</b></span>
+      ${s.status==='提前结清' ? (() => {
+        const ep = (DB_get('earlyPayments')||[]).find(e => String(e.contractId)===String(s.id));
+        const profit = ep ? ep.profit : 0;
+        return `<span style="background:#fff3e0;padding:4px 10px;border-radius:8px;border:1px solid var(--amber)">
+          ⚡ ${_lang==='zh'?'提前还款利润':_lang==='en'?'Early Repay Profit':'ប្រាក់ចំណេញសងមុន'}：
+          <b style="color:var(--amber)">${fmt(profit)}</b>
+        </span>`;
+      })() : ''}
     </div>`);
 };
 
@@ -1851,7 +1871,7 @@ function renderPaymentAdd() {
       <div class="form-group"><label>${t("paidPrincipal")}</label><input type="number" id="pPrincipal" placeholder="0.00" step="0.01" oninput="calcPayTotal()"></div>
       <div class="form-group"><label>${t("paidInterest")}</label><input type="number" id="pInterest" placeholder="0.00" step="0.01" oninput="calcPayTotal()"></div>
       <div class="form-group"><label>${t("colServiceFee")}</label><input type="number" id="pServiceFee" placeholder="0.00" step="0.01" oninput="calcPayTotal()"></div>
-      <div class="form-group"><label>${t("penalty")}</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcPayTotal()"></div>
+      <div class="form-group"><label>${_lang==='zh'?'实收滞纳金':_lang==='en'?'Penalty Received':'ពិន័យដែលបានទទួល'}</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcPayTotal()"></div>
       <div class="form-group"><label>${_lang==='km'?'សរុបទូទាត់':_lang==='en'?'Total Payment ($)':'总还款金额 ($)'}</label>
         <input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px">
       </div>
@@ -1985,7 +2005,7 @@ window.submitPayment = function() {
   const s = sales[si];
   const pi = s.schedule.findIndex(p => p.period === periodNo); if (pi < 0) return;
   if (s.schedule[pi].paid) { showMsg('payMsg',t('msgPeriodPaid'),'amber'); return; }
-  s.schedule[pi] = {...s.schedule[pi], paid:true, paidDate:pDate, paidPrincipal:principal, paidInterest:interest, paidServiceFee:serviceFee, penalty};
+  s.schedule[pi] = {...s.schedule[pi], paid:true, paidDate:pDate, paidPrincipal:principal, paidInterest:interest, paidServiceFee:serviceFee, penalty, paidStatus:'paid'};
   if (s.schedule.every(p => p.paid)) s.status = '已结清';
   sales[si] = s; DB_set('sales', sales);
   const pays = DB_get('payments')||[];
@@ -2970,7 +2990,8 @@ function renderFinanceReport() {
   const totLoan    = rows.reduce((a,r) => a + r.totalLoan,  0);
   const totRepay   = rows.reduce((a,r) => a + r.totalRepay, 0);
   const totProfit  = rows.reduce((a,r) => a + r.mProfit,    0);
-  const totOrders  = rows.reduce((a,r) => a + r.orderCount, 0);
+  const totOrders      = rows.reduce((a,r) => a + r.orderCount,    0);
+  const totEarlyProfit = rows.reduce((a,r) => a + (r.mEarlyProfit||0), 0);
   const totDue     = rows.reduce((a,r) => a + r.mDue,       0);
   const totOverdue = rows.reduce((a,r) => a + r.mOverdue,   0);
   const totExpenses= rows.reduce((a,r) => a + r.mExpenses,  0);
@@ -3042,6 +3063,12 @@ function renderFinanceReport() {
       <div class="stat-label" style="color:rgba(255,255,255,0.85)">${_lang==='zh'?'本月总单量':_lang==='en'?'Monthly Orders':'ចំនួនបញ្ជាទិញ'}</div>
       <div class="stat-value" style="color:#fff">${sel.orderCount||0}</div>
       <div class="stat-sub" style="color:rgba(255,255,255,0.75)">${_lang==='zh'?'笔新合同':_lang==='en'?'new contracts':'កិច្ចសន្យាថ្មី'}</div>
+    </div>
+    <div class="stat-card" style="background:linear-gradient(135deg,#f093fb,#f5576c);color:#fff">
+      <span class="stat-icon">⚡</span>
+      <div class="stat-label" style="color:rgba(255,255,255,0.85)">${_lang==='zh'?'提前还款利润':_lang==='en'?'Early Repay Profit':'ប្រាក់ចំណេញសងមុន'}</div>
+      <div class="stat-value" style="color:#fff">${fmt(sel.mEarlyProfit||0)}</div>
+      <div class="stat-sub" style="color:rgba(255,255,255,0.75)">${(sel.mEarlyCount||0)} ${_lang==='zh'?'笔':_lang==='en'?'orders':'ករណី'}</div>
     </div>
   </div>
 
@@ -3125,6 +3152,7 @@ function renderFinanceReport() {
         [t('totalExpense'), fmt(totExpenses)],
         [t('totalNetProfit'), fmt(totProfit)],
         [t('totalOrders'), totOrders+(` ${_lang==='km'?'ករណី':_lang==='en'?'':' 笔'}`)],
+        [_lang==='zh'?'提前还款利润':_lang==='en'?'Early Repay Profit':'ប្រាក់ចំណេញសងមុន', fmt(totEarlyProfit)],
         [t('avgOverdueRate'), avgOverdueRate+'%'],
       ].map(([l,v])=>`
         <div style="text-align:center">
