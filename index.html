@@ -1596,6 +1596,14 @@ function renderSaleList() {
         <option value="已结清">${t('settled')}</option>
         <option value="提前结清">${_lang==='zh'?'提前结清':_lang==='en'?'Early Settled':'សងមុន'}</option>
       </select>
+      <select id="saleMonthFilter" onchange="filterSales()" style="min-width:130px">
+        <option value="">${_lang==='zh'?'全部月份':_lang==='en'?'All Months':'គ្រប់ខែ'}</option>
+        ${(() => {
+          const allS = DB_get('sales')||[];
+          const months = [...new Set(allS.map(s => s.date?.slice(0,7)).filter(Boolean))].sort().reverse();
+          return months.map(m => `<option value="${m}">${m}</option>`).join('');
+        })()}
+      </select>
       <select id="saleShopFilter" onchange="filterSales()" style="min-width:120px">
         <option value="">${_lang==='zh'?'全部店家':_lang==='en'?'All Stores':'ហាងទាំងអស់'}</option>
         ${shopOpts}
@@ -1687,6 +1695,8 @@ window.filterSales = function() {
     (s.shopName||'').toLowerCase().includes(q)
   );
   if (st) sales = sales.filter(s => s.status === st);
+  const month = document.getElementById('saleMonthFilter')?.value||'';
+  if (month) sales = sales.filter(s => (s.date||'').startsWith(month));
   if (shop) sales = sales.filter(s => (s.shopName||'') === shop);
   const wrap = document.getElementById('saleTableWrap');
   if (wrap) wrap.innerHTML = buildSalesTable(sales);
