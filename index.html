@@ -2028,6 +2028,7 @@ function renderStatsCollection() {
   const pays  = DB_get('payments')||[];
   const sales = DB_get('sales')||[];
   const earlyPays = DB_get('earlyPayments')||[];
+  const expenses  = DB_get('expenses')||[];
 
   const byMonth = {};
   pays.forEach(p => {
@@ -2039,7 +2040,7 @@ function renderStatsCollection() {
     byMonth[m].penalty    += +p.penalty||0;
     byMonth[m].count++;
   });
-  // Add rebate per month (from contracts signed that month)
+  // 返点按合同签约月份归入
   sales.forEach(s => {
     const m = s.date.slice(0,7);
     if (!byMonth[m]) byMonth[m] = {principal:0, interest:0, serviceFee:0, penalty:0, rebate:0, count:0};
@@ -2052,9 +2053,11 @@ function renderStatsCollection() {
   const tSvc = pays.reduce((a,p)=>a+(+p.serviceFee||0),0);
   const tPen = pays.reduce((a,p)=>a+(+p.penalty||0),0);
   const tReb = sales.reduce((a,s)=>a+(+s.storeRebate||0),0);
+  const tExp = expenses.reduce((a,e)=>a+(+e.amount||0),0);
   const pending = sales.filter(s=>s.status==='进行中').reduce((a,s) =>
     a + s.schedule.filter(p=>!p.paid).reduce((b,p) => b+(+p.principalDue||0)+(+p.interestDue||0)+(+p.serviceFeeDue||0), 0), 0);
   const tGross = tI + tPen - tReb;
+  const tNet   = tI - tReb - tExp;
 
   return `
   <div class="page-header"><div class="page-title">📊 ${t('collectionTitle')}</div></div>
@@ -2078,24 +2081,39 @@ function renderStatsCollection() {
       <div class="stat-label">${_lang==='km'?'កាំចំណែករបស់ហាង':_lang==='en'?'Store Rebate (deducted)':'店家返点（扣除）'}</div>
       <div class="stat-value" style="color:var(--amber)">-${fmt(tReb)}</div>
     </div>
+    <div class="stat-card" style="background:#fce4ec;border-left:3px solid var(--red)">
+      <div class="stat-label">${_lang==='km'?'ការចំណាយប្រចាំថ្ងៃ':_lang==='en'?'Total Expenses':'日常开支（扣除）'}</div>
+      <div class="stat-value" style="color:var(--red)">-${fmt(tExp)}</div>
+    </div>
     <div class="stat-card" style="background:#e8f5e9;border-left:3px solid var(--green)">
-      <div class="stat-label">${_lang==='km'?'ចំណូលសុទ្ធ':_lang==='en'?'Net Income (excl. principal)':'净收益（不含本金）'}</div>
-      <div class="stat-value" style="color:var(--green)">${fmt(tGross)}</div>
+      <div class="stat-label">${_lang==='km'?'ចំណូលសុទ្ធពិតប្រាកដ':_lang==='en'?'Actual Net Profit':'实际净利润'}</div>
+      <div class="stat-value" style="color:${tNet>=0?'var(--green)':'var(--red)'}">${fmt(tNet)}</div>
+      <div class="stat-sub">实收利息 − 返点 − 开支</div>
     </div>
   </div>
+
+  // 按月汇总开支
+  const expByMonth = {};
+  expenses.forEach(e => {
+    const m = e.date.slice(0,7);
+    expByMonth[m] = (expByMonth[m]||0) + (+e.amount||0);
+  });
 
   <div class="card"><div class="card-title" style="margin-bottom:14px">${t("monthlyCollection")}</div>
     ${months.length ? `<div class="table-wrap"><table>
       <tr>
         <th>${t("colMonth")}</th><th>${t("colCount")}</th>
-        <th>${t("colPrincipalPaid")}</th><th>${t("colInterestPaid")}</th>
+        <th>${t("colPrincipalPaid")}</th><th>${_lang==='km'?'ការប្រាក់ដែលបានទទួល':_lang==='en'?'Interest Collected':'实收利息'}</th>
         <th>${_lang==='km'?'ប្រាក់ពិន័យ':_lang==='en'?'Late Fee':'滞纳金'}</th>
         <th>${_lang==='km'?'កាំចំណែក':_lang==='en'?'Rebate':'返点'}</th>
+        <th>${_lang==='km'?'ការចំណាយ':_lang==='en'?'Expenses':'当月开支'}</th>
+        <th>${_lang==='km'?'ចំណេញសុទ្ធ':_lang==='en'?'Net Profit':'单月净利润'}</th>
         <th>${t("colTotal")}</th>
       </tr>
       ${months.map(m => {
         const d = byMonth[m];
-        const net = d.interest + d.penalty - d.rebate;
+        const mExp = expByMonth[m]||0;
+        const mNet = d.interest - d.rebate - mExp;
         return `<tr>
           <td class="fw700">${m}</td>
           <td>${d.count}</td>
@@ -2103,6 +2121,8 @@ function renderStatsCollection() {
           <td>${fmt(d.interest)}</td>
           <td>${d.penalty>0?`<span class="text-red">${fmt(d.penalty)}</span>`:'—'}</td>
           <td>${d.rebate>0?`<span class="text-amber">-${fmt(d.rebate)}</span>`:'—'}</td>
+          <td>${mExp>0?`<span class="text-red">-${fmt(mExp)}</span>`:'—'}</td>
+          <td class="fw700" style="color:${mNet>=0?'var(--green)':'var(--red)'}">${fmt(mNet)}</td>
           <td class="fw700 text-green">${fmt(d.principal+d.interest+d.penalty)}</td>
         </tr>`;
       }).join('')}
@@ -2111,6 +2131,8 @@ function renderStatsCollection() {
         <td>${fmt(tP)}</td><td>${fmt(tI)}</td>
         <td class="text-red">${fmt(tPen)}</td>
         <td class="text-amber">-${fmt(tReb)}</td>
+        <td class="text-red">-${fmt(tExp)}</td>
+        <td class="fw700" style="color:${tNet>=0?'var(--green)':'var(--red)'}">${fmt(tNet)}</td>
         <td class="fw700 text-green">${fmt(tP+tI+tPen)}</td>
       </tr>
     </table></div>` : `<div class="empty-state"><div class="ei">📊</div><p>${t("noRecord")}</p></div>`}
