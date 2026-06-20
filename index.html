@@ -2239,7 +2239,7 @@ function renderStatsProfit() {
       <tr><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>#</th><th>${t("negotiatedAmount").replace(" *","")}</th><th>${t("origRemainInterest")}</th><th>${t("netProfit")}</th><th>${t("profitChange")}</th></tr>
       ${earlyPays.map(r=>{const diff=+r.actualProfit-+r.origRemainInterest;return`<tr>
         <td>${r.date}</td><td class="fw700">${esc(r.customer)}</td><td class="text-blue">#${r.contractId}</td>
-        <td class="text-amber fw700">${fmt(r.negotiatedAmount)}</td><td>${fmt(r.origRemainInterest)}</td>
+        <td class="text-amber fw700">${fmt(+r.negotiated||+r.negotiatedAmount||0)}</td><td>${fmt(r.origRemainInterest||0)}</td>
         <td class="text-green fw700">${fmt(r.actualProfit)}</td>
         <td class="${diff>=0?'text-green':'text-red'} fw700">${diff>=0?'+':''}${fmt(diff)}</td>
       </tr>`;}).join('')}
@@ -2713,10 +2713,20 @@ function buildEarlyTable(list) {
         <td>${r.date}</td>
         <td class="fw700">${esc(r.customer)}</td>
         <td class="text-blue">#${r.contractId}</td>
-        <td>${fmt(r.remainPrincipal)}</td>
-        <td>${fmt(r.origRemainInterest)}</td>
-        <td class="text-red">${(+r.storeRebate||0)>0?'-'+fmt(r.storeRebate):'—'}</td>
-        <td class="fw700 text-amber">${fmt(r.negotiatedAmount)}</td>
+        <td>${(() => {
+          const sale = (DB_get('sales')||[]).find(s=>String(s.id)===String(r.contractId));
+          if (!sale) return fmt(r.remainPrincipal||0);
+          const paidP = sale.schedule.reduce((a,p)=>a+(+p.paidPrincipal||0),0);
+          return fmt(paidP);
+        })()}</td>
+        <td>${(() => {
+          const sale = (DB_get('sales')||[]).find(s=>String(s.id)===String(r.contractId));
+          if (!sale) return fmt(r.origRemainInterest||0);
+          const paidI = sale.schedule.reduce((a,p)=>a+(+p.paidInterest||0),0);
+          return fmt(paidI);
+        })()}</td>
+        <td class="text-red">${(+r.storeRebate||+r.rebate||0)>0?'-'+fmt(+r.storeRebate||+r.rebate||0):'—'}</td>
+        <td class="fw700 text-amber">${fmt(+r.negotiated||+r.negotiatedAmount||0)}</td>
         <td class="fw700 text-green">${fmt(r.actualProfit)}</td>
         <td class="${diff >= 0 ? 'text-green' : 'text-red'}">${diff >= 0 ? '+' : ''}${fmt(diff)}</td>
         <td style="color:var(--muted);font-size:12px">${esc(r.note||'-')}</td>
@@ -2975,7 +2985,8 @@ function renderFinanceReport() {
     const bd15RateP = allTotalDue>0?(bd15withP/allTotalDue*100).toFixed(1):'0.0';
     const bd30RateP = allTotalDue>0?(bd30withP/allTotalDue*100).toFixed(1):'0.0';
 
-    return { m, orderCount, totalLoan, totalRepay, mProfit, mProfitBeforeExp, mExpenses,
+    const mEarlyCount = mEarly.length;
+    return { m, orderCount, mEarlyProfit, mEarlyCount, totalLoan, totalRepay, mProfit, mProfitBeforeExp, mExpenses,
              mPenalty, mPending, overdueRate, repayRate, repayRateWithPenalty, badDebtRate,
              totalDueAmt, actualCollected,
              badDebtAmt: badDebtAmt2,
@@ -3860,7 +3871,7 @@ window.exportExcel = function() {
     const mE = earlyPays.filter(r=>r.date.slice(0,7)===m);
     const loan   = mS.reduce((a,s)=>a+(+s.installmentAmount),0);
     const repay  = mP.reduce((a,p)=>a+(+p.principal)+(+p.interest)+(+p.serviceFee||0)+(+p.penalty||0),0)
-                 + mE.reduce((a,r)=>a+(+r.negotiatedAmount),0);
+                 + mE.reduce((a,r)=>a+(+r.negotiated||+r.negotiatedAmount||0),0);
     const mInt   = mP.reduce((a,p)=>a+(+p.interest),0);
     const mSvc   = mP.reduce((a,p)=>a+(+p.serviceFee||0),0);
     const mPen   = mP.reduce((a,p)=>a+(+p.penalty||0),0);
