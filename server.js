@@ -148,10 +148,20 @@ async function saveData(dbData) {
     }
   });
 
-  // 分批写入，每批200条
-  const batchSize = 200;
-  for (let i = 0; i < rows.length; i += batchSize) {
-    const batch = rows.slice(i, i + batchSize);
+  // 去重：同一批次内不能有重复key
+  const uniqueRows = [];
+  const seenKeys = new Set();
+  for (const row of rows) {
+    if (!seenKeys.has(row.key)) {
+      seenKeys.add(row.key);
+      uniqueRows.push(row);
+    }
+  }
+
+  // 分批写入，每批100条
+  const batchSize = 100;
+  for (let i = 0; i < uniqueRows.length; i += batchSize) {
+    const batch = uniqueRows.slice(i, i + batchSize);
     const { error } = await supabase
       .from('appdata')
       .upsert(batch, { onConflict: 'key' });
@@ -160,7 +170,7 @@ async function saveData(dbData) {
       throw error;
     }
   }
-  console.log(`✅ 成功保存 ${rows.length} 条记录`);
+  console.log(`✅ 成功保存 ${uniqueRows.length} 条记录（去重前${rows.length}条）`);
 }
 
 // ── 删除单条合同 ──
