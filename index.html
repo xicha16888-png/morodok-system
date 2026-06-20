@@ -2159,7 +2159,7 @@ function renderStatsProfit() {
   <!-- 利润公式说明 -->
   <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#5d4037">
     📌 <b>计算公式：</b>
-    最终净利润 = 利息收入 + 手续费收入 − 店家返点 + 滞纳金 + 提前还款利润 − 日常开支
+    最终净利润 = 利息收入 − 店家返点 + 滞纳金 + 提前还款利润 − 日常开支
   </div>
 
   <div class="stats-grid">
@@ -2193,7 +2193,6 @@ function renderStatsProfit() {
         <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600">${t("incomeSource")}</div>
         ${[
           ['利息收入',             tInterest,    'var(--green)'],
-          ['手续费收入',           tServiceFee,  'var(--amber)'],
           ['滞纳金收入（已收）',   tPenalty,     '#e91e63'],
           ['提前还款实际利润',     tEarlyProfit, '#9c27b0'],
         ].map(([l,v,c])=>`
