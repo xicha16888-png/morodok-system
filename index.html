@@ -2945,20 +2945,16 @@ function renderFinanceReport() {
       a + (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0), 0);
 
     // ── 坏账统计（7/15/30天，用新公式）──
-    // 总应收款（全部合同）
-    const allTotalDue = sales.reduce((a,s) =>
-      a + s.schedule.reduce((b,p) =>
-        b + (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0), 0), 0);
-    // 全部实际回款
-    const allActualCollected = pays.reduce((a,p) =>
-      a + (+p.principal||0) + (+p.interest||0) + (+p.serviceFee||0), 0)
-      + earlyPays.reduce((a,r) => a + (+r.negotiated||+r.negotiatedAmount||0), 0);
-    const allPenaltyCollected = pays.reduce((a,p) => a + (+p.penalty||0), 0);
+    // 本月应收款（本月到期的期次）
+    const allTotalDue = totalDueAmt;
+    // 本月实际回款
+    const allActualCollected = actualCollected;
+    const allPenaltyCollected = mPenalty;
 
-    // 7/15/30 天逾期金额
-    const allOverdue7  = sales.flatMap(s => s.schedule.filter(p => !p.paid && daysDiff(p.dueDate, td) > 7));
-    const allOverdue15 = sales.flatMap(s => s.schedule.filter(p => !p.paid && daysDiff(p.dueDate, td) > 15));
-    const allOverdue30 = sales.flatMap(s => s.schedule.filter(p => !p.paid && daysDiff(p.dueDate, td) > 30));
+    // 7/15/30 天逾期金额（本月到期且逾期未还的期次）
+    const allOverdue7  = mDuePeriods.filter(p => !p.paid && daysDiff(p.dueDate, td) > 7);
+    const allOverdue15 = mDuePeriods.filter(p => !p.paid && daysDiff(p.dueDate, td) > 15);
+    const allOverdue30 = mDuePeriods.filter(p => !p.paid && daysDiff(p.dueDate, td) > 30);
 
     function overdueAmt(list) {
       return list.reduce((a,p) => a + (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0), 0);
