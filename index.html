@@ -2060,13 +2060,13 @@ function renderStatsCollection() {
   const tReb = sales.reduce((a,s)=>a+(+s.storeRebate||0),0);
   const pending = sales.filter(s=>s.status==='进行中').reduce((a,s) =>
     a + s.schedule.filter(p=>!p.paid).reduce((b,p) => b+(+p.principalDue||0)+(+p.interestDue||0)+(+p.serviceFeeDue||0), 0), 0);
-  const tGross = tI + tSvc + tPen - tReb;
+  const tGross = tI + tPen - tReb;
 
   return `
   <div class="page-header"><div class="page-title">📊 ${t('collectionTitle')}</div></div>
   <div class="stats-grid">
     <div class="stat-card green"><div class="stat-label">${t("totalCollected")}</div>
-      <div class="stat-value">${fmt(tP+tI+tSvc+tPen)}</div>
+      <div class="stat-value">${fmt(tP+tI+tPen)}</div>
       <div class="stat-sub">${pays.length} ${_lang==='km'?'ករណី':_lang==='en'?'records':'笔'}</div></div>
     <div class="stat-card blue"><div class="stat-label">${t("principalCollected")}</div><div class="stat-value">${fmt(tP)}</div></div>
     <div class="stat-card amber"><div class="stat-label">${t("interestCollected")}</div><div class="stat-value">${fmt(tI)}</div></div>
@@ -2075,10 +2075,7 @@ function renderStatsCollection() {
 
   <!-- 收益汇总 -->
   <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
-    <div class="stat-card" style="background:#f3e5f5;border-left:3px solid #9c27b0">
-      <div class="stat-label">${_lang==='km'?'ថ្លៃសេវាដែលបានប្រមូល':_lang==='en'?'Service Fee Collected':'已收手续费'}</div>
-      <div class="stat-value" style="color:#9c27b0">${fmt(tSvc)}</div>
-    </div>
+    
     <div class="stat-card" style="background:#fce4ec;border-left:3px solid var(--red)">
       <div class="stat-label">${_lang==='km'?'ប្រាក់ពិន័យដែលបានប្រមូល':_lang==='en'?'Late Fee Collected':'已收滞纳金'}</div>
       <div class="stat-value" style="color:var(--red)">${fmt(tPen)}</div>
@@ -2120,9 +2117,9 @@ function renderStatsCollection() {
       <tr style="font-weight:700;background:#f0f4f8;border-top:2px solid var(--border)">
         <td>${t('totalRow')}</td><td>${pays.length}</td>
         <td>${fmt(tP)}</td><td>${fmt(tI)}</td>
-        <td>${fmt(tSvc)}</td><td class="text-red">${fmt(tPen)}</td>
+        <td class="text-red">${fmt(tPen)}</td>
         <td class="text-amber">-${fmt(tReb)}</td>
-        <td class="fw700 text-green">${fmt(tP+tI+tSvc+tPen)}</td>
+        <td class="fw700 text-green">${fmt(tP+tI+tPen)}</td>
       </tr>
     </table></div>` : `<div class="empty-state"><div class="ei">📊</div><p>${t("noRecord")}</p></div>`}
   </div>`;
@@ -2895,7 +2892,7 @@ function renderFinanceReport() {
     const mExpenses = expenses.filter(e => e.date.slice(0,7) === m).reduce((a,e)=>a+(+e.amount),0);
     const mInterest    = mPays.reduce((a,p) => a + (+p.interest||0), 0);
     const mEarlyProfit = mEarly.reduce((a,r) => a + (+r.actualProfit||0), 0);
-    const mServiceFee  = mPays.reduce((a,p) => a + (+p.serviceFee||0), 0);
+    const mServiceFee  = 0; // 无手续费
     const mRebate      = mSales.reduce((a,s)=>a+(+s.storeRebate||0),0);
     const mPenalty     = mPays.reduce((a,p)=>a+(+p.penalty||0),0);
     // 合同利润：当月dueDate已还的期次实收利息+手续费 - 佣金分摊
