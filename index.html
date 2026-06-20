@@ -2958,11 +2958,15 @@ function renderFinanceReport() {
     const mServiceFee  = 0; // 无手续费
     const mRebate      = mSales.reduce((a,s)=>a+(+s.storeRebate||0),0);
     const mPenalty     = mPays.reduce((a,p)=>a+(+p.penalty||0),0);
-    // 合同利润：当月dueDate已还的期次实收利息+手续费 - 佣金分摊
-    const mContractProfit = mSales.filter(s=>s.status!=='提前结清').reduce((a,s)=>
-      a + (+s.totalInterest||0) + (+s.totalServiceFee||0) - (+s.storeRebate||0), 0);
-    const mProfit = mContractProfit + mEarlyProfit + mPenalty - mExpenses;
-    const mProfitBeforeExp = mContractProfit + mEarlyProfit + mPenalty;
+    // 实收利息 = 本月收款记录里的利息（实收）
+    const mActualInterest = mPays.reduce((a,p)=>a+(+p.interest||0)+(+p.serviceFee||0),0);
+    // 本月开支（排除手机采购）
+    const mExpOp  = expenses.filter(e=>e.date.replace(/\//g,'-').slice(0,7)===m && e.cat!=='手机采购'&&e.cat!=='员工工资').reduce((a,e)=>a+(+e.amount||0),0);
+    const mExpSal = expenses.filter(e=>e.date.replace(/\//g,'-').slice(0,7)===m && e.cat==='员工工资').reduce((a,e)=>a+(+e.amount||0),0);
+    const mExpenses = mExpOp + mExpSal;
+    // 本月盈利 = 实收利息 + 滞纳金 + 提前还款利润 - 返点 - 工资 - 运营开支
+    const mProfit = mActualInterest + mPenalty + mEarlyProfit - mRebate - mExpenses;
+    const mProfitBeforeExp = mActualInterest + mPenalty + mEarlyProfit - mRebate;
 
     // ── 新公式 ──
     // 月总应收款 = 本月所有到期期次的（本金+利息+手续费）
