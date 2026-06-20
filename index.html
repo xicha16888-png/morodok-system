@@ -2095,23 +2095,21 @@ function renderStatsCollection() {
       <tr>
         <th>${t("colMonth")}</th><th>${t("colCount")}</th>
         <th>${t("colPrincipalPaid")}</th><th>${t("colInterestPaid")}</th>
-        <th>${_lang==='km'?'ថ្លៃសេវា':_lang==='en'?'Svc Fee':'手续费'}</th>
         <th>${_lang==='km'?'ប្រាក់ពិន័យ':_lang==='en'?'Late Fee':'滞纳金'}</th>
         <th>${_lang==='km'?'កាំចំណែក':_lang==='en'?'Rebate':'返点'}</th>
         <th>${t("colTotal")}</th>
       </tr>
       ${months.map(m => {
         const d = byMonth[m];
-        const net = d.interest + d.serviceFee + d.penalty - d.rebate;
+        const net = d.interest + d.penalty - d.rebate;
         return `<tr>
           <td class="fw700">${m}</td>
           <td>${d.count}</td>
           <td>${fmt(d.principal)}</td>
           <td>${fmt(d.interest)}</td>
-          <td>${d.serviceFee>0?fmt(d.serviceFee):'—'}</td>
           <td>${d.penalty>0?`<span class="text-red">${fmt(d.penalty)}</span>`:'—'}</td>
           <td>${d.rebate>0?`<span class="text-amber">-${fmt(d.rebate)}</span>`:'—'}</td>
-          <td class="fw700 text-green">${fmt(d.principal+d.interest+d.serviceFee+d.penalty)}</td>
+          <td class="fw700 text-green">${fmt(d.principal+d.interest+d.penalty)}</td>
         </tr>`;
       }).join('')}
       <tr style="font-weight:700;background:#f0f4f8;border-top:2px solid var(--border)">
