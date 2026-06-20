@@ -3179,12 +3179,13 @@ function renderFinanceReport() {
     ${(() => {
       const td = today();
       const allSales = DB_get('sales')||[];
-      // 找出所有逾期未还的期次
+      // 只看选定月份到期的逾期期次
+      const selM = ym; // 当前选定月份
       const overduePeriods = [];
       allSales.forEach(s => {
         if (s.status === '已结清' || s.status === '提前结清') return;
         s.schedule.forEach(p => {
-          if (!p.paid && p.dueDate < td) {
+          if (!p.paid && p.dueDate < td && p.dueDate.slice(0,7) === selM) {
             const diffDays = Math.floor((new Date(td) - new Date(p.dueDate)) / 86400000);
             overduePeriods.push({ sale: s, period: p, diffDays });
           }
