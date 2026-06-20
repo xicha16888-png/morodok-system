@@ -3345,6 +3345,7 @@ function renderExpenses() {
     <div class="card-title" style="margin-bottom:16px">${t("addExpense")}</div>
     <div class="form-grid">
       <div class="form-group"><label>${t("expenseDate")}</label><input type="date" id="exDate" value="${today()}"></div>
+      <div class="form-group"><label>${_lang==='km'?'កាលបរិច្ឆេទផ្តល់ជាក់ស្តែង':_lang==='en'?'Actual Pay Date':'实际发放日期'}</label><input type="date" id="exPayDate"></div>
       <div class="form-group"><label>${t("expenseCategory")}</label>
         <select id="exCat">
           ${EXPENSE_CATS.map(c=>`<option value="${c}">${c}</option>`).join('')}
@@ -3401,9 +3402,10 @@ function buildExpenseTable(expenses) {
   if (!expenses.length) return `<div class="empty-state"><div class="ei">🧾</div><p>${t("noRecord")}</p></div>`;
   const catColors = {'房租':'badge-red','员工工资':'badge-red','税费':'badge-red','水电':'badge-amber','通讯费':'badge-amber','交通费':'badge-amber','餐饮':'badge-blue','维修':'badge-amber','广告推广':'badge-purple','办公用品':'badge-blue','手机采购':'badge-green','锁机费用':'badge-amber','其他':'badge-gray'};
   return `<div class="table-wrap"><table>
-    <tr><th>日期</th><th>类别</th><th>金额</th><th>说明</th><th>经手人</th><th>操作</th></tr>
+    <tr><th>日期</th><th>实际发放日期</th><th>类别</th><th>金额</th><th>说明</th><th>经手人</th><th>操作</th></tr>
     ${expenses.map(e=>`<tr>
       <td>${e.date}</td>
+      <td style="color:var(--muted);font-size:12px">${e.payDate||'—'}</td>
       <td><span class="badge ${catColors[e.cat]||'badge-gray'}">${esc(e.cat)}</span></td>
       <td class="fw700 text-red">${fmt(e.amount)}</td>
       <td style="color:var(--muted);font-size:12px">${esc(e.note||'—')}</td>
@@ -3429,12 +3431,13 @@ window.submitExpense = function() {
   const amount = +(document.getElementById('exAmount')?.value||0);
   const note   = document.getElementById('exNote')?.value||'';
   const person = document.getElementById('exPerson')?.value||'';
+  const payDate= document.getElementById('exPayDate')?.value||'';
   if (!amount || amount <= 0) { showMsg('exMsg',t('msgFillAmount'),'red'); return; }
   const expenses = DB_get('expenses')||[];
-  expenses.push({ id: newId(), date, cat, amount, note, person });
+  expenses.push({ id: newId(), date, cat, amount, note, person, payDate });
   DB_set('expenses', expenses);
   showMsg('exMsg', `✅ ${cat} ${fmt(amount)}`, 'green');
-  ['exAmount','exNote','exPerson'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['exAmount','exNote','exPerson','exPayDate'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   setTimeout(()=>nav('expenses'), 400);
 };
 
