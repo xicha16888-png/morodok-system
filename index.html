@@ -2059,6 +2059,13 @@ function renderStatsCollection() {
   const tGross = tI + tPen - tReb;
   const tNet   = tI - tReb - tExp;
 
+  // 按月汇总开支
+  const expByMonth = {};
+  expenses.forEach(e => {
+    const m = e.date.slice(0,7);
+    expByMonth[m] = (expByMonth[m]||0) + (+e.amount||0);
+  });
+
   return `
   <div class="page-header"><div class="page-title">📊 ${t('collectionTitle')}</div></div>
   <div class="stats-grid">
@@ -2091,13 +2098,6 @@ function renderStatsCollection() {
       <div class="stat-sub">实收利息 − 返点 − 开支</div>
     </div>
   </div>
-
-  // 按月汇总开支
-  const expByMonth = {};
-  expenses.forEach(e => {
-    const m = e.date.slice(0,7);
-    expByMonth[m] = (expByMonth[m]||0) + (+e.amount||0);
-  });
 
   <div class="card"><div class="card-title" style="margin-bottom:14px">${t("monthlyCollection")}</div>
     ${months.length ? `<div class="table-wrap"><table>
