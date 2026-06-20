@@ -2952,7 +2952,6 @@ function renderFinanceReport() {
     const orderCount = mSales.length;
     const mPays  = pays.filter(p => p.date.slice(0,7) === m);
     const mEarly = earlyPays.filter(r => r.date.slice(0,7) === m);
-    const mExpenses = expenses.filter(e => e.date.slice(0,7) === m).reduce((a,e)=>a+(+e.amount),0);
     const mInterest    = mPays.reduce((a,p) => a + (+p.interest||0), 0);
     const mEarlyProfit = mEarly.reduce((a,r) => a + (+r.actualProfit||0), 0);
     const mServiceFee  = 0; // 无手续费
