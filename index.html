@@ -2059,12 +2059,35 @@ function renderStatsCollection() {
   const tGross = tI + tPen - tReb;
   const tNet   = tI - tReb - tExp;
 
-  // 按月汇总开支（统一转为 YYYY-MM 格式）
-  const expByMonth = {};
+  const NON_EXPENSE_CATS = ['手机采购']; // 不计入开支的类别
+
+  // 按月汇总开支（统一转为 YYYY-MM 格式，排除手机采购）
+  const expByMonth = {};    // 运营开支+工资
+  const salByMonth = {};    // 仅员工工资
+  const opExpByMonth = {};  // 仅运营开支（不含工资和手机采购）
+  const tExpOp  = expenses.filter(e=>e.cat!=='手机采购'&&e.cat!=='员工工资').reduce((a,e)=>a+(+e.amount||0),0);
+  const tExpSal = expenses.filter(e=>e.cat==='员工工资').reduce((a,e)=>a+(+e.amount||0),0);
+  const tExpAll = expenses.filter(e=>e.cat!=='手机采购').reduce((a,e)=>a+(+e.amount||0),0);
+
   expenses.forEach(e => {
+    if (NON_EXPENSE_CATS.includes(e.cat)) return;
     const m = (e.date||'').replace(/\//g,'-').slice(0,7);
     expByMonth[m] = (expByMonth[m]||0) + (+e.amount||0);
+    if (e.cat === '员工工资') {
+      salByMonth[m] = (salByMonth[m]||0) + (+e.amount||0);
+    } else {
+      opExpByMonth[m] = (opExpByMonth[m]||0) + (+e.amount||0);
+    }
   });
+
+  // 提前还款按月利润
+  const earlyByMonth = {};
+  earlyPays.forEach(r => {
+    const m = (r.date||'').replace(/\//g,'-').slice(0,7);
+    earlyByMonth[m] = (earlyByMonth[m]||0) + (+r.actualProfit||0);
+  });
+
+  const tNetNew = tI + tPen - tReb + earlyPays.reduce((a,r)=>a+(+r.actualProfit||0),0) - tExpAll;
 
   return `
   <div class="page-header"><div class="page-title">📊 ${t('collectionTitle')}</div></div>
@@ -2081,21 +2104,25 @@ function renderStatsCollection() {
   <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
     
     <div class="stat-card" style="background:#fce4ec;border-left:3px solid var(--red)">
-      <div class="stat-label">${_lang==='km'?'ប្រាក់ពិន័យដែលបានប្រមូល':_lang==='en'?'Late Fee Collected':'已收滞纳金'}</div>
+      <div class="stat-label">已收滞纳金</div>
       <div class="stat-value" style="color:var(--red)">${fmt(tPen)}</div>
     </div>
     <div class="stat-card" style="background:#fff3e0;border-left:3px solid var(--amber)">
-      <div class="stat-label">${_lang==='km'?'កាំចំណែករបស់ហាង':_lang==='en'?'Store Rebate (deducted)':'店家返点（扣除）'}</div>
+      <div class="stat-label">店家返点（扣除）</div>
       <div class="stat-value" style="color:var(--amber)">-${fmt(tReb)}</div>
     </div>
     <div class="stat-card" style="background:#fce4ec;border-left:3px solid var(--red)">
-      <div class="stat-label">${_lang==='km'?'ការចំណាយប្រចាំថ្ងៃ':_lang==='en'?'Total Expenses':'日常开支（扣除）'}</div>
-      <div class="stat-value" style="color:var(--red)">-${fmt(tExp)}</div>
+      <div class="stat-label">员工工资（扣除）</div>
+      <div class="stat-value" style="color:var(--red)">-${fmt(tExpSal)}</div>
+    </div>
+    <div class="stat-card" style="background:#fce4ec;border-left:3px solid var(--red)">
+      <div class="stat-label">运营开支（扣除）</div>
+      <div class="stat-value" style="color:var(--red)">-${fmt(tExpOp)}</div>
     </div>
     <div class="stat-card" style="background:#e8f5e9;border-left:3px solid var(--green)">
-      <div class="stat-label">${_lang==='km'?'ចំណូលសុទ្ធពិតប្រាកដ':_lang==='en'?'Actual Net Profit':'实际净利润'}</div>
-      <div class="stat-value" style="color:${tNet>=0?'var(--green)':'var(--red)'}">${fmt(tNet)}</div>
-      <div class="stat-sub">实收利息 − 返点 − 开支</div>
+      <div class="stat-label">实际净利润</div>
+      <div class="stat-value" style="color:${tNetNew>=0?'var(--green)':'var(--red)'}">${fmt(tNetNew)}</div>
+      <div class="stat-sub">利息+滞纳金+提前还款利润−返点−工资−运营开支</div>
     </div>
   </div>
 
@@ -2103,17 +2130,17 @@ function renderStatsCollection() {
     ${months.length ? `<div class="table-wrap"><table>
       <tr>
         <th>${t("colMonth")}</th><th>${t("colCount")}</th>
-        <th>${t("colPrincipalPaid")}</th><th>${_lang==='km'?'ការប្រាក់ដែលបានទទួល':_lang==='en'?'Interest Collected':'实收利息'}</th>
-        <th>${_lang==='km'?'ប្រាក់ពិន័យ':_lang==='en'?'Late Fee':'滞纳金'}</th>
-        <th>${_lang==='km'?'កាំចំណែក':_lang==='en'?'Rebate':'返点'}</th>
-        <th>${_lang==='km'?'ការចំណាយ':_lang==='en'?'Expenses':'当月开支'}</th>
-        <th>${_lang==='km'?'ចំណេញសុទ្ធ':_lang==='en'?'Net Profit':'单月净利润'}</th>
+        <th>${t("colPrincipalPaid")}</th><th>实收利息</th>
+        <th>滞纳金</th><th>返点</th><th>提前还款利润</th>
+        <th>员工工资</th><th>运营开支</th><th>单月净利润</th>
         <th>${t("colTotal")}</th>
       </tr>
       ${months.map(m => {
         const d = byMonth[m];
-        const mExp = expByMonth[m]||0;
-        const mNet = d.interest + d.penalty - d.rebate - mExp;
+        const mExp   = opExpByMonth[m]||0;
+        const mSal   = salByMonth[m]||0;
+        const mEarly = earlyByMonth[m]||0;
+        const mNet   = d.interest + d.penalty - d.rebate + mEarly - mSal - mExp;
         return `<tr>
           <td class="fw700">${m}</td>
           <td>${d.count}</td>
@@ -2121,6 +2148,8 @@ function renderStatsCollection() {
           <td>${fmt(d.interest)}</td>
           <td>${d.penalty>0?`<span class="text-red">${fmt(d.penalty)}</span>`:'—'}</td>
           <td>${d.rebate>0?`<span class="text-amber">-${fmt(d.rebate)}</span>`:'—'}</td>
+          <td>${mEarly>0?`<span class="text-green">${fmt(mEarly)}</span>`:mEarly<0?`<span class="text-red">${fmt(mEarly)}</span>`:'—'}</td>
+          <td>${mSal>0?`<span class="text-red">-${fmt(mSal)}</span>`:'—'}</td>
           <td>${mExp>0?`<span class="text-red">-${fmt(mExp)}</span>`:'—'}</td>
           <td class="fw700" style="color:${mNet>=0?'var(--green)':'var(--red)'}">${fmt(mNet)}</td>
           <td class="fw700 text-green">${fmt(d.principal+d.interest+d.penalty)}</td>
@@ -2131,8 +2160,10 @@ function renderStatsCollection() {
         <td>${fmt(tP)}</td><td>${fmt(tI)}</td>
         <td class="text-red">${fmt(tPen)}</td>
         <td class="text-amber">-${fmt(tReb)}</td>
-        <td class="text-red">-${fmt(tExp)}</td>
-        <td class="fw700" style="color:${tNet>=0?'var(--green)':'var(--red)'}">${fmt(tNet)}</td>
+        <td class="text-green">${fmt(earlyPays.reduce((a,r)=>a+(+r.actualProfit||0),0))}</td>
+        <td class="text-red">-${fmt(tExpSal)}</td>
+        <td class="text-red">-${fmt(tExpOp)}</td>
+        <td class="fw700" style="color:${tNetNew>=0?'var(--green)':'var(--red)'}">${fmt(tNetNew)}</td>
         <td class="fw700 text-green">${fmt(tP+tI+tPen)}</td>
       </tr>
     </table></div>` : `<div class="empty-state"><div class="ei">📊</div><p>${t("noRecord")}</p></div>`}
