@@ -3180,7 +3180,7 @@ function renderFinanceReport() {
       const td = today();
       const allSales = DB_get('sales')||[];
       // 只看选定月份到期的逾期期次
-      const selM = ym; // 当前选定月份
+      const selM = sel.m || td.slice(0,7);
       const overduePeriods = [];
       allSales.forEach(s => {
         if (s.status === '已结清' || s.status === '提前结清') return;
