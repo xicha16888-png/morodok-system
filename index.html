@@ -2059,10 +2059,10 @@ function renderStatsCollection() {
   const tGross = tI + tPen - tReb;
   const tNet   = tI - tReb - tExp;
 
-  // 按月汇总开支
+  // 按月汇总开支（统一转为 YYYY-MM 格式）
   const expByMonth = {};
   expenses.forEach(e => {
-    const m = e.date.slice(0,7);
+    const m = (e.date||'').replace(/\//g,'-').slice(0,7);
     expByMonth[m] = (expByMonth[m]||0) + (+e.amount||0);
   });
 
@@ -2113,7 +2113,7 @@ function renderStatsCollection() {
       ${months.map(m => {
         const d = byMonth[m];
         const mExp = expByMonth[m]||0;
-        const mNet = d.interest - d.rebate - mExp;
+        const mNet = d.interest + d.penalty - d.rebate - mExp;
         return `<tr>
           <td class="fw700">${m}</td>
           <td>${d.count}</td>
@@ -2771,8 +2771,18 @@ window.calcEarlyProfit = function() {
 
   const neg = +(document.getElementById('epNegotiated')?.value || 0);
   if (neg > 0) {
-    // Auto profit = negotiated - remaining principal - rebate
-    const autoP = (neg - remainP - rebate).toFixed(2);
+    const sel2 = document.getElementById('epContract');
+    const opt2 = sel2?.selectedOptions[0];
+    const sales2 = DB_get('sales')||[];
+    const s2 = sales2.find(s=>s.id===+(sel2?.value||0));
+    const deposit = +(s2?.deposit||0);
+    const paidPays = DB_get('payments')||[];
+    const contractPays = paidPays.filter(p=>p.contractId===+(sel2?.value||0));
+    const paidPrincipal = contractPays.reduce((a,p)=>a+(+p.principal||0),0);
+    const paidInterest  = contractPays.reduce((a,p)=>a+(+p.interest||0)+(+p.serviceFee||0),0);
+    // 净利润 = 首付 + 已还本金 + 已还利息 + 协商金额 - 合同总本金 - 返点
+    const totalPrincipal = +(s2?.principal||0);
+    const autoP = (deposit + paidPrincipal + paidInterest + neg - totalPrincipal - rebate).toFixed(2);
     const apEl = document.getElementById('epAutoProfit');
     const mpEl = document.getElementById('epManualProfit');
     if (apEl) apEl.value = autoP;
@@ -2803,16 +2813,14 @@ function updateProfitTip(remainP, remainI, remainSvc, rebate, neg, actualProfit)
   const pct  = origIncome > 0 ? ((actualProfit / origIncome) * 100).toFixed(1) : '0';
   tip.innerHTML = `
     <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px">
-      <span>💰 ${_lang==='km'?'ចំនួនចរចា':_lang==='en'?'Negotiated':'协商收回'}：<b>${fmt(neg)}</b></span>
-      <span style="color:var(--muted)">= ${_lang==='km'?'ប្រាក់ដើម':_lang==='en'?'Principal':'本金'} ${fmt(remainP)}
-        + ${_lang==='km'?'ចំណេញ':_lang==='en'?'Profit':'利润'} ${fmt(actualProfit)}
-        + ${_lang==='km'?'កាំចំណែក':_lang==='en'?'Rebate':'返点'} ${fmt(rebate)}</span>
+      <span>💰 协商收回：<b>${fmt(neg)}</b></span>
+      <span style="color:var(--muted)">净利润 = 首付 + 已还本金 + 已还利息 + 协商金额 − 合同总本金 − 返点</span>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px;margin-top:6px">
-      <span>📉 ${_lang==='km'?'ការប្រាក់+ថ្លៃសេវានៅសល់':_lang==='en'?'Remain Interest+Fee':'原剩余利息+手续费'}：<b>${fmt(origIncome)}</b></span>
-      <span>🏪 ${_lang==='km'?'កាំចំណែករបស់ហាង':_lang==='en'?'Store Rebate (deducted)':'店家返点（已扣除）'}：<b class="text-red">-${fmt(rebate)}</b></span>
+      <span>📉 原剩余利息：<b>${fmt(origIncome)}</b></span>
+      <span>🏪 店家返点（已扣除）：<b class="text-red">-${fmt(rebate)}</b></span>
       <span class="${diff >= 0 ? 'text-green' : 'text-red'}" style="font-weight:700">
-        ${_lang==='km'?'ការផ្លាស់ប្ដូរ':_lang==='en'?'Profit vs original':'利润变化'}：${diff >= 0 ? '+' : ''}${fmt(diff)}（${pct}%）
+        利润变化：${diff >= 0 ? '+' : ''}${fmt(diff)}
       </span>
     </div>`;
 }
@@ -2829,7 +2837,13 @@ window.submitEarlyPayment = function() {
   const remainSvc = +(opt?.dataset?.remainSvc || 0);
   const rebate    = +(opt?.dataset?.rebate    || 0);
   const mpEl = document.getElementById('epManualProfit');
-  const autoProfit = +(neg - remainP - rebate).toFixed(2);
+  const deposit2 = +(s?.deposit||0);
+  const allPays2 = DB_get('payments')||[];
+  const cPays2 = allPays2.filter(p=>p.contractId===contractId);
+  const paidP2 = cPays2.reduce((a,p)=>a+(+p.principal||0),0);
+  const paidI2 = cPays2.reduce((a,p)=>a+(+p.interest||0)+(+p.serviceFee||0),0);
+  const totalPrincipal2 = +(s?.principal||0);
+  const autoProfit = +(deposit2 + paidP2 + paidI2 + neg - totalPrincipal2 - rebate).toFixed(2);
   const actualProfit = mpEl?.value !== '' ? +(mpEl.value) : autoProfit;
   const date = document.getElementById('epDate')?.value || today();
   const note = document.getElementById('epNote')?.value || '';
