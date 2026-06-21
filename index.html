@@ -2045,6 +2045,21 @@ window.quickPay = function(contractId, period) {
   window._pendingPayContract = String(contractId);
   window._pendingPayPeriod   = String(period);
   nav('payment-add');
+  setTimeout(() => {
+    const ci = document.getElementById('pContract');
+    if (!ci) return;
+    ci.value = String(contractId);
+    loadContractPeriods();
+    setTimeout(() => {
+      const pi = document.getElementById('pPeriod');
+      if (pi) {
+        pi.value = String(period);
+        autoFillPayment();
+      }
+      window._pendingPayContract = null;
+      window._pendingPayPeriod = null;
+    }, 300);
+  }, 300);
 };
 window.calcPayTotal = function() {
   const i = +(document.getElementById('pInterest')?.value||0);
