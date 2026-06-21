@@ -2004,7 +2004,7 @@ window.navToPayment = function(contractId, period) {
     }
   }, 500);
 };
-  const p = +(document.getElementById('pPrincipal')?.value||0);
+window.calcPayTotal = function() {
   const i = +(document.getElementById('pInterest')?.value||0);
   const pe= +(document.getElementById('pPenalty')?.value||0);
   const tot = document.getElementById('pTotal');
