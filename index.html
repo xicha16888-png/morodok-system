@@ -2148,27 +2148,32 @@ function renderStatsCollection() {
       <tr>
         <th>${t("colMonth")}</th><th>${t("colCount")}</th>
         <th>${t("colPrincipalPaid")}</th><th>实收利息</th>
-        <th>滞纳金</th><th>返点</th><th>提前还款利润</th>
-        <th>员工工资</th><th>运营开支</th><th>单月净利润</th>
-        <th>${t("colTotal")}</th>
+        <th>应收利息</th><th>滞纳金</th><th>返点</th><th>提前还款利润</th>
+        <th>员工工资</th><th>运营开支</th><th>单月毛利润</th>
+        <th>月回款总额</th>
       </tr>
       ${months.map(m => {
         const d = byMonth[m];
         const mExp   = opExpByMonth[m]||0;
         const mSal   = salByMonth[m]||0;
         const mEarly = earlyByMonth[m]||0;
-        const mNet   = d.interest + d.penalty - d.rebate + mEarly - mSal - mExp;
+        // 应收利息 = 当月dueDate的所有期次利息合计
+        const mDueInterest = sales.reduce((a,s) =>
+          a + s.schedule.filter(p=>p.dueDate&&p.dueDate.slice(0,7)===m).reduce((b,p)=>b+(+p.interestDue||0)+(+p.serviceFeeDue||0),0), 0);
+        // 单月毛利润 = 应收利息 + 滞纳金 + 提前还款利润 - 返点
+        const mGross = mDueInterest + d.penalty - d.rebate + mEarly;
         return `<tr>
           <td class="fw700">${m}</td>
           <td>${d.count}</td>
           <td>${fmt(d.principal)}</td>
           <td>${fmt(d.interest)}</td>
+          <td>${fmt(mDueInterest)}</td>
           <td>${d.penalty>0?`<span class="text-red">${fmt(d.penalty)}</span>`:'—'}</td>
           <td>${d.rebate>0?`<span class="text-amber">-${fmt(d.rebate)}</span>`:'—'}</td>
           <td>${mEarly>0?`<span class="text-green">${fmt(mEarly)}</span>`:mEarly<0?`<span class="text-red">${fmt(mEarly)}</span>`:'—'}</td>
           <td>${mSal>0?`<span class="text-red">-${fmt(mSal)}</span>`:'—'}</td>
           <td>${mExp>0?`<span class="text-red">-${fmt(mExp)}</span>`:'—'}</td>
-          <td class="fw700" style="color:${mNet>=0?'var(--green)':'var(--red)'}">${fmt(mNet)}</td>
+          <td class="fw700" style="color:${mGross>=0?'var(--green)':'var(--red)'}">${fmt(mGross)}</td>
           <td class="fw700 text-green">${fmt(d.principal+d.interest+d.penalty)}</td>
         </tr>`;
       }).join('')}
