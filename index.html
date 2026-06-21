@@ -1224,7 +1224,27 @@ function initPage(page) {
     }
     calcInstall();
   }
-  if (page === 'payment-add')  loadContractPeriods();
+  if (page === 'payment-add') {
+    loadContractPeriods();
+    if (window._pendingPayContract) {
+      setTimeout(() => {
+        const ci = document.getElementById('pContract');
+        if (ci) {
+          ci.value = window._pendingPayContract;
+          loadContractPeriods();
+          setTimeout(() => {
+            const pi = document.getElementById('pPeriod');
+            if (pi) {
+              pi.value = window._pendingPayPeriod;
+              autoFillPayment();
+            }
+            window._pendingPayContract = null;
+            window._pendingPayPeriod   = null;
+          }, 400);
+        }
+      }, 300);
+    }
+  }
   if (page === 'early-payment') calcEarlyProfit();
 }
 
@@ -1988,20 +2008,22 @@ window.autoFillPayment = function() {
 };
 
 window.navToPayment = function(contractId, period) {
+  // 先存目标合同和期次
+  window._pendingPayContract = String(contractId);
+  window._pendingPayPeriod   = String(period);
   nav('payment-add');
   setTimeout(() => {
     const ci = document.getElementById('pContract');
-    if (ci) {
-      ci.value = String(contractId);
-      ci.dispatchEvent(new Event('change'));
-      setTimeout(() => {
-        const pi = document.getElementById('pPeriod');
-        if (pi) {
-          pi.value = String(period);
-          pi.dispatchEvent(new Event('change'));
-        }
-      }, 500);
-    }
+    if (!ci) return;
+    ci.value = window._pendingPayContract;
+    loadContractPeriods(); // 填充期次下拉
+    setTimeout(() => {
+      const pi = document.getElementById('pPeriod');
+      if (pi) {
+        pi.value = window._pendingPayPeriod;
+        autoFillPayment(); // 自动填金额
+      }
+    }, 400);
   }, 600);
 };
 window.calcPayTotal = function() {
