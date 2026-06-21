@@ -1226,17 +1226,6 @@ function initPage(page) {
   }
   if (page === 'payment-add') {
     loadContractPeriods();
-    if (window._pendingPayContract) {
-      setTimeout(() => {
-        const pi = document.getElementById('pPeriod');
-        if (pi && window._pendingPayPeriod) {
-          pi.value = window._pendingPayPeriod;
-          autoFillPayment();
-        }
-        window._pendingPayContract = null;
-        window._pendingPayPeriod   = null;
-      }, 300);
-    }
   }
   if (page === 'early-payment') calcEarlyProfit();
 }
@@ -1986,6 +1975,12 @@ window.loadContractPeriods = function() {
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
   const sel = document.getElementById('pPeriod'); if (!s||!sel) return;
   sel.innerHTML = s.schedule.filter(p => !p.paid).map(p => `<option value="${p.period}">${p.period} ${t("period")} (到期:${p.dueDate})</option>`).join('');
+  // 如果有pending期次，直接选中
+  if (window._pendingPayPeriod) {
+    sel.value = window._pendingPayPeriod;
+    window._pendingPayContract = null;
+    window._pendingPayPeriod   = null;
+  }
   autoFillPayment();
 };
 window.autoFillPayment = function() {
