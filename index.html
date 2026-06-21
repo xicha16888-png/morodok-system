@@ -1869,16 +1869,21 @@ window.deleteSale = function(id) {
 };
 // ══════════════════════════════════════════════════════
 function renderPaymentAdd() {
-  const sales = (DB_get('sales')||[]).filter(s => s.status !== '已结清');
+  const sales = (DB_get('sales')||[]).filter(s => s.status === '进行中');
   const pendingId = window._pendingPayContract ? String(window._pendingPayContract) : '';
   const pendingPeriod = window._pendingPayPeriod ? String(window._pendingPayPeriod) : '';
-  const opts = sales.filter(s=>s.status==='进行中').map(s => `<option value="${s.id}" ${String(s.id)===pendingId?'selected':''}>#${s.id} — ${esc(s.customer)} (${s.periods}期 每期${fmt(s.monthlyPayment)})</option>`).join('');
+  const pendingSale = pendingId ? sales.find(s=>String(s.id)===pendingId) : null;
+  const pendingText = pendingSale ? `#${pendingSale.id} — ${pendingSale.customer} (${pendingSale.periods}期 每期${fmt(pendingSale.monthlyPayment)})` : '';
+  const opts = sales.map(s => `<option value="#${s.id} — ${s.customer} (${s.periods}期 每期${fmt(s.monthlyPayment)})" data-id="${s.id}"></option>`).join('');
   const pays = (DB_get('payments')||[]).slice().reverse();
   return `
   <div class="page-header"><div class="page-title">💳 ${t('paymentTitle')}</div></div>
   <div class="card">
     <div class="form-grid">
-      <div class="form-group span3"><label>${t('selectContract')}</label><select id="pContract" onchange="loadContractPeriods()">${opts||'<option>—</option>'}</select></div>
+      <div class="form-group span3"><label>${t('selectContract')}</label>
+        <datalist id="pContractList">${opts}</datalist>
+        <input id="pContract" list="pContractList" placeholder="输入客户名或合同号搜索..." value="${pendingText}" oninput="resolveContract()" style="width:100%">
+      </div>
       <div class="form-group"><label>${t("paymentDate")}</label><input type="date" id="pDate" value="${today()}"></div>
       <div class="form-group"><label>${t("payPeriod")}</label><select id="pPeriod" onchange="autoFillPayment()"></select></div>
       <div class="form-group"><label>${t("paidPrincipal")}</label><input type="number" id="pPrincipal" placeholder="0.00" step="0.01" oninput="calcPayTotal()"></div>
@@ -1970,8 +1975,29 @@ function buildPayTable(pays) {
   </table></div>`;
 }
 
+window.resolveContract = function() {
+  const input = document.getElementById('pContract');
+  if (!input) return;
+  const val = input.value;
+  const sales = DB_get('sales')||[];
+  // 从datalist option里找匹配的data-id
+  const opts = document.querySelectorAll('#pContractList option');
+  let found = null;
+  opts.forEach(opt => { if (opt.value === val) found = opt.dataset.id; });
+  // 也支持直接输入合同号
+  if (!found) {
+    const m = val.match(/^#?(\d{4}-\d{3})/);
+    if (m) found = m[1];
+  }
+  window._resolvedContractId = found || null;
+  if (found) loadContractPeriods();
+};
+
+window.getContractId = function() {
+  return window._resolvedContractId || null;
+};
 window.loadContractPeriods = function() {
-  const id = (document.getElementById('pContract')?.value||'');
+  const id = window._resolvedContractId || '';
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
   const sel = document.getElementById('pPeriod'); if (!s||!sel) return;
   sel.innerHTML = s.schedule.filter(p => !p.paid).map(p => `<option value="${p.period}">${p.period} ${t("period")} (到期:${p.dueDate})</option>`).join('');
@@ -1984,7 +2010,7 @@ window.loadContractPeriods = function() {
   autoFillPayment();
 };
 window.autoFillPayment = function() {
-  const id = (document.getElementById('pContract')?.value||'');
+  const id = window._resolvedContractId || '';
   const period = +(document.getElementById('pPeriod')?.value||0);
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
   const p = s?.schedule.find(x => x.period === period);
@@ -2042,24 +2068,10 @@ window.navToPayment = function(contractId, period) {
 };
 
 window.quickPay = function(contractId, period) {
-  window._pendingPayContract = String(contractId);
-  window._pendingPayPeriod   = String(period);
+  window._resolvedContractId  = String(contractId);
+  window._pendingPayContract  = String(contractId);
+  window._pendingPayPeriod    = String(period);
   nav('payment-add');
-  setTimeout(() => {
-    const ci = document.getElementById('pContract');
-    if (!ci) return;
-    ci.value = String(contractId);
-    loadContractPeriods();
-    setTimeout(() => {
-      const pi = document.getElementById('pPeriod');
-      if (pi) {
-        pi.value = String(period);
-        autoFillPayment();
-      }
-      window._pendingPayContract = null;
-      window._pendingPayPeriod = null;
-    }, 300);
-  }, 300);
 };
 window.calcPayTotal = function() {
   const i = +(document.getElementById('pInterest')?.value||0);
@@ -2068,7 +2080,7 @@ window.calcPayTotal = function() {
   if (tot) tot.value = fmt(p + i + pe);
 };
 window.submitPayment = function() {
-  const contractId = (document.getElementById('pContract')?.value||'');
+  const contractId = window._resolvedContractId || '';
   const periodNo = +(document.getElementById('pPeriod')?.value||0);
   const pDate = document.getElementById('pDate')?.value||today();
   const principal  = +(document.getElementById('pPrincipal')?.value||0);
