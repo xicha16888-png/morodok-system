@@ -2532,7 +2532,7 @@ window.filterProfitTable = function() {
 
 function renderReminderTomorrow() {
   const tomorrow = addDays(today(), 1), sales = DB_get('sales')||[], items = [];
-  sales.forEach(s => s.schedule.forEach(p => { if (!p.paid && p.dueDate === tomorrow) items.push({s,p}); }));
+  sales.forEach(s => { if (s.status==='提前结清') return; s.schedule.forEach(p => { if (!p.paid && p.dueDate === tomorrow) items.push({s,p}); }); });
   const total = items.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0);
   return `
   <div class="page-header"><div class="page-title">⏰ ${t('tomorrowTitle')}</div><div class="page-sub">${tomorrow} · ${t('tomorrowDue')}</div></div>
@@ -2549,7 +2549,15 @@ function renderReminderTomorrow() {
 
 function renderReminderOverdue() {
   const td = today(), sales = DB_get('sales')||[], items = [];
-  sales.forEach(s => s.schedule.forEach(p => { if (!p.paid && p.dueDate < td) { const days = Math.floor((new Date(td)-new Date(p.dueDate))/86400000); items.push({s,p,days}); }}));
+  sales.forEach(s => {
+    if (s.status === '提前结清') return; // 跳过已提前结清
+    s.schedule.forEach(p => {
+      if (!p.paid && p.dueDate < td) {
+        const days = Math.floor((new Date(td)-new Date(p.dueDate))/86400000);
+        items.push({s,p,days});
+      }
+    });
+  });
   items.sort((a,b) => a.days-b.days);
   return `
   <div class="page-header"><div class="page-title">🚨 ${t('overdueTitle')}</div></div>
