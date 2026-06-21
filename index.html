@@ -1988,20 +1988,23 @@ window.autoFillPayment = function() {
 };
 
 window.navToPayment = function(contractId, period) {
-  nav('payment-add');
+  // 跳转到销售查询页
+  nav('sale-list');
   setTimeout(() => {
-    const ci = document.getElementById('pContract');
-    if (ci) {
-      ci.value = contractId;
-      ci.dispatchEvent(new Event('change'));
-      setTimeout(() => {
-        const pi = document.getElementById('pPeriod');
-        if (pi) {
-          pi.value = period;
-          pi.dispatchEvent(new Event('change'));
+    // 弹出合同还款计划详情
+    viewSchedule(contractId);
+    // 高亮对应期次
+    setTimeout(() => {
+      const rows = document.querySelectorAll('#modalBg table tr');
+      rows.forEach(row => {
+        const firstCell = row.querySelector('td');
+        if (firstCell && firstCell.textContent.trim().startsWith(period + ' ')) {
+          row.style.background = '#fff9c4';
+          row.style.fontWeight = '700';
+          row.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
-      }, 400);
-    }
+      });
+    }, 300);
   }, 500);
 };
 window.calcPayTotal = function() {
@@ -2493,7 +2496,7 @@ function renderReminderTomorrow() {
 function renderReminderOverdue() {
   const td = today(), sales = DB_get('sales')||[], items = [];
   sales.forEach(s => s.schedule.forEach(p => { if (!p.paid && p.dueDate < td) { const days = Math.floor((new Date(td)-new Date(p.dueDate))/86400000); items.push({s,p,days}); }}));
-  items.sort((a,b) => b.days-a.days);
+  items.sort((a,b) => a.days-b.days);
   return `
   <div class="page-header"><div class="page-title">🚨 ${t('overdueTitle')}</div></div>
   ${items.length?`<div class="alert alert-red">⚠️ ${items.length} — ${fmt(items.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}</div>`:`<div class="alert alert-green">✅ ${t('noOverdue')}</div>`}
