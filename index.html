@@ -857,6 +857,7 @@ function buildSidebar() {
       <div class="nav-item" data-page="finance-report"><span class="nav-icon">📈</span>${t('financeReport')} 🔐</div>
       <div class="nav-item" data-page="expenses"><span class="nav-icon">🧾</span>${t('expenses')} 🔐</div>
       <div class="nav-item" data-page="store-stats"><span class="nav-icon">🏪</span>${t('storeStats')} 🔐</div>
+      <div class="nav-item" data-page="fund-stats"><span class="nav-icon">🏦</span>资金统计 🔐</div>
     </div>
     <div class="nav-divider"></div>
     <div style="padding:4px 0">
@@ -1076,7 +1077,7 @@ window.closeModal = () => document.getElementById('modalBg').classList.remove('o
 // ══════════════════════════════════════════════════════
 // 🔐 密码保护
 // ══════════════════════════════════════════════════════
-const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','expenses','store-stats'];
+const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','expenses','store-stats','fund-stats'];
 const REPORT_PWD = 'morodok888';
 let _reportUnlocked = false; // 会话内解锁状态
 
@@ -1143,7 +1144,7 @@ window.checkPwd = function(page) {
 const PAGES = {
   'home': renderHome, 'sale-add': renderSaleAdd, 'sale-list': renderSaleList,
   'payment-add': renderPaymentAdd, 'early-payment': renderEarlyPayment,
-  'stats-collection': renderStatsCollection, 'finance-report': renderFinanceReport, 'expenses': renderExpenses, 'store-stats': renderStoreStats,
+  'stats-collection': renderStatsCollection, 'finance-report': renderFinanceReport, 'expenses': renderExpenses, 'store-stats': renderStoreStats, 'fund-stats': renderFundStats, 'fund-settings': renderFundSettings,
   'stats-profit': renderStatsProfit, 'reminder-tomorrow': renderReminderTomorrow,
   'reminder-overdue': renderReminderOverdue, 'payment-query': renderPaymentQuery,
   'phones': renderPhones, 'suppliers': renderSuppliers,
@@ -3924,6 +3925,175 @@ window.deleteStore = function(name) {
   if (!confirm(`${t('deleteBtn')} ${name}?`)) return;
   DB_set('stores', (DB_get('stores')||[]).filter(s => s.name !== name));
   nav('store-stats');
+};
+
+// ══════════════════════════════════════════════════════
+// 资金统计
+// ══════════════════════════════════════════════════════
+function renderFundStats() {
+  const sales    = DB_get('sales')||[];
+  const pays     = DB_get('payments')||[];
+  const earlyPays= DB_get('earlyPayments')||[];
+
+  // 读取账户组配置，默认两组
+  let groups = DB_get('fundGroups');
+  if (!groups) {
+    groups = [
+      { id:1, label:'第一阶段', startDate:'2026-03-01', endDate:'2026-05-31', lendAccount:'WUXIAOLONG（东方银行）', recvAccount:'YANYUDE（东方银行）' },
+      { id:2, label:'第二阶段', startDate:'2026-06-01', endDate:'',          lendAccount:'LINSHIKUI（东方银行）',  recvAccount:'LINSHIKUI（东方银行）' },
+    ];
+    DB_set('fundGroups', groups);
+  }
+
+  // 统计每组数据
+  const stats = groups.map(g => {
+    const start = g.startDate;
+    const end   = g.endDate || '9999-12-31';
+    // 该时间段内的合同
+    const gSales = sales.filter(s => {
+      const d = s.date.replace(/\//g,'-');
+      return d >= start && d <= end;
+    });
+    // 总投入 = 售价 - 首付
+    const totalIn = gSales.reduce((a,s) => a + ((+s.salePrice||0) - (+s.deposit||0)), 0);
+    // 已回收本金
+    const gIds = new Set(gSales.map(s=>String(s.id)));
+    const gPays = pays.filter(p => gIds.has(String(p.contractId)));
+    const recovered = gPays.reduce((a,p) => a + (+p.principal||0), 0);
+    // 未回收
+    const remaining = totalIn - recovered;
+    // 利息收益
+    const interest = gPays.reduce((a,p) => a + (+p.interest||0) + (+p.serviceFee||0), 0);
+    // 滞纳金
+    const penalty = gPays.reduce((a,p) => a + (+p.penalty||0), 0);
+    // 提前还款利润
+    const earlyProfit = earlyPays.filter(r=>gIds.has(String(r.contractId))).reduce((a,r)=>a+(+r.actualProfit||0),0);
+    // 店家返点
+    const rebate = gSales.reduce((a,s)=>a+(+s.storeRebate||0),0);
+    return { g, gSales, totalIn, recovered, remaining, interest, penalty, earlyProfit, rebate };
+  });
+
+  return `
+  <div class="page-header">
+    <div class="page-title">🏦 资金统计</div>
+    <button class="btn btn-outline btn-sm" onclick="nav('fund-settings')" style="margin-left:auto">⚙️ 管理账户组</button>
+  </div>
+
+  ${stats.map(({g, gSales, totalIn, recovered, remaining, interest, penalty, earlyProfit, rebate}) => `
+  <div class="card" style="margin-bottom:18px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div>
+        <div class="card-title" style="margin:0">${g.label}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">
+          ${g.startDate} ~ ${g.endDate||'至今'} &nbsp;|&nbsp;
+          放款：<b>${g.lendAccount}</b> &nbsp;|&nbsp;
+          收款：<b>${g.recvAccount}</b>
+        </div>
+      </div>
+      <span class="badge badge-blue">${gSales.length} 笔合同</span>
+    </div>
+    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
+      <div class="stat-card" style="background:#e3f2fd;border-left:3px solid var(--blue)">
+        <div class="stat-label">总投入本金</div>
+        <div class="stat-value" style="color:var(--blue)">${fmt(totalIn)}</div>
+        <div class="stat-sub">售价 − 首付 合计</div>
+      </div>
+      <div class="stat-card" style="background:#e8f5e9;border-left:3px solid var(--green)">
+        <div class="stat-label">已回收本金</div>
+        <div class="stat-value" style="color:var(--green)">${fmt(recovered)}</div>
+        <div class="stat-sub">实收本金合计</div>
+      </div>
+      <div class="stat-card" style="background:#fce4ec;border-left:3px solid var(--red)">
+        <div class="stat-label">未回收本金</div>
+        <div class="stat-value" style="color:var(--red)">${fmt(remaining)}</div>
+        <div class="stat-sub">还在外面的钱</div>
+      </div>
+      <div class="stat-card" style="background:#f3e5f5;border-left:3px solid #9c27b0">
+        <div class="stat-label">回收率</div>
+        <div class="stat-value" style="color:#9c27b0">${totalIn>0?(recovered/totalIn*100).toFixed(1):0}%</div>
+        <div class="stat-sub">已回收 / 总投入</div>
+      </div>
+    </div>
+    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-top:10px">
+      <div class="stat-card" style="background:#e8f5e9;border-left:3px solid var(--green)">
+        <div class="stat-label">利息收益</div>
+        <div class="stat-value" style="color:var(--green)">${fmt(interest)}</div>
+      </div>
+      <div class="stat-card" style="background:#e8f5e9;border-left:3px solid var(--green)">
+        <div class="stat-label">滞纳金</div>
+        <div class="stat-value" style="color:var(--green)">${fmt(penalty)}</div>
+      </div>
+      <div class="stat-card" style="background:#e8f5e9;border-left:3px solid var(--green)">
+        <div class="stat-label">提前还款利润</div>
+        <div class="stat-value" style="color:var(--green)">${fmt(earlyProfit)}</div>
+      </div>
+      <div class="stat-card" style="background:#fff3e0;border-left:3px solid var(--amber)">
+        <div class="stat-label">店家返点（扣）</div>
+        <div class="stat-value" style="color:var(--amber)">-${fmt(rebate)}</div>
+      </div>
+    </div>
+    <div style="margin-top:12px;padding:10px 14px;background:#f0f7ff;border-radius:8px;display:flex;gap:30px;flex-wrap:wrap">
+      <span style="font-size:13px">💰 净收益 = <b style="color:var(--green)">${fmt(interest+penalty+earlyProfit-rebate)}</b></span>
+      <span style="font-size:13px">📊 综合收益率 = <b style="color:var(--blue)">${totalIn>0?((interest+penalty+earlyProfit-rebate)/totalIn*100).toFixed(2):0}%</b></span>
+    </div>
+  </div>`).join('')}`;
+}
+
+// 账户组管理页（简单版）
+function renderFundSettings() {
+  let groups = DB_get('fundGroups')||[];
+  return `
+  <div class="page-header"><div class="page-title">⚙️ 资金账户组管理</div></div>
+  <div class="card">
+    <div class="card-title">账户组列表</div>
+    ${groups.map((g,i) => `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px">
+        <div><label style="color:var(--muted);font-size:11px">阶段名称</label>
+          <input id="fg_label_${i}" value="${g.label}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+        <div><label style="color:var(--muted);font-size:11px">开始日期</label>
+          <input type="date" id="fg_start_${i}" value="${g.startDate}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+        <div><label style="color:var(--muted);font-size:11px">结束日期（留空=至今）</label>
+          <input type="date" id="fg_end_${i}" value="${g.endDate||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+        <div><label style="color:var(--muted);font-size:11px">放款账户</label>
+          <input id="fg_lend_${i}" value="${g.lendAccount}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+        <div><label style="color:var(--muted);font-size:11px">收款账户</label>
+          <input id="fg_recv_${i}" value="${g.recvAccount}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      </div>
+      <button class="btn btn-danger btn-sm" style="margin-top:8px" onclick="deleteFundGroup(${i})">删除</button>
+    </div>`).join('')}
+    <button class="btn btn-outline" onclick="addFundGroup()" style="margin-top:4px">+ 新增账户组</button>
+    <button class="btn btn-success" onclick="saveFundGroups(${groups.length})" style="margin-left:10px">保存</button>
+  </div>`;
+}
+
+window.saveFundGroups = function(count) {
+  const groups = [];
+  for (let i=0; i<count; i++) {
+    const label = document.getElementById('fg_label_'+i)?.value||'';
+    const startDate = document.getElementById('fg_start_'+i)?.value||'';
+    const endDate   = document.getElementById('fg_end_'+i)?.value||'';
+    const lendAccount = document.getElementById('fg_lend_'+i)?.value||'';
+    const recvAccount = document.getElementById('fg_recv_'+i)?.value||'';
+    if (startDate) groups.push({ id: i+1, label, startDate, endDate, lendAccount, recvAccount });
+  }
+  DB_set('fundGroups', groups);
+  alert('✅ 保存成功');
+  nav('fund-stats');
+};
+
+window.addFundGroup = function() {
+  const groups = DB_get('fundGroups')||[];
+  groups.push({ id: Date.now(), label:'新阶段', startDate:'', endDate:'', lendAccount:'', recvAccount:'' });
+  DB_set('fundGroups', groups);
+  nav('fund-settings');
+};
+
+window.deleteFundGroup = function(i) {
+  const groups = DB_get('fundGroups')||[];
+  groups.splice(i,1);
+  DB_set('fundGroups', groups);
+  nav('fund-settings');
 };
 
 function renderInventory() {
