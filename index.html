@@ -405,7 +405,7 @@ const I18N = {
     // Stats profit
     profitTitle: '利润统计', profitSub: '含利息 + 手续费 + 滞纳金 + 提前还款 − 店家返点 − 日常开支',
     netProfit: '最终净利润', deductedNote: '扣除返点+开支后',
-    interestAndFee: '利息+手续费收入', penaltyIncome: '滞纳金收入（已收）',
+    interestAndFee: '应收利息', penaltyIncome: '滞纳金收入（已收）',
     actualLateFees: '实际收到的逾期罚款', storeRebateCost: '店家返点（成本）',
     profitBreakdown: '💡 利润构成分析', incomeSource: '收入来源',
     grossProfit: '销售毛利（售价-成本）', interestIncome: '利息收入',
@@ -416,7 +416,7 @@ const I18N = {
     earlyRepayTitle: '⚡ 提前还款记录', profitChange: '利润变化',
     contractDetails: '各合同盈利明细',
     colCost: '成本', colGross: '毛利', colInterest: '利息/利润',
-    colServiceFee: '手续费', colRebateCol: '返点', colNetProfit: '净利润',
+    colServiceFee: '手续费', colRebateCol: '返点', colNetProfit: '毛利润',
     // Finance report
     financeTitle: '月度财务报表', financeSub: '月总放款 · 月总回款 · 月利润 · 月逾期率 · 月回款率 · 单量统计',
     thisMonth: '本月', realtime: '实时数据',
@@ -2229,7 +2229,7 @@ function renderStatsProfit() {
     <div class="stat-card amber"><span class="stat-icon">📊</span>
       <div class="stat-label">合同净收益</div>
       <div class="stat-value" style="color:var(--amber)">${fmt(tContractProfit)}</div>
-      <div class="stat-sub">= 利息+手续费−返点</div>
+      <div class="stat-sub">= 应收利息−返点</div>
     </div>
   </div>
 
@@ -2399,7 +2399,7 @@ function buildProfitTable(filteredSales, earlyPays, groupByMonth) {
       <tr style="background:var(--navy)">
         <td colspan="9" style="color:#fff;font-weight:700;font-size:13px;padding:8px 12px">
           📅 ${m} &nbsp;
-          <span style="font-size:11px;font-weight:400;opacity:.8">${mSales.length}笔 · 净利润 ${fmt(mNet)}</span>
+          <span style="font-size:11px;font-weight:400;opacity:.8">${mSales.length}笔 · 毛利润 ${fmt(mNet)}</span>
         </td>
       </tr>
       ${mSales.map(s=>buildRow(s)).join('')}
@@ -2439,9 +2439,9 @@ window.filterProfitTable = function() {
     summary.innerHTML = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
       ${[
         ['📋 合同数', filtered.length+'笔', 'var(--navy)'],
-        ['💹 利息+手续费', fmt(totalInt+totalSvc), 'var(--green)'],
+        ['💹 应收利息', fmt(totalInt+totalSvc), 'var(--green)'],
         ['↩️ 返点', '-'+fmt(totalRebate), 'var(--red)'],
-        ['🏆 净利润', fmt(totalNet), totalNet>=0?'var(--navy)':'var(--red)'],
+        ['🏆 毛利润', fmt(totalNet), totalNet>=0?'var(--navy)':'var(--red)'],
       ].map(([l,v,c])=>`<div style="background:#f0f7ff;border-radius:8px;padding:10px 12px;border-left:3px solid ${c}">
         <div style="font-size:11px;color:var(--muted)">${l}</div>
         <div style="font-weight:700;color:${c};font-size:15px">${v}</div>
