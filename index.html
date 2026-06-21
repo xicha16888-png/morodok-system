@@ -1228,20 +1228,13 @@ function initPage(page) {
     loadContractPeriods();
     if (window._pendingPayContract) {
       setTimeout(() => {
-        const ci = document.getElementById('pContract');
-        if (ci) {
-          ci.value = window._pendingPayContract;
-          loadContractPeriods();
-          setTimeout(() => {
-            const pi = document.getElementById('pPeriod');
-            if (pi) {
-              pi.value = window._pendingPayPeriod;
-              autoFillPayment();
-            }
-            window._pendingPayContract = null;
-            window._pendingPayPeriod   = null;
-          }, 400);
+        const pi = document.getElementById('pPeriod');
+        if (pi && window._pendingPayPeriod) {
+          pi.value = window._pendingPayPeriod;
+          autoFillPayment();
         }
+        window._pendingPayContract = null;
+        window._pendingPayPeriod   = null;
       }, 300);
     }
   }
@@ -1888,7 +1881,9 @@ window.deleteSale = function(id) {
 // ══════════════════════════════════════════════════════
 function renderPaymentAdd() {
   const sales = (DB_get('sales')||[]).filter(s => s.status !== '已结清');
-  const opts = sales.filter(s=>s.status==='进行中').map(s => `<option value="${s.id}">#${s.id} — ${esc(s.customer)} (${s.periods}期 每期${fmt(s.monthlyPayment)})</option>`).join('');
+  const pendingId = window._pendingPayContract ? String(window._pendingPayContract) : '';
+  const pendingPeriod = window._pendingPayPeriod ? String(window._pendingPayPeriod) : '';
+  const opts = sales.filter(s=>s.status==='进行中').map(s => `<option value="${s.id}" ${String(s.id)===pendingId?'selected':''}>#${s.id} — ${esc(s.customer)} (${s.periods}期 每期${fmt(s.monthlyPayment)})</option>`).join('');
   const pays = (DB_get('payments')||[]).slice().reverse();
   return `
   <div class="page-header"><div class="page-title">💳 ${t('paymentTitle')}</div></div>
@@ -2008,23 +2003,49 @@ window.autoFillPayment = function() {
 };
 
 window.navToPayment = function(contractId, period) {
-  // 先存目标合同和期次
+  const s = (DB_get('sales')||[]).find(x => String(x.id) === String(contractId));
+  if (!s) return;
+  showModal(`💳 ${esc(s.customer)} (#${s.id}) — 还款登记`,
+    `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+      首付：${fmt(s.deposit||0)} &nbsp;|&nbsp;
+      月利率：${(+s.interestRate||0).toFixed(2)}% &nbsp;|&nbsp;
+      每日滞纳金：${fmt(s.dailyLateFee||0)} &nbsp;|&nbsp;
+      店家返点：${fmt(s.storeRebate||0)}
+    </div>
+    <div class="table-wrap"><table>
+      <tr><th>期</th><th>到期日</th><th>本金</th><th>应收利息</th><th>合计</th><th>状态</th><th>操作</th></tr>
+      ${s.schedule.map(p => {
+        const isTarget = p.period === +period;
+        const rowStyle = isTarget ? 'background:#fff9c4;font-weight:700;' : '';
+        const total = p.paid
+          ? fmt((+p.paidPrincipal||0)+(+p.paidInterest||0)+(+p.paidServiceFee||0)+(+p.penalty||0))
+          : fmt((+p.principalDue)+(+p.interestDue||0)+(+p.serviceFeeDue||0));
+        const statusBadge = p.paid
+          ? `<span class="badge badge-green">已还 ${p.paidDate}</span>`
+          : (p.dueDate < today()
+              ? `<span class="badge badge-red">逾期</span>`
+              : `<span class="badge badge-amber">待还</span>`);
+        const actionBtn = !p.paid
+          ? `<button class="btn btn-primary btn-sm" onclick="quickPay(${s.id},${p.period});closeModal()">登记还款</button>`
+          : '—';
+        return `<tr style="${rowStyle}">
+          <td>${p.period}期</td>
+          <td>${p.dueDate}</td>
+          <td>${p.paid ? fmt(p.paidPrincipal||0) : fmt(p.principalDue)}</td>
+          <td>${p.paid ? fmt((+p.paidInterest||0)+(+p.paidServiceFee||0)) : fmt((+p.interestDue||0)+(+p.serviceFeeDue||0))}</td>
+          <td class="fw700">${total}</td>
+          <td>${statusBadge}</td>
+          <td>${actionBtn}</td>
+        </tr>`;
+      }).join('')}
+    </table></div>`
+  );
+};
+
+window.quickPay = function(contractId, period) {
   window._pendingPayContract = String(contractId);
   window._pendingPayPeriod   = String(period);
   nav('payment-add');
-  setTimeout(() => {
-    const ci = document.getElementById('pContract');
-    if (!ci) return;
-    ci.value = window._pendingPayContract;
-    loadContractPeriods(); // 填充期次下拉
-    setTimeout(() => {
-      const pi = document.getElementById('pPeriod');
-      if (pi) {
-        pi.value = window._pendingPayPeriod;
-        autoFillPayment(); // 自动填金额
-      }
-    }, 400);
-  }, 600);
 };
 window.calcPayTotal = function() {
   const i = +(document.getElementById('pInterest')?.value||0);
