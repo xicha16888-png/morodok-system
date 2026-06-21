@@ -2087,7 +2087,8 @@ function renderStatsCollection() {
     earlyByMonth[m] = (earlyByMonth[m]||0) + (+r.actualProfit||0);
   });
 
-  const tNetNew = tI + tPen - tReb + earlyPays.reduce((a,r)=>a+(+r.actualProfit||0),0) - tExpAll;
+  const tAllInterest = sales.filter(s=>s.status!=='提前结清').reduce((a,s)=>a+(+s.totalInterest||0)+(+s.totalServiceFee||0),0);
+  const tNetNew = tAllInterest + tPen - tReb + earlyPays.reduce((a,r)=>a+(+r.actualProfit||0),0) - tExpAll;
 
   return `
   <div class="page-header"><div class="page-title">📊 ${t('collectionTitle')}</div></div>
@@ -2120,9 +2121,9 @@ function renderStatsCollection() {
       <div class="stat-value" style="color:var(--red)">-${fmt(tExpOp)}</div>
     </div>
     <div class="stat-card" style="background:#e8f5e9;border-left:3px solid var(--green)">
-      <div class="stat-label">实际净利润</div>
+      <div class="stat-label">账面总利润</div>
       <div class="stat-value" style="color:${tNetNew>=0?'var(--green)':'var(--red)'}">${fmt(tNetNew)}</div>
-      <div class="stat-sub">利息+滞纳金+提前还款利润−返点−工资−运营开支</div>
+      <div class="stat-sub">总应收利息+滞纳金+提前还款利润−返点−工资−运营开支</div>
     </div>
   </div>
 
