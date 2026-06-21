@@ -1184,6 +1184,7 @@ window.manualRefresh = async function() {
 };
 
 function nav(page) {
+  window._currentPage = page;
   buildSidebar();
   buildMobileNav(page);
   closeMobMore();
@@ -4327,7 +4328,8 @@ window.saveCompany = function() {
     const result = await loadDB();
     if (result.ok) {
       hideLoading();
-      nav('home');
+      const savedPage = window._currentPage || 'home';
+      nav(savedPage);
       updateBadges();
       setInterval(updateBadges, 60000);
       startDateClock();
