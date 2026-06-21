@@ -1263,26 +1263,29 @@ setInterval(async () => {
   if (userIsTyping()) return;
   const page = document.querySelector('.nav-item.active')?.dataset?.page;
   if (FORM_PAGES.includes(page)) return;
+  const prevHash = JSON.stringify(DB_get('sales'))?.length + '|' + JSON.stringify(DB_get('payments'))?.length;
   const result = await loadDB();
-  if (result.ok && page && PAGES[page]) {
-    // 如果是销售查询页，先记住展开状态
-    const openGroups = new Set();
-    if (page === 'sale-list') {
-      document.querySelectorAll('[id^="dg_"]').forEach(el => {
-        if (el.style.display !== 'none') openGroups.add(el.id);
-      });
-    }
-    document.getElementById('mainContent').innerHTML = PAGES[page]();
-    initPage(page);
-    updateBadges();
+  if (result.ok) {
+    const newHash = JSON.stringify(DB_get('sales'))?.length + '|' + JSON.stringify(DB_get('payments'))?.length;
     updateSyncTimeAgo();
-    // 恢复展开状态
-    if (page === 'sale-list' && openGroups.size > 0) {
-      openGroups.forEach(id => {
-        const el = document.getElementById(id);
-        const icon = document.getElementById(id + '_icon');
-        if (el) { el.style.display = ''; if (icon) icon.textContent = '▲'; }
-      });
+    updateBadges();
+    // 只有数据真正变化时才重新渲染
+    if (newHash !== prevHash && page && PAGES[page]) {
+      const openGroups = new Set();
+      if (page === 'sale-list') {
+        document.querySelectorAll('[id^="dg_"]').forEach(el => {
+          if (el.style.display !== 'none') openGroups.add(el.id);
+        });
+      }
+      document.getElementById('mainContent').innerHTML = PAGES[page]();
+      initPage(page);
+      if (page === 'sale-list' && openGroups.size > 0) {
+        openGroups.forEach(id => {
+          const el = document.getElementById(id);
+          const icon = document.getElementById(id + '_icon');
+          if (el) { el.style.display = ''; if (icon) icon.textContent = '▲'; }
+        });
+      }
     }
   }
 }, 15000);
