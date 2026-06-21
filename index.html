@@ -1226,6 +1226,15 @@ function initPage(page) {
   }
   if (page === 'payment-add') {
     loadContractPeriods();
+    if (window._pendingPayPeriod) {
+      const period = window._pendingPayPeriod;
+      window._pendingPayPeriod = null;
+      window._pendingPayText   = null;
+      setTimeout(() => {
+        const pi = document.getElementById('pPeriod');
+        if (pi) { pi.value = period; autoFillPayment(); }
+      }, 100);
+    }
   }
   if (page === 'early-payment') calcEarlyProfit();
 }
@@ -1870,10 +1879,9 @@ window.deleteSale = function(id) {
 // ══════════════════════════════════════════════════════
 function renderPaymentAdd() {
   const sales = (DB_get('sales')||[]).filter(s => s.status === '进行中');
-  const pendingId = window._pendingPayContract ? String(window._pendingPayContract) : '';
-  const pendingPeriod = window._pendingPayPeriod ? String(window._pendingPayPeriod) : '';
-  const pendingSale = pendingId ? sales.find(s=>String(s.id)===pendingId) : null;
-  const pendingText = pendingSale ? `#${pendingSale.id} — ${pendingSale.customer} (${pendingSale.periods}期 每期${fmt(pendingSale.monthlyPayment)})` : '';
+  const pendingId = window._resolvedContractId || '';
+  const pendingPeriod = window._pendingPayPeriod || '';
+  const pendingText = window._pendingPayText || '';
   const opts = sales.map(s => `<option value="#${s.id} — ${s.customer} (${s.periods}期 每期${fmt(s.monthlyPayment)})" data-id="${s.id}"></option>`).join('');
   const pays = (DB_get('payments')||[]).slice().reverse();
   return `
@@ -2001,12 +2009,6 @@ window.loadContractPeriods = function() {
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
   const sel = document.getElementById('pPeriod'); if (!s||!sel) return;
   sel.innerHTML = s.schedule.filter(p => !p.paid).map(p => `<option value="${p.period}">${p.period} ${t("period")} (到期:${p.dueDate})</option>`).join('');
-  // 如果有pending期次，直接选中
-  if (window._pendingPayPeriod) {
-    sel.value = window._pendingPayPeriod;
-    window._pendingPayContract = null;
-    window._pendingPayPeriod   = null;
-  }
   autoFillPayment();
 };
 window.autoFillPayment = function() {
@@ -2068,9 +2070,11 @@ window.navToPayment = function(contractId, period) {
 };
 
 window.quickPay = function(contractId, period) {
-  window._resolvedContractId  = String(contractId);
-  window._pendingPayContract  = String(contractId);
-  window._pendingPayPeriod    = String(period);
+  const sales = DB_get('sales')||[];
+  const s = sales.find(x => String(x.id) === String(contractId));
+  window._resolvedContractId = String(contractId);
+  window._pendingPayPeriod   = String(period);
+  window._pendingPayText     = s ? ('#' + s.id + ' — ' + s.customer + ' (' + s.periods + '期 每期' + fmt(s.monthlyPayment) + ')') : '';
   nav('payment-add');
 };
 window.calcPayTotal = function() {
