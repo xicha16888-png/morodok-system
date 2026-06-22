@@ -1875,9 +1875,10 @@ window.saveEditSale = function(id) {
 window.deleteSale = function(id) {
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
   if (!s) return;
-  if (!confirm(`${t('deleteBtn')} #${s.id} — ${s.customer}?`)) return;
+  const pwd = prompt(`请输入密码才能删除 #${s.id} — ${s.customer}：`);
+  if (pwd !== REPORT_PWD) { alert('密码错误，无法删除'); return; }
+  if (!confirm(`确认删除 #${s.id} — ${s.customer}？此操作不可撤销！`)) return;
   DB_set('sales', (DB_get('sales')||[]).filter(x => String(x.id) !== String(id)));
-  // Also remove early payment records for this contract
   DB_set('earlyPayments', (DB_get('earlyPayments')||[]).filter(r => String(r.contractId) !== String(id)));
   nav('sale-list');
 };
@@ -1936,7 +1937,9 @@ window.deletePayment = function(id) {
   const pays = DB_get('payments')||[];
   const pay = pays.find(p => p.id === id);
   if (!pay) return;
-  if (!confirm(`${_lang==='km'?'លុបការបង់ប្រាក់?':_lang==='en'?'Delete payment record?':'确认删除此收款记录？'}\n${pay.customer} — ${t('period')} ${pay.period} — ${fmt((+pay.principal)+(+pay.interest))}`)) return;
+  const pwd = prompt('请输入密码才能删除此收款记录：');
+  if (pwd !== REPORT_PWD) { alert('密码错误，无法删除'); return; }
+  if (!confirm(`确认删除？\n${pay.customer} — ${t('period')} ${pay.period} — ${fmt((+pay.principal)+(+pay.interest))}`)) return;
 
   // Remove payment record
   const newPays = pays.filter(p => p.id !== id);
@@ -3633,6 +3636,8 @@ window.submitExpense = function() {
 };
 
 window.deleteExpense = function(id) {
+  const pwd = prompt('请输入密码才能删除：');
+  if (pwd !== REPORT_PWD) { alert('密码错误，无法删除'); return; }
   if (!confirm('确认删除该开支记录？')) return;
   DB_set('expenses', (DB_get('expenses')||[]).filter(e=>e.id!==id));
   nav('expenses');
@@ -3939,6 +3944,8 @@ window.addStore = function() {
 };
 
 window.deleteStore = function(name) {
+  const pwd = prompt('请输入密码才能删除：');
+  if (pwd !== REPORT_PWD) { alert('密码错误，无法删除'); return; }
   if (!confirm(`${t('deleteBtn')} ${name}?`)) return;
   DB_set('stores', (DB_get('stores')||[]).filter(s => s.name !== name));
   nav('store-stats');
