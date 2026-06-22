@@ -4076,8 +4076,37 @@ function renderFundStats() {
       <span style="font-size:13px">💰 净收益 = <b style="color:var(--green)">${fmt(interest+penalty+earlyProfit-rebate)}</b></span>
       <span style="font-size:13px">📊 综合收益率 = <b style="color:var(--blue)">${totalIn>0?((interest+penalty+earlyProfit-rebate)/totalIn*100).toFixed(2):0}%</b></span>
     </div>
-  </div>`).join('')}`;
-}
+  </div>`).join('')}
+
+  <!-- 运营账户 -->
+  <div class="card" style="margin-bottom:18px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div>
+        <div class="card-title" style="margin:0">💼 运营账户</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">日常运营支出汇总（不计算收益）</div>
+      </div>
+    </div>
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+      <div class="stat-card" style="background:#fce4ec;border-left:3px solid var(--red)">
+        <div class="stat-label">员工工资合计</div>
+        <div class="stat-value" style="color:var(--red)">-${fmt(expenses.filter(e=>e.cat==='员工工资').reduce((a,e)=>a+(+e.amount||0),0))}</div>
+        <div class="stat-sub">所有月份工资+奖金</div>
+      </div>
+      <div class="stat-card" style="background:#fce4ec;border-left:3px solid var(--red)">
+        <div class="stat-label">运营开支合计</div>
+        <div class="stat-value" style="color:var(--red)">-${fmt(expenses.filter(e=>e.cat!=='员工工资'&&e.cat!=='手机采购').reduce((a,e)=>a+(+e.amount||0),0))}</div>
+        <div class="stat-sub">交通/餐饮/办公等</div>
+      </div>
+      <div class="stat-card" style="background:#fff3e0;border-left:3px solid var(--amber)">
+        <div class="stat-label">手机采购合计</div>
+        <div class="stat-value" style="color:var(--amber)">-${fmt(expenses.filter(e=>e.cat==='手机采购').reduce((a,e)=>a+(+e.amount||0),0))}</div>
+        <div class="stat-sub">采购成本</div>
+      </div>
+    </div>
+    <div style="margin-top:12px;padding:10px 14px;background:#fff5f5;border-radius:8px">
+      <span style="font-size:13px">💸 总运营支出（不含手机采购）= <b style="color:var(--red)">-${fmt(expenses.filter(e=>e.cat!=='手机采购').reduce((a,e)=>a+(+e.amount||0),0))}</b></span>
+    </div>
+  </div>`;}
 
 // 账户组管理页（简单版）
 function renderFundSettings() {
