@@ -4013,6 +4013,11 @@ function renderFundStats() {
     return { g, gSales, totalIn, recovered, remaining, interest, penalty, earlyProfit, rebate };
   });
 
+  const tSalary  = expenses.filter(e=>e.cat==='员工工资').reduce((a,e)=>a+(+e.amount||0),0);
+  const tOpExp   = expenses.filter(e=>e.cat!=='员工工资'&&e.cat!=='手机采购').reduce((a,e)=>a+(+e.amount||0),0);
+  const tPhoneExp= expenses.filter(e=>e.cat==='手机采购').reduce((a,e)=>a+(+e.amount||0),0);
+  const tAllExp  = tSalary + tOpExp;
+
   return `
   <div class="page-header">
     <div class="page-title">🏦 资金统计</div>
@@ -4089,22 +4094,22 @@ function renderFundStats() {
     <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
       <div class="stat-card" style="background:#fce4ec;border-left:3px solid var(--red)">
         <div class="stat-label">员工工资合计</div>
-        <div class="stat-value" style="color:var(--red)">-${fmt(expenses.filter(e=>e.cat==='员工工资').reduce((a,e)=>a+(+e.amount||0),0))}</div>
+        <div class="stat-value" style="color:var(--red)">-${fmt(tSalary)}</div>
         <div class="stat-sub">所有月份工资+奖金</div>
       </div>
       <div class="stat-card" style="background:#fce4ec;border-left:3px solid var(--red)">
         <div class="stat-label">运营开支合计</div>
-        <div class="stat-value" style="color:var(--red)">-${fmt(expenses.filter(e=>e.cat!=='员工工资'&&e.cat!=='手机采购').reduce((a,e)=>a+(+e.amount||0),0))}</div>
+        <div class="stat-value" style="color:var(--red)">-${fmt(tOpExp)}</div>
         <div class="stat-sub">交通/餐饮/办公等</div>
       </div>
       <div class="stat-card" style="background:#fff3e0;border-left:3px solid var(--amber)">
         <div class="stat-label">手机采购合计</div>
-        <div class="stat-value" style="color:var(--amber)">-${fmt(expenses.filter(e=>e.cat==='手机采购').reduce((a,e)=>a+(+e.amount||0),0))}</div>
+        <div class="stat-value" style="color:var(--amber)">-${fmt(tPhoneExp)}</div>
         <div class="stat-sub">采购成本</div>
       </div>
     </div>
     <div style="margin-top:12px;padding:10px 14px;background:#fff5f5;border-radius:8px">
-      <span style="font-size:13px">💸 总运营支出（不含手机采购）= <b style="color:var(--red)">-${fmt(expenses.filter(e=>e.cat!=='手机采购').reduce((a,e)=>a+(+e.amount||0),0))}</b></span>
+      <span style="font-size:13px">💸 总运营支出（不含手机采购）= <b style="color:var(--red)">-${fmt(tAllExp)}</b></span>
     </div>
   </div>`;
 }
