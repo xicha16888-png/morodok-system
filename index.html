@@ -2105,6 +2105,8 @@ window.confirmDelete = function(msg, onConfirm) {
   setTimeout(()=>document.getElementById('deletePwdInput')?.focus(), 100);
 };
 window.calcPayTotal = function() {
+  const p = +(document.getElementById('pPrincipal')?.value||0);
+  const i = +(document.getElementById('pInterest')?.value||0);
   const pe= +(document.getElementById('pPenalty')?.value||0);
   const tot = document.getElementById('pTotal');
   if (tot) tot.value = fmt(p + i + pe);
