@@ -2258,6 +2258,7 @@ function renderStatsCollection() {
       <tr style="font-weight:700;background:#f0f4f8;border-top:2px solid var(--border)">
         <td>${t('totalRow')}</td><td>${pays.length}</td>
         <td>${fmt(tP)}</td><td>${fmt(tI)}</td>
+        <td>${fmt(sales.filter(s=>s.status!=='提前结清').reduce((a,s)=>a+(+s.totalInterest||0)+(+s.totalServiceFee||0),0))}</td>
         <td class="text-red">${fmt(tPen)}</td>
         <td class="text-amber">-${fmt(tReb)}</td>
         <td class="text-green">${fmt(earlyPays.reduce((a,r)=>a+(+r.actualProfit||0),0))}</td>
