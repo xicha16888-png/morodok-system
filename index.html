@@ -2238,8 +2238,8 @@ function renderStatsCollection() {
         // 应收利息 = 当月dueDate的所有期次利息合计
         const mDueInterest = sales.reduce((a,s) =>
           a + s.schedule.filter(p=>p.dueDate&&p.dueDate.slice(0,7)===m).reduce((b,p)=>b+(+p.interestDue||0)+(+p.serviceFeeDue||0),0), 0);
-        // 单月毛利润 = 应收利息 + 滞纳金 + 提前还款利润 - 返点
-        const mGross = mDueInterest + d.penalty - d.rebate + mEarly;
+        // 单月毛利润 = 应收利息 - 返点 - 工资 - 运营开支
+        const mGross = mDueInterest - d.rebate - mSal - mExp;
         return `<tr>
           <td class="fw700">${m}</td>
           <td>${d.count}</td>
@@ -2255,18 +2255,30 @@ function renderStatsCollection() {
           <td class="fw700 text-green">${fmt(d.principal+d.interest+d.penalty)}</td>
         </tr>`;
       }).join('')}
-      <tr style="font-weight:700;background:#f0f4f8;border-top:2px solid var(--border)">
-        <td>${t('totalRow')}</td><td>${pays.length}</td>
-        <td>${fmt(tP)}</td><td>${fmt(tI)}</td>
-        <td>${fmt(sales.filter(s=>s.status!=='提前结清').reduce((a,s)=>a+(+s.totalInterest||0)+(+s.totalServiceFee||0),0))}</td>
-        <td class="text-red">${fmt(tPen)}</td>
-        <td class="text-amber">-${fmt(tReb)}</td>
-        <td class="text-green">${fmt(earlyPays.reduce((a,r)=>a+(+r.actualProfit||0),0))}</td>
-        <td class="text-red">-${fmt(tExpSal)}</td>
-        <td class="text-red">-${fmt(tExpOp)}</td>
-        <td class="fw700" style="color:${tNetNew>=0?'var(--green)':'var(--red)'}">${fmt(tNetNew)}</td>
-        <td class="fw700 text-green">${fmt(tP+tI+tPen)}</td>
-      </tr>
+      ${(() => {
+        let tGross = 0;
+        let tDueInterest = 0;
+        months.forEach(m => {
+          const d = byMonth[m];
+          const mEarly = earlyByMonth[m]||0;
+          const mDueInterest = sales.reduce((a,s) =>
+            a + s.schedule.filter(p=>p.dueDate&&p.dueDate.slice(0,7)===m).reduce((b,p)=>b+(+p.interestDue||0)+(+p.serviceFeeDue||0),0), 0);
+          tDueInterest += mDueInterest;
+          tGross += mDueInterest - d.rebate - (salByMonth[m]||0) - (opExpByMonth[m]||0);
+        });
+        return `<tr style="font-weight:700;background:#f0f4f8;border-top:2px solid var(--border)">
+          <td>${t('totalRow')}</td><td>${pays.length}</td>
+          <td>${fmt(tP)}</td><td>${fmt(tI)}</td>
+          <td>${fmt(tDueInterest)}</td>
+          <td class="text-red">${fmt(tPen)}</td>
+          <td class="text-amber">-${fmt(tReb)}</td>
+          <td class="text-green">${fmt(earlyPays.reduce((a,r)=>a+(+r.actualProfit||0),0))}</td>
+          <td class="text-red">-${fmt(tExpSal)}</td>
+          <td class="text-red">-${fmt(tExpOp)}</td>
+          <td class="fw700" style="color:${tGross>=0?'var(--green)':'var(--red)'}">${fmt(tGross)}</td>
+          <td class="fw700 text-green">${fmt(tP+tI+tPen)}</td>
+        </tr>`;
+      })()}
     </table></div>` : `<div class="empty-state"><div class="ei">📊</div><p>${t("noRecord")}</p></div>`}
   </div>`;
 }
