@@ -4106,7 +4106,8 @@ function renderFundStats() {
     <div style="margin-top:12px;padding:10px 14px;background:#fff5f5;border-radius:8px">
       <span style="font-size:13px">💸 总运营支出（不含手机采购）= <b style="color:var(--red)">-${fmt(expenses.filter(e=>e.cat!=='手机采购').reduce((a,e)=>a+(+e.amount||0),0))}</b></span>
     </div>
-  </div>`;}
+  </div>`;
+}
 
 // 账户组管理页（简单版）
 function renderFundSettings() {
