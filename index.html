@@ -2150,7 +2150,7 @@ function renderStatsCollection() {
   const tExp = expenses.reduce((a,e)=>a+(+e.amount||0),0);
   const pending = sales.filter(s=>s.status==='进行中').reduce((a,s) =>
     a + s.schedule.filter(p=>!p.paid).reduce((b,p) => b+(+p.principalDue||0)+(+p.interestDue||0)+(+p.serviceFeeDue||0), 0), 0);
-  const tGross = tI + tPen - tReb;
+  const tGrossOld = tI + tPen - tReb;
   const tNet   = tI - tReb - tExp;
 
   const NON_EXPENSE_CATS = ['手机采购']; // 不计入开支的类别
