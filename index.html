@@ -1078,7 +1078,7 @@ window.closeModal = () => document.getElementById('modalBg').classList.remove('o
 // 🔐 密码保护
 // ══════════════════════════════════════════════════════
 const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','expenses','store-stats','fund-stats'];
-const REPORT_PWD = 'morodok888';
+const REPORT_PWD = 'cao';
 let _reportUnlocked = false; // 会话内解锁状态
 
 function requirePassword(page, onSuccess) {
@@ -1875,12 +1875,11 @@ window.saveEditSale = function(id) {
 window.deleteSale = function(id) {
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
   if (!s) return;
-  const pwd = prompt(`请输入密码才能删除 #${s.id} — ${s.customer}：`);
-  if (pwd !== REPORT_PWD) { alert('密码错误，无法删除'); return; }
-  if (!confirm(`确认删除 #${s.id} — ${s.customer}？此操作不可撤销！`)) return;
-  DB_set('sales', (DB_get('sales')||[]).filter(x => String(x.id) !== String(id)));
-  DB_set('earlyPayments', (DB_get('earlyPayments')||[]).filter(r => String(r.contractId) !== String(id)));
-  nav('sale-list');
+  confirmDelete(`删除合同 #${s.id} — ${s.customer}？此操作不可撤销！`, function() {
+    DB_set('sales', (DB_get('sales')||[]).filter(x => String(x.id) !== String(id)));
+    DB_set('earlyPayments', (DB_get('earlyPayments')||[]).filter(r => String(r.contractId) !== String(id)));
+    nav('sale-list');
+  });
 };
 // ══════════════════════════════════════════════════════
 function renderPaymentAdd() {
@@ -1937,9 +1936,7 @@ window.deletePayment = function(id) {
   const pays = DB_get('payments')||[];
   const pay = pays.find(p => p.id === id);
   if (!pay) return;
-  const pwd = prompt('请输入密码才能删除此收款记录：');
-  if (pwd !== REPORT_PWD) { alert('密码错误，无法删除'); return; }
-  if (!confirm(`确认删除？\n${pay.customer} — ${t('period')} ${pay.period} — ${fmt((+pay.principal)+(+pay.interest))}`)) return;
+  confirmDelete(`删除收款记录：${pay.customer} — ${t('period')} ${pay.period} — ${fmt((+pay.principal)+(+pay.interest))}`, function() {
 
   // Remove payment record
   const newPays = pays.filter(p => p.id !== id);
@@ -1968,6 +1965,7 @@ window.deletePayment = function(id) {
   if (wrap) wrap.innerHTML = buildPayTable(allPays);
   showMsg('payMsg', `✅ ${_lang==='km'?'បានលុបដោយជោគជ័យ':_lang==='en'?'Deleted successfully':'已删除，合同还款状态已还原'}`, 'green');
   updateBadges();
+  });
 };
 
 function buildPayTable(pays) {
@@ -2085,8 +2083,27 @@ window.quickPay = function(contractId, period) {
   window._pendingPayText     = s ? ('#' + s.id + ' — ' + s.customer + ' (' + s.periods + '期 每期' + fmt(s.monthlyPayment) + ')') : '';
   nav('payment-add');
 };
+window.confirmDelete = function(msg, onConfirm) {
+  showModal('🔐 确认删除', `
+    <p style="margin-bottom:12px;color:var(--red)">${msg}</p>
+    <div class="form-group">
+      <label>请输入删除密码</label>
+      <input type="password" id="deletePwdInput" placeholder="密码" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">
+    </div>
+    <div id="deletePwdMsg" style="color:var(--red);font-size:12px;margin-top:6px"></div>
+    <div style="margin-top:14px;display:flex;gap:10px">
+      <button class="btn btn-danger" onclick="
+        const v = document.getElementById('deletePwdInput').value;
+        if(v !== REPORT_PWD){ document.getElementById('deletePwdMsg').textContent='密码错误'; return; }
+        closeModal();
+        (${onConfirm})();
+      ">确认删除</button>
+      <button class="btn btn-outline" onclick="closeModal()">取消</button>
+    </div>
+  `);
+  setTimeout(()=>document.getElementById('deletePwdInput')?.focus(), 100);
+};
 window.calcPayTotal = function() {
-  const i = +(document.getElementById('pInterest')?.value||0);
   const pe= +(document.getElementById('pPenalty')?.value||0);
   const tot = document.getElementById('pTotal');
   if (tot) tot.value = fmt(p + i + pe);
@@ -3636,11 +3653,10 @@ window.submitExpense = function() {
 };
 
 window.deleteExpense = function(id) {
-  const pwd = prompt('请输入密码才能删除：');
-  if (pwd !== REPORT_PWD) { alert('密码错误，无法删除'); return; }
-  if (!confirm('确认删除该开支记录？')) return;
-  DB_set('expenses', (DB_get('expenses')||[]).filter(e=>e.id!==id));
-  nav('expenses');
+  confirmDelete('确认删除该开支记录？', function() {
+    DB_set('expenses', (DB_get('expenses')||[]).filter(e=>e.id!==id));
+    nav('expenses');
+  });
 };
 
 // ══════════════════════════════════════════════════════
@@ -3944,11 +3960,10 @@ window.addStore = function() {
 };
 
 window.deleteStore = function(name) {
-  const pwd = prompt('请输入密码才能删除：');
-  if (pwd !== REPORT_PWD) { alert('密码错误，无法删除'); return; }
-  if (!confirm(`${t('deleteBtn')} ${name}?`)) return;
-  DB_set('stores', (DB_get('stores')||[]).filter(s => s.name !== name));
-  nav('store-stats');
+  confirmDelete(`删除店家 ${name}？`, function() {
+    DB_set('stores', (DB_get('stores')||[]).filter(s => s.name !== name));
+    nav('store-stats');
+  });
 };
 
 // ══════════════════════════════════════════════════════
