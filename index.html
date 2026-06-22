@@ -1078,7 +1078,8 @@ window.closeModal = () => document.getElementById('modalBg').classList.remove('o
 // 🔐 密码保护
 // ══════════════════════════════════════════════════════
 const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','expenses','store-stats','fund-stats'];
-const REPORT_PWD = 'cao';
+const REPORT_PWD = 'morodok888';
+const DELETE_PWD = 'cao';
 let _reportUnlocked = false; // 会话内解锁状态
 
 function requirePassword(page, onSuccess) {
@@ -2094,7 +2095,7 @@ window.confirmDelete = function(msg, onConfirm) {
     <div style="margin-top:14px;display:flex;gap:10px">
       <button class="btn btn-danger" onclick="
         const v = document.getElementById('deletePwdInput').value;
-        if(v !== REPORT_PWD){ document.getElementById('deletePwdMsg').textContent='密码错误'; return; }
+        if(v !== DELETE_PWD){ document.getElementById('deletePwdMsg').textContent='密码错误'; return; }
         closeModal();
         (${onConfirm})();
       ">确认删除</button>
