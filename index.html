@@ -3976,6 +3976,7 @@ function renderFundStats() {
   const sales    = DB_get('sales')||[];
   const pays     = DB_get('payments')||[];
   const earlyPays= DB_get('earlyPayments')||[];
+  const expenses = DB_get('expenses')||[];
 
   // 读取账户组配置，默认两组
   let groups = DB_get('fundGroups');
