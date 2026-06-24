@@ -1340,6 +1340,151 @@ function periodSelect(id, defaultVal, onchange) {
   </select>`;
 }
 
+// ══════════════════════════════════════════════════════
+// 图片上传功能
+// ══════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://mkjvfjocmatgfhwxgamj.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ranZmam9jbWF0Z2Zod3hnYW1qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MzIxNDQsImV4cCI6MjA5NTAwODE0NH0.YDeuCQkt50wK9oHeLWlF_b6IYXeiDtplOWUa1-A4X30';
+const STORAGE_BUCKET = 'FXGJ';
+
+// 临时存储待上传的图片
+window._pendingImages = {};
+
+window.previewImg = function(input, catKey, slotKey) {
+  const file = input.files[0];
+  if (!file) return;
+  const key = catKey + '_' + slotKey;
+  window._pendingImages[key] = { file, catKey, slotKey };
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const previewDiv = document.getElementById('preview_' + key);
+    if (previewDiv) {
+      previewDiv.innerHTML = `<img src="${e.target.result}" style="max-width:100%;max-height:80px;border-radius:4px;object-fit:cover">`;
+    }
+  };
+  reader.readAsDataURL(file);
+};
+
+window.uploadContractImages = async function(contractId) {
+  const imgs = window._pendingImages;
+  if (!imgs || Object.keys(imgs).length === 0) return {};
+
+  const uploaded = {};
+  for (const [key, {file, catKey, slotKey}] of Object.entries(imgs)) {
+    const ext = file.name.split('.').pop();
+    const path = `contracts/${contractId}/${catKey}/${slotKey}.${ext}`;
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${path}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': file.type,
+        'x-upsert': 'true',
+      },
+      body: file,
+    });
+    if (res.ok) {
+      uploaded[key] = `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${path}`;
+    } else {
+      console.error('上传失败:', path, await res.text());
+    }
+  }
+  window._pendingImages = {};
+  return uploaded;
+};
+
+window.loadContractImages = async function(contractId) {
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${STORAGE_BUCKET}/contracts/${contractId}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ limit: 100, offset: 0, sortBy: { column: 'name', order: 'asc' } }),
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.map(f => ({
+    name: f.name,
+    url: `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/contracts/${contractId}/${f.name}`,
+  }));
+};
+
+window.deleteContractImage = async function(contractId, path) {
+  await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/contracts/${contractId}/${path}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${SUPABASE_KEY}` },
+  });
+};
+
+window.showContractImages = async function(contractId) {
+  showModal('📎 客户材料 — #' + contractId, '<div style="text-align:center;padding:20px">加载中...</div>');
+
+  // 按分类列出
+  const cats = [
+    {key:'id',      label:'📋 身份证'},
+    {key:'fb',      label:'📘 FB截图'},
+    {key:'bank',    label:'🏦 银行流水'},
+    {key:'payment', label:'💳 收款码'},
+    {key:'other',   label:'📎 备用文件'},
+  ];
+
+  let html = '';
+  for (const cat of cats) {
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${STORAGE_BUCKET}/contracts/${contractId}/${cat.key}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ limit: 100, offset: 0 }),
+    });
+    const files = res.ok ? await res.json() : [];
+    if (!files.length) continue;
+    html += '<div style="margin-bottom:16px"><div style="font-weight:600;margin-bottom:8px">' + cat.label + '</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:8px">';
+    for (const f of files) {
+      const url = SUPABASE_URL + '/storage/v1/object/public/' + STORAGE_BUCKET + '/contracts/' + contractId + '/' + cat.key + '/' + f.name;
+      html += '<div style="position:relative">'
+        + '<a href="' + url + '" target="_blank"><img src="' + url + '" style="width:120px;height:90px;object-fit:cover;border-radius:6px;border:1px solid #eee"></a>'
+        + '<button onclick="deleteImg(\'' + contractId + '\',\'' + cat.key + '/' + f.name + '\');closeModal()" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.5);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:11px">✕</button>'
+        + '</div>';
+    }
+    html += '</div></div>';
+  }
+
+  // 上传入口
+  html += '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">'
+    + '<label style="cursor:pointer"><input type="file" accept="image/*" multiple style="display:none" onchange="uploadExtraImages(this,\'' + contractId + '\')">'
+    + '<span class="btn btn-primary btn-sm">📷 补传图片</span></label></div>';
+
+  if (!html) html = '<div style="text-align:center;color:var(--muted);padding:20px">暂无材料</div>';
+  document.getElementById('modalBody').innerHTML = html;
+};
+
+window.deleteImg = async function(contractId, path) {
+  const pwd = prompt('输入删除密码：');
+  if (pwd !== DELETE_PWD) { alert('密码错误'); return; }
+  await fetch(SUPABASE_URL + '/storage/v1/object/' + STORAGE_BUCKET + '/contracts/' + contractId + '/' + path, {
+    method: 'DELETE',
+    headers: { 'Authorization': 'Bearer ' + SUPABASE_KEY },
+  });
+  showContractImages(contractId);
+};
+
+window.uploadExtraImages = async function(input, contractId) {
+  const files = Array.from(input.files);
+  if (!files.length) return;
+  showModal('📷 上传中...', '<div style="text-align:center;padding:20px">正在上传，请稍候...</div>');
+  for (const file of files) {
+    const ext = file.name.split('.').pop();
+    const path = 'contracts/' + contractId + '/other/' + Date.now() + '.' + ext;
+    await fetch(SUPABASE_URL + '/storage/v1/object/' + STORAGE_BUCKET + '/' + path, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': file.type, 'x-upsert': 'true' },
+      body: file,
+    });
+  }
+  showContractImages(contractId);
+};
+
 function renderSaleAdd() {
   const phones = DB_get('phones') || [];
   const opts = phones.map(p => `<option value="${p.id}">${esc(p.brand)} ${esc(p.model)} ${esc(p.storage||'')} — ${_lang==='zh'?'库存':'Stock'}${p.stock}${_lang==='zh'?'台':'pcs'} (${_lang==='zh'?'建议':'Suggested'}${fmt(p.price)})</option>`).join('');
@@ -1414,6 +1559,35 @@ function renderSaleAdd() {
     <div class="form-grid" style="margin-top:12px">
       <div class="form-group span3"><label>${t('remarks')}</label><input id="sNote" placeholder="${t('remarkPlaceholder')}"></div>
     </div>
+
+    <!-- 客户材料上传 -->
+    <div style="margin-top:18px">
+      <div class="card-title" style="margin-bottom:12px">📎 客户材料 <span style="font-size:12px;font-weight:400;color:var(--muted)">（选填，可保存合同后补传）</span></div>
+      ${[
+        {key:'id',      label:'📋 身份证',  color:'#e3f2fd', border:'#1976d2', slots:['身份证正面','身份证背面','户口本封面','户口本本人页']},
+        {key:'fb',      label:'📘 FB截图',  color:'#f3e5f5', border:'#7b1fa2', slots:['FB截图1','FB截图2','FB截图3','FB截图4']},
+        {key:'bank',    label:'🏦 银行流水', color:'#e8f5e9', border:'#388e3c', slots:['银行流水1','银行流水2','银行流水3']},
+        {key:'payment', label:'💳 收款码',   color:'#fff3e0', border:'#f57c00', slots:['收款码']},
+        {key:'other',   label:'📎 备用文件', color:'#fce4ec', border:'#c62828', slots:['备用1','备用2']},
+      ].map(cat => `
+        <div style="background:${cat.color};border-left:3px solid ${cat.border};border-radius:8px;padding:12px;margin-bottom:12px">
+          <div style="font-weight:600;margin-bottom:10px">${cat.label}</div>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+            ${cat.slots.map(slot => `
+              <div style="background:#fff;border-radius:6px;padding:10px;text-align:center;min-height:100px;position:relative" id="slot_${cat.key}_${slot.replace(/\s/g,'')}">
+                <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${slot}</div>
+                <div id="preview_${cat.key}_${slot.replace(/\s/g,'')}" style="margin-bottom:6px"></div>
+                <label style="cursor:pointer">
+                  <input type="file" accept="image/*" style="display:none" onchange="previewImg(this,'${cat.key}','${slot.replace(/\s/g,'')}')">
+                  <span class="btn btn-primary btn-sm">📷 选择图片</span>
+                </label>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
     <div class="btn-row">
       <button class="btn btn-primary" onclick="submitSale()">${t('saveContract')}</button>
       <button class="btn btn-outline" onclick="nav('sale-list')">${t('viewList')}</button>
@@ -1567,6 +1741,14 @@ window.submitSale = function() {
   showMsg('saleMsg', `✅ ${t('saved')} #${sale.id} — ${cust}，${periods}${t('period')}，${fmt(monthly)}/${t('period')}`, 'green');
   ['sCust','sCustPhone','sSalePrice','sNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   ['sDeposit','sMonthlyInt','sMonthlyService','sMonthly','sDailyFee','sRebate'].forEach(id => { const el = document.getElementById(id); if (el) el.value = '0'; });
+  // 上传图片
+  if (Object.keys(window._pendingImages||{}).length > 0) {
+    showMsg('saleMsg', '📷 正在上传图片...', 'green');
+    uploadContractImages(sale.id).then(uploaded => {
+      const count = Object.keys(uploaded).length;
+      showMsg('saleMsg', `✅ 合同 #${sale.id} 已保存，${count > 0 ? count + '张图片已上传' : ''}`, 'green');
+    });
+  }
   calcInstall(); updateBadges();
 };
 
@@ -1676,6 +1858,7 @@ function buildSalesTable(sales) {
         <td><span class="badge ${s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':s.status==='逾期'?'badge-red':'badge-blue'}">${s.status}</span></td>
         <td style="white-space:nowrap">
           <button class="btn btn-outline btn-sm" onclick="viewSchedule('${s.id}')">${t('repaySchedule')}</button>
+          <button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="showContractImages('${s.id}')">📎 材料</button>
           <button class="btn btn-primary btn-sm" style="margin-left:4px" onclick="editSale('${s.id}')">${_lang==='zh'?'编辑':_lang==='km'?'កែប្រែ':'Edit'}</button>
           <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSale('${s.id}')">${t('deleteBtn')}</button>
         </td>
