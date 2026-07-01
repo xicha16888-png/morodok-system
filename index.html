@@ -1883,7 +1883,7 @@ function renderSaleList() {
     ${(() => {
       const allS = DB_get('sales')||[];
       const td2 = new Date().toISOString().slice(0,7);
-      const thisMonthSales = allS.filter(s => s.date && s.date.slice(0,7) === td2);
+      const thisMonthSales = allS.filter(s => s.date && s.date.replace(/\//g,'-').slice(0,7) === td2);
       const totalAll = allS.length;
       return `<div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
         <div style="font-size:13px;color:var(--navy)">
@@ -2458,7 +2458,7 @@ function renderStatsCollection() {
   });
   // 返点按合同签约月份归入
   sales.forEach(s => {
-    const m = s.date.slice(0,7);
+    const m = s.date.replace(/\//g,'-').slice(0,7);
     if (!byMonth[m]) byMonth[m] = {principal:0, interest:0, serviceFee:0, penalty:0, rebate:0, count:0};
     byMonth[m].rebate += +s.storeRebate||0;
   });
@@ -2734,7 +2734,7 @@ function renderStatsProfit() {
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="profitMonthFilter" onchange="filterProfitTable()" style="min-width:130px;font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:7px">
           <option value="">${_lang==='zh'?'全部月份':_lang==='en'?'All Months':'ខែទាំងអស់'}</option>
-          ${[...new Set(sales.map(s=>s.date.slice(0,7)))].sort().reverse().map(m=>`<option value="${m}">${m}</option>`).join('')}
+          ${[...new Set(sales.map(s=>s.date.replace(/\//g,'-').slice(0,7)))].sort().reverse().map(m=>`<option value="${m}">${m}</option>`).join('')}
         </select>
         <select id="profitStatusFilter" onchange="filterProfitTable()" style="min-width:110px;font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:7px">
           <option value="">${t('allStatus')}</option>
@@ -2793,7 +2793,7 @@ function buildProfitTable(filteredSales, earlyPays, groupByMonth) {
   const sorted = filteredSales.slice().reverse();
   const byMonth = {};
   sorted.forEach(s => {
-    const m = s.date.slice(0,7);
+    const m = s.date.replace(/\//g,'-').slice(0,7);
     if (!byMonth[m]) byMonth[m] = [];
     byMonth[m].push(s);
   });
@@ -2855,7 +2855,7 @@ window.filterProfitTable = function() {
   const status = document.getElementById('profitStatusFilter')?.value||'';
   const earlyPays = DB_get('earlyPayments')||[];
   let filtered = DB_get('sales')||[];
-  if (month) filtered = filtered.filter(s => s.date.slice(0,7) === month);
+  if (month) filtered = filtered.filter(s => s.date.replace(/\//g,'-').slice(0,7) === month);
   if (status) filtered = filtered.filter(s => s.status === status);
 
   const wrap = document.getElementById('profitTableWrap');
@@ -3381,16 +3381,16 @@ function renderFinanceReport() {
   // ── build month list (只显示今天以前的月份) ──
   const todayMonth = td.slice(0,7);
   const monthSet = new Set();
-  sales.forEach(s  => { if (s.date.slice(0,7) <= todayMonth) monthSet.add(s.date.slice(0,7)); });
+  sales.forEach(s  => { const dm=s.date.replace(/\//g,'-').slice(0,7); if (dm <= todayMonth) monthSet.add(dm); });
   pays.forEach(p   => { if (p.date.slice(0,7) <= todayMonth) monthSet.add(p.date.slice(0,7)); });
   earlyPays.forEach(r => { if (r.date.slice(0,7) <= todayMonth) monthSet.add(r.date.slice(0,7)); });
-  expenses.forEach(e  => { if (e.date.slice(0,7) <= todayMonth) monthSet.add(e.date.slice(0,7)); });
+  expenses.forEach(e  => { const dm=e.date.replace(/\//g,'-').slice(0,7); if (dm <= todayMonth) monthSet.add(dm); });
   if (!monthSet.size) monthSet.add(todayMonth);
   const months = [...monthSet].sort().reverse();
 
   // ── per-month calc ──
   const rows = months.map(m => {
-    const mSales  = sales.filter(s => s.date.slice(0,7) === m);
+    const mSales  = sales.filter(s => s.date.replace(/\//g,'-').slice(0,7) === m);
     const totalLoan = mSales.reduce((a,s) => a + (+s.installmentAmount), 0);
     const orderCount = mSales.length;
     const mPays  = pays.filter(p => p.date.slice(0,7) === m);
@@ -3441,7 +3441,7 @@ function renderFinanceReport() {
       ? ((actualCollected + mPenalty) / totalDueAmt * 100).toFixed(1) : '—';
 
     // 逾期率（辅助）= 逾期未还期次 / 应还期次
-    const mDueBeforeToday   = mDuePeriods.filter(p => p.dueDate <= td);
+    const mDueBeforeToday   = mDuePeriods.filter(p => p.dueDate.replace(/\//g,'-') <= td);
     const mOverduePeriods   = mDueBeforeToday.filter(p => !p.paid);
     const overdueRate = mDueBeforeToday.length > 0
       ? (mOverduePeriods.length / mDueBeforeToday.length * 100).toFixed(1) : '0.0';
@@ -3727,7 +3727,7 @@ function renderFinanceReport() {
           </tr>
           ${list.map(({sale, maxDays, periods}) => {
             const unpaid = sale.schedule.filter(p => !p.paid);
-            const unpaidAmt = unpaid.reduce((a,p) => a + (+p.totalDue||0), 0);
+            const unpaidAmt = unpaid.reduce((a,p) => a + (+p.principalDue||0) + (+p.interestDue||0), 0);
             return `<tr>
               <td class="fw700 text-blue">#${sale.id}</td>
               <td><div class="fw700">${esc(sale.customer)}</div></td>
@@ -4005,7 +4005,7 @@ function renderStoreStats() {
     const storeSales = sales.filter(s => s.shopName === name);
     const bd30 = calcBadDebt(storeSales, 30);
     const byMonth = {};
-    storeSales.forEach(s => { const m = s.date.slice(0,7); byMonth[m]=(byMonth[m]||0)+1; });
+    storeSales.forEach(s => { const m = s.date.replace(/\//g,'-').slice(0,7); byMonth[m]=(byMonth[m]||0)+1; });
     return {
       name,
       total: storeSales.length,
@@ -4580,10 +4580,10 @@ window.exportExcel = function() {
   const s4Rows = expenses.map(e => [e.id, e.date, e.cat, e.amount, e.note||'', e.person||'']);
 
   // ── Sheet 5: 月度汇总 ──
-  const monthSet = new Set([...sales.map(s=>s.date.slice(0,7)), ...pays.map(p=>p.date.slice(0,7))]);
+  const monthSet = new Set([...sales.map(s=>s.date.replace(/\//g,'-').slice(0,7)), ...pays.map(p=>p.date.slice(0,7))]);
   const s5Header = ['月份','新增单量','月总放款额($)','月总回款额($)','月利息($)','月手续费($)','月滞纳金($)','月开支($)','月净利润($)','回款率(%)','坏账率(%)'];
   const s5Rows = [...monthSet].sort().reverse().map(m => {
-    const mS = sales.filter(s=>s.date.slice(0,7)===m);
+    const mS = sales.filter(s=>s.date.replace(/\//g,'-').slice(0,7)===m);
     const mP = pays.filter(p=>p.date.slice(0,7)===m);
     const mE = earlyPays.filter(r=>r.date.slice(0,7)===m);
     const loan   = mS.reduce((a,s)=>a+(+s.installmentAmount),0);
