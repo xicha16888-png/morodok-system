@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>MORODOK · 手机销售分期管理系统</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&family=Noto+Sans+Khmer:wght@300;400;500;700&display=swap');
@@ -12,7 +12,7 @@
   --green:#2e7d32;--red:#c62828;--amber:#f57c00;--gray:#546e7a;--bg:#f0f4f8;
   --white:#fff;--border:#cfd8dc;--text:#1a2a3a;--muted:#78909c;
 }
-html,body{height:100%;overflow:hidden}
+html,body{height:100%;overflow:hidden;max-width:100vw;overflow-x:hidden}
 body{font-family:'Noto Sans SC','Noto Sans Khmer',sans-serif;background:var(--bg);color:var(--text)}
 
 .header{background:linear-gradient(135deg,#0a1f42,var(--navy) 40%,var(--blue) 80%,var(--sky));
@@ -45,7 +45,7 @@ body{font-family:'Noto Sans SC','Noto Sans Khmer',sans-serif;background:var(--bg
 .nav-divider{height:1px;background:rgba(255,255,255,.07);margin:4px 12px}
 .nav-badge{margin-left:auto;background:var(--red);color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;font-weight:700}
 
-.main{flex:1;overflow-y:auto;padding:20px 22px}
+.main{flex:1;overflow-y:auto;overflow-x:hidden;padding:20px 22px}
 .main::-webkit-scrollbar{width:5px}
 .main::-webkit-scrollbar-thumb{background:#cfd8dc;border-radius:4px}
 
@@ -89,7 +89,7 @@ tr:hover td{background:#f8faff}
 .pt9{background:#e3f2fd;color:#1565c0;display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
 .pt12{background:#f3e5f5;color:#6a1b9a;display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
 
-.form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));gap:12px}
 .form-group{display:flex;flex-direction:column;gap:5px}
 .form-group label{font-size:11px;color:var(--gray);font-weight:600;letter-spacing:.3px;text-transform:uppercase}
 .form-group input,.form-group select,.form-group textarea{border:1.5px solid var(--border);border-radius:7px;padding:9px 11px;font-size:13px;font-family:inherit;background:#fff;color:var(--text);transition:all .2s;outline:none}
@@ -197,7 +197,8 @@ tr:hover td{background:#f8faff}
   .layout{flex-direction:column;height:auto;margin-top:48px;min-height:calc(100vh - 48px)}
 
   /* Main content */
-  .main{padding:12px 12px 74px;overflow-y:visible}
+  .main{padding:12px 12px 74px;overflow-y:auto;overflow-x:hidden}
+  *{max-width:100%;box-sizing:border-box}
 
   /* Show mobile nav */
   .mob-nav{display:block}
