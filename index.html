@@ -1285,7 +1285,10 @@ function initPage(page) {
 
 function updateBadges() {
   const td = today();
-  const cnt = (DB_get('sales') || []).reduce((c, s) => c + s.schedule.filter(p => !p.paid && p.dueDate < td).length, 0);
+  const cnt = (DB_get('sales') || []).reduce((c, s) => {
+    if (s.status === '提前结清' || s.status === '已结清') return c;
+    return c + s.schedule.filter(p => !p.paid && p.dueDate && p.dueDate < td).length;
+  }, 0);
   // Desktop badge
   const b = document.getElementById('overdueBadge');
   if (b) { b.style.display = cnt > 0 ? '' : 'none'; b.textContent = cnt; }
@@ -1340,7 +1343,10 @@ function renderHome() {
   const pays = DB_get('payments') || [];
   const td = today();
   const overdue = [];
-  sales.forEach(s => s.schedule.forEach(p => { if (!p.paid && p.dueDate < td) overdue.push({s, p}); }));
+  sales.forEach(s => {
+    if (s.status === '提前结清' || s.status === '已结清') return;
+    s.schedule.forEach(p => { if (!p.paid && p.dueDate && p.dueDate < td) overdue.push({s, p}); });
+  });
   const tPaid = pays.reduce((a, p) => a + (+p.principal) + (+p.interest), 0);
   const pending = sales.filter(s=>s.status==='进行中').reduce((a,s) => a + s.schedule.filter(p=>!p.paid).reduce((b,p) => b+(+p.principalDue||0)+(+p.interestDue||0)+(+p.serviceFeeDue||0), 0), 0);
   return `
@@ -2900,11 +2906,11 @@ function renderReminderTomorrow() {
 function renderReminderOverdue() {
   const td = today(), sales = DB_get('sales')||[], items = [];
   sales.forEach(s => {
-    if (s.status === '提前结清') return; // 跳过已提前结清
+    if (s.status === '提前结清' || s.status === '已结清') return; // 跳过已结清
     s.schedule.forEach(p => {
-      if (!p.paid && p.dueDate < td) {
+      if (!p.paid && p.dueDate && p.dueDate < td) { // dueDate 必须有效
         const days = Math.floor((new Date(td)-new Date(p.dueDate))/86400000);
-        items.push({s,p,days});
+        if (days >= 0) items.push({s,p,days}); // 防止异常日期导致负数
       }
     });
   });
