@@ -274,6 +274,23 @@ app.get('/api/backup', async (req, res) => {
 
 app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
+// 清空合同/还款/提前还款数据
+app.post('/api/clear', async (req, res) => {
+  try {
+    const { error: e1 } = await supabase.from('appdata').delete().like('key', 'sale_%');
+    if (e1) throw e1;
+    const { error: e2 } = await supabase.from('appdata').delete().like('key', 'pay_%');
+    if (e2) throw e2;
+    const { error: e3 } = await supabase.from('appdata').delete().like('key', 'ep_%');
+    if (e3) throw e3;
+    console.log('✅ 数据已清空');
+    res.json({ ok: true, message: '清空成功' });
+  } catch (e) {
+    console.error('清空失败:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log('\n╔══════════════════════════════════════════════╗');
   console.log('║   📱 MORODOK 手机分期管理系统 — 云端版        ║');
