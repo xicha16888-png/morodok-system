@@ -353,6 +353,20 @@ const I18N = {
     quickEntry: '快速入口',
     // Sale add - new fields
     shopName: '店铺名称', salesperson: '业务员', msgPhoneDuplicate: '该电话已登记超过2个合同，请确认！',
+    // Emergency contacts
+    step1Title: '👤 第一步：客户信息', step2Title: '📱 第二步：手机与放款',
+    emergencyTitle: '🆘 紧急联系人',
+    emgName: '姓名', emgPhone: '电话号码', emgRel: '关系',
+    emgRelPlaceholder: '— 选择关系 —',
+    emgRel1: '父母', emgRel2: '配偶', emgRel3: '兄弟姐妹', emgRel4: '朋友',
+    calcResultTitle: '📊 自动计算结果',
+    loanAmt: '放款金额', monthlyPay: '每月还款', actualPeriods: '实际期数',
+    monthlyIntLbl: '每期利息', rebateLbl: '店家返点', penaltyLbl: '每日滞纳金',
+    netProfitLbl: '预计净利润',
+    uploadTitle: '📎 客户材料', uploadSub: '（选填，可保存后补传）',
+    catId: '📋 身份证', catFb: '📘 FB截图', catBank: '🏦 银行流水',
+    catPayment: '💳 收款码', catOther: '📎 备用文件',
+    shootPhoto: '📷 拍照/选图',
     // Store stats
     storeStats: '店家统计', storeList: '店家列表', addStore: '添加店家',
     storeName: '店家名称', storeQR: '店家二维码', storeMonthly: '月度单量',
@@ -515,6 +529,19 @@ const I18N = {
     quickEntry: 'Quick Access',
     // Sale add - new fields
     shopName: 'Shop Name', salesperson: 'Salesperson', msgPhoneDuplicate: 'This phone is registered in 2+ contracts. Please verify!',
+    step1Title: '👤 Step 1: Customer Info', step2Title: '📱 Step 2: Phone & Loan',
+    emergencyTitle: '🆘 Emergency Contacts',
+    emgName: 'Name', emgPhone: 'Phone', emgRel: 'Relationship',
+    emgRelPlaceholder: '— Select —',
+    emgRel1: 'Parents', emgRel2: 'Spouse', emgRel3: 'Siblings', emgRel4: 'Friend',
+    calcResultTitle: '📊 Auto Calculation',
+    loanAmt: 'Loan Amount', monthlyPay: 'Monthly Payment', actualPeriods: 'Actual Periods',
+    monthlyIntLbl: 'Monthly Interest', rebateLbl: 'Store Rebate', penaltyLbl: 'Daily Late Fee',
+    netProfitLbl: 'Est. Net Profit',
+    uploadTitle: '📎 Documents', uploadSub: '(Optional, can upload later)',
+    catId: '📋 ID Card', catFb: '📘 FB Screenshot', catBank: '🏦 Bank Statement',
+    catPayment: '💳 Payment QR', catOther: '📎 Other Files',
+    shootPhoto: '📷 Photo/Upload',
     // Store stats
     storeStats: 'Store Statistics', storeList: 'Store List', addStore: 'Add Store',
     storeName: 'Store Name', storeQR: 'Store QR Code', storeMonthly: 'Monthly Orders',
@@ -783,6 +810,19 @@ const I18N = {
     dataMgmt: 'ការគ្រប់គ្រងទិន្នន័យ', downloadBackup: '📤 ទាញយកការបម្រុងទុក',
     // Sale add - new fields
     shopName: 'ឈ្មោះហាង', salesperson: 'អ្នកលក់', msgPhoneDuplicate: 'លេខទូរស័ព្ទនេះមានលើស 2 កិច្ចសន្យា។ សូមពិនិត្យ!',
+    step1Title: '👤 ជំហានទី១: ព័ត៌មានអតិថិជន', step2Title: '📱 ជំហានទី២: ទូរស័ព្ទ & ប្រាក់កម្ចី',
+    emergencyTitle: '🆘 អ្នកទំនាក់ទំនងបន្ទាន់',
+    emgName: 'ឈ្មោះ', emgPhone: 'លេខទូរស័ព្ទ', emgRel: 'ទំនាក់ទំនង',
+    emgRelPlaceholder: '— ជ្រើសរើស —',
+    emgRel1: 'ឪពុកម្តាយ', emgRel2: 'គូស្រករ', emgRel3: 'បងប្អូន', emgRel4: 'មិត្តភក្តិ',
+    calcResultTitle: '📊 លទ្ធផលគណនា',
+    loanAmt: 'ចំនួនកម្ចី', monthlyPay: 'ការទូទាត់ប្រចាំខែ', actualPeriods: 'ចំនួនដំណាក់ពិតប្រាកដ',
+    monthlyIntLbl: 'ការប្រាក់ប្រចាំខែ', rebateLbl: 'កម្រៃជើងសារ', penaltyLbl: 'ពិន័យប្រចាំថ្ងៃ',
+    netProfitLbl: 'ប្រាក់ចំណេញសុទ្ធ',
+    uploadTitle: '📎 ឯកសារអតិថិជន', uploadSub: '(ជ្រើសរើស, អាចបញ្ចូលក្រោយ)',
+    catId: '📋 អត្តសញ្ញាណប័ណ្ណ', catFb: '📘 FB Screenshot', catBank: '🏦 សំណើការ',
+    catPayment: '💳 QR ទូទាត់', catOther: '📎 ឯកសារផ្សេង',
+    shootPhoto: '📷 ថតរូប/ជ្រើស',
     // Store stats
     storeStats: 'ស្ថិតិហាង', storeList: 'បញ្ជីហាង', addStore: 'បន្ថែមហាង',
     storeName: 'ឈ្មោះហាង', storeQR: 'QR Code ហាង', storeMonthly: 'ការបញ្ជាទិញប្រចាំខែ',
@@ -1423,11 +1463,11 @@ window.showContractImages = async function(contractId) {
 
   // 按分类列出
   const cats = [
-    {key:'id',      label:'📋 身份证'},
-    {key:'fb',      label:'📘 FB截图'},
-    {key:'bank',    label:'🏦 银行流水'},
-    {key:'payment', label:'💳 收款码'},
-    {key:'other',   label:'📎 备用文件'},
+    {key:'id',      label:t('catId')},
+    {key:'fb',      label:t('catFb')},
+    {key:'bank',    label:t('catBank')},
+    {key:'payment', label:t('catPayment')},
+    {key:'other',   label:t('catOther')},
   ];
 
   let html = '';
@@ -1455,7 +1495,7 @@ window.showContractImages = async function(contractId) {
   html += '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">'
     + '<label style="cursor:pointer;display:block;text-align:center">'
     + '<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="uploadExtraImages(this,\'' + contractId + '\')">'
-    + '<span style="display:inline-block;background:var(--blue);color:#fff;padding:14px 28px;border-radius:10px;font-size:16px;font-weight:600">📷 补传图片</span>'
+    + '<span style="display:inline-block;background:var(--blue);color:#fff;padding:14px 28px;border-radius:10px;font-size:16px;font-weight:600">' + t('shootPhoto') + '</span>'
     + '</label></div>';
 
   if (!html) html = '<div style="text-align:center;color:var(--muted);padding:20px">暂无材料</div>';
@@ -1509,35 +1549,35 @@ function renderSaleAdd() {
 
     <!-- 第一步：客户信息 -->
     <div style="background:#f0f7ff;border-radius:10px;padding:16px;margin-bottom:14px;border-left:4px solid var(--blue)">
-      <div style="font-size:13px;font-weight:700;color:var(--blue);margin-bottom:14px">👤 第一步：客户信息</div>
+      <div style="font-size:13px;font-weight:700;color:var(--blue);margin-bottom:14px">${t('step1Title')}</div>
       <div class="form-grid">
-        <div class="form-group"><label>合同日期</label><input type="date" id="sDate" value="${today()}"></div>
-        <div class="form-group"><label>客户姓名 *</label><input id="sCust" placeholder="输入客户全名"></div>
-        <div class="form-group"><label>客户电话</label><input id="sCustPhone" placeholder="联系电话" oninput="checkPhoneDup()"></div>
-        <div class="form-group"><label>门店名称</label>
-          <input id="sShopName" list="shopList" placeholder="店铺名称" autocomplete="off">
+        <div class="form-group"><label>${t('contractDate')}</label><input type="date" id="sDate" value="${today()}"></div>
+        <div class="form-group"><label>${t('customerName')} *</label><input id="sCust" placeholder="${t('customerName')}"></div>
+        <div class="form-group"><label>${t('customerPhone')}</label><input id="sCustPhone" placeholder="${t('customerPhone')}" oninput="checkPhoneDup()"></div>
+        <div class="form-group"><label>${t('shopName')}</label>
+          <input id="sShopName" list="shopList" placeholder="${t('shopName')}" autocomplete="off">
           <datalist id="shopList">${shopOpts}</datalist>
         </div>
-        <div class="form-group"><label>业务员</label>
-          <input id="sSalesperson" list="staffList" placeholder="业务员姓名" autocomplete="off">
+        <div class="form-group"><label>${t('salesperson')}</label>
+          <input id="sSalesperson" list="staffList" placeholder="${t('salesperson')}" autocomplete="off">
           <datalist id="staffList">${staffOpts}</datalist>
         </div>
       </div>
       <div id="phoneDupMsg"></div>
       <!-- 紧急联系人 -->
       <div style="grid-column:1/-1;margin-top:4px">
-        <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:10px">🆘 紧急联系人</div>
+        <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:10px">${t('emergencyTitle')}</div>
         <div class="form-grid">
           ${[1,2,3].map(n=>`
-          <div class="form-group"><label>联系人${n}姓名</label><input id="sEmgName${n}" placeholder="姓名"></div>
-          <div class="form-group"><label>联系人${n}电话</label><input id="sEmgPhone${n}" placeholder="电话号码"></div>
-          <div class="form-group"><label>联系人${n}关系</label>
+          <div class="form-group"><label>${t('emgName')} ${n}</label><input id="sEmgName${n}" placeholder="${t('emgName')}"></div>
+          <div class="form-group"><label>${t('emgPhone')} ${n}</label><input id="sEmgPhone${n}" placeholder="${t('emgPhone')}"></div>
+          <div class="form-group"><label>${t('emgRel')} ${n}</label>
             <select id="sEmgRel${n}">
-              <option value="">— 选择关系 —</option>
-              <option value="父母">父母</option>
-              <option value="配偶">配偶</option>
-              <option value="兄弟姐妹">兄弟姐妹</option>
-              <option value="朋友">朋友</option>
+              <option value="">${t('emgRelPlaceholder')}</option>
+              <option value="${t('emgRel1')}">${t('emgRel1')}</option>
+              <option value="${t('emgRel2')}">${t('emgRel2')}</option>
+              <option value="${t('emgRel3')}">${t('emgRel3')}</option>
+              <option value="${t('emgRel4')}">${t('emgRel4')}</option>
             </select>
           </div>`).join('')}
         </div>
@@ -1545,19 +1585,19 @@ function renderSaleAdd() {
 
     <!-- 第二步：手机信息 -->
     <div style="background:#f3e5f5;border-radius:10px;padding:16px;margin-bottom:14px;border-left:4px solid #9c27b0">
-      <div style="font-size:13px;font-weight:700;color:#9c27b0;margin-bottom:14px">📱 第二步：手机与放款</div>
+      <div style="font-size:13px;font-weight:700;color:#9c27b0;margin-bottom:14px">\${t('step2Title')}</div>
       <div class="form-grid">
-        <div class="form-group" style="grid-column:span 2"><label>手机型号</label>
-          <select id="sModel" onchange="calcInstall()">${opts || '<option>请先添加手机型号</option>'}</select>
+        <div class="form-group" style="grid-column:span 2"><label>\${t('phoneModel')}</label>
+          <select id="sModel" onchange="calcInstall()">\${opts || '<option>\${t("phoneModel")}</option>'}</select>
         </div>
-        <div class="form-group"><label>销售价格 ($) *</label>
+        <div class="form-group"><label>\${t('salePrice')} ($) *</label>
           <input type="number" id="sSalePrice" placeholder="0.00" step="0.01" oninput="calcInstall()" style="font-size:18px;font-weight:700">
         </div>
-        <div class="form-group"><label>首付金额 ($)</label>
+        <div class="form-group"><label>\${t('deposit')} ($)</label>
           <input type="number" id="sDeposit" value="0" step="0.01" oninput="calcInstall()" style="font-size:18px;font-weight:700">
         </div>
-        <div class="form-group"><label>分期期数</label>${periodSelect('sPeriods', 3, 'calcInstall()')}</div>
-        <div class="form-group"><label>首次还款日</label>
+        <div class="form-group"><label>\${t('installPeriods')}</label>\${periodSelect('sPeriods', 3, 'calcInstall()')}</div>
+        <div class="form-group"><label>\${t('firstDueDate')}</label>
           <input type="date" id="sFirstDue" onchange="validateFirstDue()">
         </div>
       </div>
@@ -1565,38 +1605,37 @@ function renderSaleAdd() {
 
     <!-- 自动计算结果 -->
     <div id="calcResultCard" style="display:none;background:#e8f5e9;border-radius:10px;padding:16px;margin-bottom:14px;border-left:4px solid var(--green)">
-      <div style="font-size:13px;font-weight:700;color:var(--green);margin-bottom:14px">📊 自动计算结果</div>
+      <div style="font-size:13px;font-weight:700;color:var(--green);margin-bottom:14px">\${t('calcResultTitle')}</div>
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
         <div style="background:#fff;border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:#888;margin-bottom:4px">放款金额</div>
+          <div style="font-size:11px;color:#888;margin-bottom:4px">\${t('loanAmt')}</div>
           <div id="sInstAmt" style="font-size:22px;font-weight:800;color:var(--blue)">—</div>
         </div>
         <div style="background:#fff;border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:#888;margin-bottom:4px">每月还款</div>
+          <div style="font-size:11px;color:#888;margin-bottom:4px">\${t('monthlyPay')}</div>
           <div id="sMonthly" style="font-size:22px;font-weight:800;color:var(--green)">—</div>
         </div>
         <div style="background:#fff;border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:#888;margin-bottom:4px">实际期数</div>
+          <div style="font-size:11px;color:#888;margin-bottom:4px">\${t('actualPeriods')}</div>
           <div id="sActualPeriods" style="font-size:22px;font-weight:800;color:#9c27b0">—</div>
         </div>
         <div style="background:#fff;border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:#888;margin-bottom:4px">每期利息</div>
+          <div style="font-size:11px;color:#888;margin-bottom:4px">\${t('monthlyIntLbl')}</div>
           <div id="sMonthlyInt" style="font-size:22px;font-weight:800;color:var(--amber)">—</div>
         </div>
         <div style="background:#fff8e1;border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:#888;margin-bottom:4px">店家返点</div>
+          <div style="font-size:11px;color:#888;margin-bottom:4px">\${t('rebateLbl')}</div>
           <div id="sRebate" style="font-size:22px;font-weight:800;color:#f57c00">—</div>
         </div>
         <div style="background:#fce4ec;border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:#888;margin-bottom:4px">每日滞纳金</div>
+          <div style="font-size:11px;color:#888;margin-bottom:4px">\${t('penaltyLbl')}</div>
           <div id="sDailyFee" style="font-size:22px;font-weight:800;color:var(--red)">—</div>
         </div>
         <div style="background:#e8f5e9;border-radius:8px;padding:12px;text-align:center;grid-column:span 2">
-          <div style="font-size:11px;color:#888;margin-bottom:4px">预计净利润</div>
+          <div style="font-size:11px;color:#888;margin-bottom:4px">\${t('netProfitLbl')}</div>
           <div id="sNetProfit" style="font-size:26px;font-weight:800;color:var(--green)">—</div>
         </div>
       </div>
-      <!-- 隐藏字段供保存用 -->
       <input type="hidden" id="sTotalInt">
       <input type="hidden" id="sInterestRate">
       <input type="hidden" id="sTotalService">
@@ -1607,19 +1646,19 @@ function renderSaleAdd() {
 
     <!-- 备注 -->
     <div style="margin-bottom:14px">
-      <label style="font-size:12px;color:#888;font-weight:600;display:block;margin-bottom:6px">备注（可选）</label>
-      <input id="sNote" placeholder="备注信息" style="width:100%;padding:12px;border-radius:8px;border:1px solid #ddd;font-size:14px">
+      <label style="font-size:12px;color:#888;font-weight:600;display:block;margin-bottom:6px">\${t('remarks')}</label>
+      <input id="sNote" placeholder="${t('remarkPlaceholder')}" style="width:100%;padding:12px;border-radius:8px;border:1px solid #ddd;font-size:14px">
     </div>
 
     <!-- 客户材料上传 -->
     <div style="margin-top:18px">
-      <div class="card-title" style="margin-bottom:12px">📎 客户材料 <span style="font-size:12px;font-weight:400;color:var(--muted)">（选填，可保存后补传）</span></div>
+      <div class="card-title" style="margin-bottom:12px">${t('uploadTitle')} <span style="font-size:12px;font-weight:400;color:var(--muted)">${t('uploadSub')}</span></div>
       ${[
-        {key:'id',      label:'📋 身份证',  color:'#e3f2fd', border:'#1976d2', slots:['身份证正面','身份证背面','户口本封面','户口本本人页']},
-        {key:'fb',      label:'📘 FB截图',  color:'#f3e5f5', border:'#7b1fa2', slots:['FB截图1','FB截图2','FB截图3','FB截图4']},
-        {key:'bank',    label:'🏦 银行流水', color:'#e8f5e9', border:'#388e3c', slots:['银行流水1','银行流水2','银行流水3']},
-        {key:'payment', label:'💳 收款码',   color:'#fff3e0', border:'#f57c00', slots:['收款码']},
-        {key:'other',   label:'📎 备用文件', color:'#fce4ec', border:'#c62828', slots:['备用1','备用2']},
+        {key:'id',      label:t('catId'),  color:'#e3f2fd', border:'#1976d2', slots:['身份证正面','身份证背面','户口本封面','户口本本人页']},
+        {key:'fb',      label:t('catFb'),  color:'#f3e5f5', border:'#7b1fa2', slots:['FB截图1','FB截图2','FB截图3','FB截图4']},
+        {key:'bank',    label:t('catBank'), color:'#e8f5e9', border:'#388e3c', slots:['银行流水1','银行流水2','银行流水3']},
+        {key:'payment', label:t('catPayment'),   color:'#fff3e0', border:'#f57c00', slots:['收款码']},
+        {key:'other',   label:t('catOther'), color:'#fce4ec', border:'#c62828', slots:['备用1','备用2']},
       ].map(cat => `
         <div style="background:${cat.color};border-left:4px solid ${cat.border};border-radius:10px;padding:14px;margin-bottom:14px">
           <div style="font-weight:700;font-size:15px;margin-bottom:12px">${cat.label}</div>
@@ -1630,7 +1669,7 @@ function renderSaleAdd() {
                 <div style="font-size:12px;color:#888;margin-bottom:8px">${slot}</div>
                 <label style="cursor:pointer;display:block">
                   <input type="file" accept="image/*" capture="environment" style="display:none" onchange="previewImg(this,'${cat.key}','${slot.replace(/\s/g,'')}')">
-                  <span style="display:inline-block;background:${cat.border};color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:600">📷 拍照/选图</span>
+                  <span style="display:inline-block;background:${cat.border};color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:600">${t('shootPhoto')}</span>
                 </label>
               </div>
             `).join('')}
