@@ -1585,19 +1585,19 @@ function renderSaleAdd() {
 
     <!-- 第二步：手机信息 -->
     <div style="background:#f3e5f5;border-radius:10px;padding:16px;margin-bottom:14px;border-left:4px solid #9c27b0">
-      <div style="font-size:13px;font-weight:700;color:#9c27b0;margin-bottom:14px">\${t('step2Title')}</div>
+      <div style="font-size:13px;font-weight:700;color:#9c27b0;margin-bottom:14px">${t('step2Title')}</div>
       <div class="form-grid">
-        <div class="form-group" style="grid-column:span 2"><label>\${t('phoneModel')}</label>
-          <select id="sModel" onchange="calcInstall()">\${opts || '<option>\${t("phoneModel")}</option>'}</select>
+        <div class="form-group" style="grid-column:span 2"><label>${t('phoneModel')}</label>
+          <select id="sModel" onchange="calcInstall()">${opts || '<option>${t("phoneModel")}</option>'}</select>
         </div>
-        <div class="form-group"><label>\${t('salePrice')} ($) *</label>
+        <div class="form-group"><label>${t('salePrice')} ($) *</label>
           <input type="number" id="sSalePrice" placeholder="0.00" step="0.01" oninput="calcInstall()" style="font-size:18px;font-weight:700">
         </div>
-        <div class="form-group"><label>\${t('deposit')} ($)</label>
+        <div class="form-group"><label>${t('deposit')} ($)</label>
           <input type="number" id="sDeposit" value="0" step="0.01" oninput="calcInstall()" style="font-size:18px;font-weight:700">
         </div>
-        <div class="form-group"><label>\${t('installPeriods')}</label>\${periodSelect('sPeriods', 3, 'calcInstall()')}</div>
-        <div class="form-group"><label>\${t('firstDueDate')}</label>
+        <div class="form-group"><label>${t('installPeriods')}</label>${periodSelect('sPeriods', 3, 'calcInstall()')}</div>
+        <div class="form-group"><label>${t('firstDueDate')}</label>
           <input type="date" id="sFirstDue" onchange="validateFirstDue()">
         </div>
       </div>
@@ -1605,34 +1605,34 @@ function renderSaleAdd() {
 
     <!-- 自动计算结果 -->
     <div id="calcResultCard" style="display:none;background:#e8f5e9;border-radius:10px;padding:16px;margin-bottom:14px;border-left:4px solid var(--green)">
-      <div style="font-size:13px;font-weight:700;color:var(--green);margin-bottom:14px">\${t('calcResultTitle')}</div>
+      <div style="font-size:13px;font-weight:700;color:var(--green);margin-bottom:14px">${t('calcResultTitle')}</div>
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
         <div style="background:#fff;border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:#888;margin-bottom:4px">\${t('loanAmt')}</div>
+          <div style="font-size:11px;color:#888;margin-bottom:4px">${t('loanAmt')}</div>
           <div id="sInstAmt" style="font-size:22px;font-weight:800;color:var(--blue)">—</div>
         </div>
         <div style="background:#fff;border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:#888;margin-bottom:4px">\${t('monthlyPay')}</div>
+          <div style="font-size:11px;color:#888;margin-bottom:4px">${t('monthlyPay')}</div>
           <div id="sMonthly" style="font-size:22px;font-weight:800;color:var(--green)">—</div>
         </div>
         <div style="background:#fff;border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:#888;margin-bottom:4px">\${t('actualPeriods')}</div>
+          <div style="font-size:11px;color:#888;margin-bottom:4px">${t('actualPeriods')}</div>
           <div id="sActualPeriods" style="font-size:22px;font-weight:800;color:#9c27b0">—</div>
         </div>
         <div style="background:#fff;border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:#888;margin-bottom:4px">\${t('monthlyIntLbl')}</div>
+          <div style="font-size:11px;color:#888;margin-bottom:4px">${t('monthlyIntLbl')}</div>
           <div id="sMonthlyInt" style="font-size:22px;font-weight:800;color:var(--amber)">—</div>
         </div>
         <div style="background:#fff8e1;border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:#888;margin-bottom:4px">\${t('rebateLbl')}</div>
+          <div style="font-size:11px;color:#888;margin-bottom:4px">${t('rebateLbl')}</div>
           <div id="sRebate" style="font-size:22px;font-weight:800;color:#f57c00">—</div>
         </div>
         <div style="background:#fce4ec;border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:#888;margin-bottom:4px">\${t('penaltyLbl')}</div>
+          <div style="font-size:11px;color:#888;margin-bottom:4px">${t('penaltyLbl')}</div>
           <div id="sDailyFee" style="font-size:22px;font-weight:800;color:var(--red)">—</div>
         </div>
         <div style="background:#e8f5e9;border-radius:8px;padding:12px;text-align:center;grid-column:span 2">
-          <div style="font-size:11px;color:#888;margin-bottom:4px">\${t('netProfitLbl')}</div>
+          <div style="font-size:11px;color:#888;margin-bottom:4px">${t('netProfitLbl')}</div>
           <div id="sNetProfit" style="font-size:26px;font-weight:800;color:var(--green)">—</div>
         </div>
       </div>
@@ -1646,7 +1646,7 @@ function renderSaleAdd() {
 
     <!-- 备注 -->
     <div style="margin-bottom:14px">
-      <label style="font-size:12px;color:#888;font-weight:600;display:block;margin-bottom:6px">\${t('remarks')}</label>
+      <label style="font-size:12px;color:#888;font-weight:600;display:block;margin-bottom:6px">${t('remarks')}</label>
       <input id="sNote" placeholder="${t('remarkPlaceholder')}" style="width:100%;padding:12px;border-radius:8px;border:1px solid #ddd;font-size:14px">
     </div>
 
