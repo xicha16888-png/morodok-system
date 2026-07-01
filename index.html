@@ -1619,29 +1619,46 @@ window.calcInstall = function() {
   const dep         = +(document.getElementById('sDeposit')?.value || 0);
   const periods     = +(document.getElementById('sPeriods')?.value || 3);
   const svcPeriods  = +(document.getElementById('sServicePeriods')?.value || 3);
-  const rebate      = +(document.getElementById('sRebate')?.value || 0);
-  const principal   = Math.max(0, price - dep);
+  const principal   = Math.max(0, price - dep); // 放款额
 
-  // 用户手动填入每期利息和每期手续费
-  const monthlyInt  = +(document.getElementById('sMonthlyInt')?.value || 0);
+  // ── MORODOK 计算器公式 ──
+  // 实际还款期数：3→3, 6→5, 9→8, 12→11
+  const actualPeriods = periods === 3 ? 3 : periods - 1;
+  // 每期利息 = ceil(放款额 × 7%)
+  const autoMonthlyInt = principal > 0 ? Math.ceil(principal * 0.07) : 0;
+  // 每期本金 = ceil(放款额 / 实际期数)
+  const autoPrincipalPerPeriod = principal > 0 && actualPeriods > 0 ? Math.ceil(principal / actualPeriods) : 0;
+  // 每月还款 = 本金 + 利息
+  const autoMonthly = autoPrincipalPerPeriod + autoMonthlyInt;
+  // 店家返点 = 放款额 × 5%（6期以下）或 × 10%（9期以上）
+  const autoRebate = principal > 0 ? Math.floor(principal * (periods <= 6 ? 0.05 : 0.10)) : 0;
+  // 每日滞纳金 = ceil(放款额 × 2%)
+  const penaltyPerDay = principal > 0 ? Math.ceil(principal * 0.02) : 0;
+
+  // 自动填入（用户没改过才填）
+  const monthlyIntEl = document.getElementById('sMonthlyInt');
+  const rebateEl     = document.getElementById('sRebate');
+  const monthlyEl    = document.getElementById('sMonthly');
+  const dailyFeeEl   = document.getElementById('sDailyFee');
+
+  if (monthlyIntEl && !monthlyIntEl._manualEdit) monthlyIntEl.value = autoMonthlyInt.toFixed(2);
+  if (rebateEl     && !rebateEl._manualEdit)     rebateEl.value     = autoRebate.toFixed(2);
+  if (dailyFeeEl   && !dailyFeeEl._manualEdit)   dailyFeeEl.value   = penaltyPerDay.toFixed(2);
+  if (monthlyEl    && !monthlyEl._manualEdit)     monthlyEl.value    = autoMonthly.toFixed(2);
+
+  const monthlyInt  = +(monthlyIntEl?.value || 0);
   const monthlySvc  = +(document.getElementById('sMonthlyService')?.value || 0);
+  const rebate      = +(rebateEl?.value || 0);
+  const monthly     = +(monthlyEl?.value || 0);
 
-  // 反算月利率%：每期利息 ÷ 本金 × 100
-  const intRate     = principal > 0 ? (monthlyInt / principal) * 100 : 0;
-  const svcRate     = principal > 0 ? (monthlySvc / principal) * 100 : 0;
+  // 反算月利率
+  const intRate  = principal > 0 ? (monthlyInt / principal) * 100 : 0;
+  const svcRate  = principal > 0 ? (monthlySvc / principal) * 100 : 0;
 
   // 总计
-  const totalInt    = monthlyInt * periods;
-  const totalSvc    = monthlySvc * svcPeriods;
-  const autoMonthly = periods > 0 ? (principal / periods) + monthlyInt + monthlySvc : 0;
-
-  // 每期还款合计：用户手动输入，若为0则自动填入计算值
-  const monthlyEl = document.getElementById('sMonthly');
-  const manualMonthly = +(monthlyEl?.value || 0);
-  const monthly = manualMonthly > 0 ? manualMonthly : autoMonthly;
-
-  // 净利润 = 每期还款合计 × 期数 - 本金 - 店家返点
-  const netProfit = (monthly * periods) - principal - rebate;
+  const totalInt  = monthlyInt * actualPeriods;
+  const totalSvc  = monthlySvc * svcPeriods;
+  const netProfit = (monthly * actualPeriods) - principal - rebate;
 
   const set     = (id, v) => { const el = document.getElementById(id); if (el) el.value = isNaN(v) ? '0.00' : v.toFixed(2); };
   const setRate = (id, v) => { const el = document.getElementById(id); if (el) el.value = isNaN(v) ? '0.0000' : v.toFixed(4); };
@@ -1650,11 +1667,27 @@ window.calcInstall = function() {
   setRate('sInterestRate', intRate);
   set('sTotalService', totalSvc);
   setRate('sServiceRate', svcRate);
-  // 只在未手动填写时才自动填入每期还款
-  if (!manualMonthly) set('sMonthly', autoMonthly);
   set('sNetProfit', netProfit);
   const npEl = document.getElementById('sNetProfit');
   if (npEl) npEl.style.color = netProfit >= 0 ? 'var(--green)' : 'var(--red)';
+
+  // 提示栏
+  let hint = document.getElementById('calcHint');
+  if (!hint) {
+    hint = document.createElement('div');
+    hint.id = 'calcHint';
+    hint.style.cssText = 'margin-top:10px;padding:10px 14px;background:#e8f5e9;border-radius:8px;font-size:13px;border-left:3px solid var(--green)';
+    const summaryCard = document.getElementById('sNetProfit')?.closest('.form-grid')?.parentElement;
+    if (summaryCard) summaryCard.appendChild(hint);
+  }
+  hint.innerHTML = principal > 0 ? `
+    <div style="display:flex;flex-wrap:wrap;gap:12px">
+      <span>📅 实际还款 <b>${actualPeriods}</b> 期（合同 ${periods} 期）</span>
+      <span>💰 每月还款 <b style="color:#1976d2">$${autoMonthly}</b></span>
+      <span>🏪 店家返点 <b style="color:#f57c00">$${autoRebate}</b></span>
+      <span>⚠️ 每日滞纳金 <b style="color:#e53935">$${penaltyPerDay}</b></span>
+    </div>
+  ` : '';
 };
 
 window.submitSale = function() {
