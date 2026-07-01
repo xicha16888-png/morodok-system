@@ -1524,7 +1524,24 @@ function renderSaleAdd() {
         </div>
       </div>
       <div id="phoneDupMsg"></div>
-    </div>
+      <!-- 紧急联系人 -->
+      <div style="grid-column:1/-1;margin-top:4px">
+        <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:10px">🆘 紧急联系人</div>
+        <div class="form-grid">
+          ${[1,2,3].map(n=>`
+          <div class="form-group"><label>联系人${n}姓名</label><input id="sEmgName${n}" placeholder="姓名"></div>
+          <div class="form-group"><label>联系人${n}电话</label><input id="sEmgPhone${n}" placeholder="电话号码"></div>
+          <div class="form-group"><label>联系人${n}关系</label>
+            <select id="sEmgRel${n}">
+              <option value="">— 选择关系 —</option>
+              <option value="父母">父母</option>
+              <option value="配偶">配偶</option>
+              <option value="兄弟姐妹">兄弟姐妹</option>
+              <option value="朋友">朋友</option>
+            </select>
+          </div>`).join('')}
+        </div>
+      </div>
 
     <!-- 第二步：手机信息 -->
     <div style="background:#f3e5f5;border-radius:10px;padding:16px;margin-bottom:14px;border-left:4px solid #9c27b0">
@@ -1716,6 +1733,11 @@ window.submitSale = function() {
   const note        = document.getElementById('sNote')?.value || '';
   const modelId     = +(document.getElementById('sModel')?.value || 0);
   const sDate       = document.getElementById('sDate')?.value || today();
+  const emergencyContacts = [1,2,3].map(n => ({
+    name:  document.getElementById('sEmgName'+n)?.value?.trim()||'',
+    phone: document.getElementById('sEmgPhone'+n)?.value?.trim()||'',
+    rel:   document.getElementById('sEmgRel'+n)?.value||'',
+  })).filter(c => c.name || c.phone);
 
   // 从自动计算结果取值
   const principal   = Math.max(0, price - dep);
@@ -1759,6 +1781,7 @@ window.submitSale = function() {
   const sale = {
     id: newContractId(sDate), date: sDate, customer: cust, customerPhone: custPhone,
     shopName, salesperson,
+    emergencyContacts,
     modelId, modelName: ph ? `${ph.brand} ${ph.model} ${ph.storage||''}`.trim() : '',
     salePrice: price, deposit: dep, installmentAmount: principal,
     periods, svcPeriods,
@@ -1967,13 +1990,16 @@ window.filterSales = function() {
 
 window.viewSchedule = function(id) {
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id)); if (!s) return;
+  const emgHtml = (s.emergencyContacts||[]).filter(c=>c.name||c.phone).map(c=>
+    `<span>${c.rel?'['+c.rel+'] ':''}${c.name||''} ${c.phone?'📞'+c.phone:''}</span>`
+  ).join(' &nbsp;|&nbsp; ');
   showModal(`${t('repaySchedule')} — ${esc(s.customer)} (#${s.id})`,
-    `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">
-      ${t("interestMonthRate")}：${(+s.interestRate||0).toFixed(2)}% &nbsp;|&nbsp;
-      ${t("svcFeeMonthRate")}：${(+s.serviceFeeRate||0).toFixed(2)}% (${s.svcPeriods||s.periods}${t("period")}) &nbsp;|&nbsp;
-      ${t("dailyLateFee")}：${fmt(s.dailyLateFee||0)} &nbsp;|&nbsp;
-      ${t("storeRebate")}：${fmt(s.storeRebate||0)}
+    `<div style="font-size:12px;color:var(--muted);margin-bottom:6px">
+      月利率：${(+s.interestRate||0).toFixed(2)}% &nbsp;|&nbsp;
+      每日滞纳金：${fmt(s.dailyLateFee||0)} &nbsp;|&nbsp;
+      店家返点：${fmt(s.storeRebate||0)}
     </div>
+    ${emgHtml ? `<div style="font-size:12px;background:#fff3e0;padding:6px 10px;border-radius:6px;margin-bottom:10px">🆘 紧急联系人：${emgHtml}</div>` : ''}
     <div class="table-wrap"><table>
       <tr><th>${t('period')}</th><th>${t('colDate')}</th><th>${t('colPrincipalPaid')}</th><th>${t('colInterestPaid')}</th><th>${t('colTotal')}</th><th>${t('colStatus')}</th></tr>
       ${s.schedule.map(p => `<tr>
