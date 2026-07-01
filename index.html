@@ -1286,7 +1286,7 @@ function initPage(page) {
 function updateBadges() {
   const td = today();
   const cnt = (DB_get('sales') || []).reduce((c, s) => {
-    if (s.status === '提前结清' || s.status === '已结清') return c;
+    if (s.status === '提前结清') return c;
     return c + s.schedule.filter(p => !p.paid && p.dueDate && p.dueDate < td).length;
   }, 0);
   // Desktop badge
@@ -1344,7 +1344,7 @@ function renderHome() {
   const td = today();
   const overdue = [];
   sales.forEach(s => {
-    if (s.status === '提前结清' || s.status === '已结清') return;
+    if (s.status === '提前结清') return;
     s.schedule.forEach(p => { if (!p.paid && p.dueDate && p.dueDate < td) overdue.push({s, p}); });
   });
   const tPaid = pays.reduce((a, p) => a + (+p.principal) + (+p.interest), 0);
@@ -2906,7 +2906,7 @@ function renderReminderTomorrow() {
 function renderReminderOverdue() {
   const td = today(), sales = DB_get('sales')||[], items = [];
   sales.forEach(s => {
-    if (s.status === '提前结清' || s.status === '已结清') return; // 跳过已结清
+    if (s.status === '提前结清') return; // 跳过已提前结清
     s.schedule.forEach(p => {
       if (!p.paid && p.dueDate && p.dueDate < td) { // dueDate 必须有效
         const days = Math.floor((new Date(td)-new Date(p.dueDate))/86400000);
