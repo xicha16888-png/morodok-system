@@ -277,6 +277,37 @@ tr:hover td{background:#f8faff}
 </head>
 <body>
 
+<!-- ══ 登录遮罩 ══ -->
+<div id="loginOverlay" style="display:none;position:fixed;inset:0;background:linear-gradient(135deg,#0d2137 0%,#1565c0 100%);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:20px;padding:40px 36px;width:340px;max-width:90vw;box-shadow:0 24px 60px rgba(0,0,0,.35)">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="font-size:36px;margin-bottom:8px">📱</div>
+      <div style="font-size:20px;font-weight:800;color:#0d2137;letter-spacing:1px">MORODOK</div>
+      <div style="font-size:12px;color:#90a4ae;margin-top:4px">手机销售分期管理系统</div>
+    </div>
+    <div style="margin-bottom:16px">
+      <label style="font-size:12px;font-weight:600;color:#546e7a;display:block;margin-bottom:6px">用户名</label>
+      <input id="loginUser" type="text" placeholder="请输入用户名" autocomplete="username"
+        style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;font-family:inherit;outline:none;transition:border .2s"
+        onfocus="this.style.borderColor=\'#1565c0\'" onblur="this.style.borderColor=\'#e0e0e0\'"
+        onkeydown="if(event.key===\'Enter\')document.getElementById(\'loginPass\').focus()">
+    </div>
+    <div style="margin-bottom:20px">
+      <label style="font-size:12px;font-weight:600;color:#546e7a;display:block;margin-bottom:6px">密码</label>
+      <input id="loginPass" type="password" placeholder="请输入密码" autocomplete="current-password"
+        style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;font-family:inherit;outline:none;transition:border .2s"
+        onfocus="this.style.borderColor=\'#1565c0\'" onblur="this.style.borderColor=\'#e0e0e0\'"
+        onkeydown="if(event.key===\'Enter\')doLogin()">
+    </div>
+    <div id="loginErr" style="display:none;background:#ffebee;color:#c62828;font-size:12px;padding:10px 14px;border-radius:8px;margin-bottom:16px;text-align:center"></div>
+    <button onclick="doLogin()" id="loginBtn"
+      style="width:100%;padding:14px;background:linear-gradient(135deg,#1565c0,#0d47a1);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.5px">
+      登 录
+    </button>
+    <div style="text-align:center;margin-top:16px;font-size:11px;color:#b0bec5">忘记密码请联系管理员</div>
+  </div>
+</div>
+
 <div class="header">
   <div class="header-title">📱 <span id="headerTitle">手机销售分期管理系统</span></div>
   <div class="header-right">
@@ -288,6 +319,9 @@ tr:hover td{background:#f8faff}
     <button id="langToggle" onclick="toggleLang()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:4px 12px;border-radius:20px;font-size:11px;cursor:pointer;font-family:inherit;transition:all .2s">🌐 EN</button>
     <span class="chip" id="companyName">MORODOK</span>
     <span class="chip" id="dateDisplay"></span>
+    <span id="userChip" style="display:none;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);color:#fff;padding:4px 10px;border-radius:20px;font-size:11px;cursor:default;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <button id="logoutBtn" onclick="doLogout()" style="display:none;background:rgba(220,53,69,.7);border:1px solid rgba(255,255,255,.2);color:#fff;padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;font-family:inherit">退出</button>
+    <span id="auditNotif" onclick="nav('audit')" style="display:none;cursor:pointer;background:#f44336;color:#fff;border-radius:50%;width:22px;height:22px;font-size:11px;font-weight:700;align-items:center;justify-content:center;margin-left:2px" title="有待处理审核">0</span>
   </div>
 </div>
 
@@ -870,9 +904,41 @@ window.toggleLang = function() {
 };
 
 function buildSidebar() {
-  const currentPage = document.querySelector('.nav-item.active')?.dataset?.page || 'home';
+  const currentPage = window._currentPage || 'home';
   const sidebar = document.getElementById('sidebarEl');
   if (!sidebar) return;
+  const u = getCurrentUser();
+  const role = u?.role || 'boss';
+
+  // 判断某页面是否可见
+  function show(page) {
+    if (role === 'boss') return true;
+    const allowed = ROLE_PAGES[role] || [];
+    return Array.isArray(allowed) && allowed.includes(page);
+  }
+  function navItem(page, icon, label, extra='') {
+    if (!show(page)) return '';
+    return `<div class="nav-item" data-page="${page}"><span class="nav-icon">${icon}</span>${label}${extra}</div>`;
+  }
+
+  // 内审员专属侧边栏
+  if (role === 'auditor') {
+    sidebar.innerHTML = `
+      <div class="sb-logo">
+        <div class="sb-logo-sub">内审系统</div>
+        <div class="sb-logo-name">MORODOK</div>
+      </div>
+      <div style="padding:4px 0">
+        <div class="nav-item" data-page="audit"><span class="nav-icon">📋</span>合同审核</div>
+      </div>
+      <div style="height:16px"></div>`;
+    sidebar.querySelectorAll('.nav-item[data-page]').forEach(el => {
+      el.addEventListener('click', () => nav(el.dataset.page));
+      if (el.dataset.page === currentPage) el.classList.add('active');
+    });
+    return;
+  }
+
   sidebar.innerHTML = `
     <div class="sb-logo">
       <div class="sb-logo-sub">${t('systemSub')}</div>
@@ -880,44 +946,54 @@ function buildSidebar() {
     </div>
     <div style="padding:4px 0">
       <div class="sb-label">${t('mainMenu')}</div>
-      <div class="nav-item" data-page="home"><span class="nav-icon">🏠</span>${t('home')}</div>
+      ${navItem('home','🏠',t('home'))}
     </div>
+    ${(show('sale-add')||show('sale-list')||show('payment-add')||show('early-payment'))?`
     <div class="nav-divider"></div>
     <div style="padding:4px 0">
       <div class="sb-label">${t('salesMgmt')}</div>
-      <div class="nav-item" data-page="sale-add"><span class="nav-icon">➕</span>${t('saleAdd')}</div>
-      <div class="nav-item" data-page="sale-list"><span class="nav-icon">🔍</span>${t('saleList')}</div>
-      <div class="nav-item" data-page="payment-add"><span class="nav-icon">💳</span>${t('paymentAdd')}</div>
-      <div class="nav-item" data-page="early-payment"><span class="nav-icon">⚡</span>${t('earlyPayment')}</div>
-    </div>
+      ${navItem('sale-add','➕',t('saleAdd'))}
+      ${navItem('sale-list','🔍',t('saleList'))}
+      ${navItem('payment-add','💳',t('paymentAdd'))}
+      ${navItem('early-payment','⚡',t('earlyPayment'))}
+    </div>`:''}
+    ${(show('stats-collection')||show('stats-profit')||show('finance-report')||show('expenses')||show('store-stats')||show('fund-stats'))?`
     <div class="nav-divider"></div>
     <div style="padding:4px 0">
       <div class="sb-label">${t('reports')}</div>
-      <div class="nav-item" data-page="stats-collection"><span class="nav-icon">📊</span>${t('statsCollection')} 🔐</div>
-      <div class="nav-item" data-page="stats-profit"><span class="nav-icon">💰</span>${t('statsProfit')} 🔐</div>
-      <div class="nav-item" data-page="finance-report"><span class="nav-icon">📈</span>${t('financeReport')} 🔐</div>
-      <div class="nav-item" data-page="expenses"><span class="nav-icon">🧾</span>${t('expenses')} 🔐</div>
-      <div class="nav-item" data-page="store-stats"><span class="nav-icon">🏪</span>${t('storeStats')} 🔐</div>
-      <div class="nav-item" data-page="fund-stats"><span class="nav-icon">🏦</span>资金统计 🔐</div>
-    </div>
+      ${navItem('stats-collection','📊',t('statsCollection'),' 🔐')}
+      ${navItem('stats-profit','💰',t('statsProfit'),' 🔐')}
+      ${navItem('finance-report','📈',t('financeReport'),' 🔐')}
+      ${navItem('expenses','🧾',t('expenses'),' 🔐')}
+      ${navItem('store-stats','🏪',t('storeStats'),' 🔐')}
+      ${navItem('fund-stats','🏦','资金统计 🔐')}
+    </div>`:''}
+    ${(show('reminder-tomorrow')||show('reminder-overdue')||show('payment-query'))?`
     <div class="nav-divider"></div>
     <div style="padding:4px 0">
       <div class="sb-label">${t('reminders')}</div>
-      <div class="nav-item" data-page="reminder-tomorrow"><span class="nav-icon">⏰</span>${t('reminderTomorrow')}</div>
-      <div class="nav-item" data-page="reminder-overdue"><span class="nav-icon">🚨</span>${t('reminderOverdue')}<span class="nav-badge" id="overdueBadge" style="display:none">0</span></div>
-      <div class="nav-item" data-page="payment-query"><span class="nav-icon">📋</span>${t('paymentQuery')}</div>
-    </div>
+      ${navItem('reminder-tomorrow','⏰',t('reminderTomorrow'))}
+      ${show('reminder-overdue')?`<div class="nav-item" data-page="reminder-overdue"><span class="nav-icon">🚨</span>${t('reminderOverdue')}<span class="nav-badge" id="overdueBadge" style="display:none">0</span></div>`:''}
+      ${navItem('payment-query','📋',t('paymentQuery'))}
+    </div>`:''}
+    ${(show('phones')||show('suppliers')||show('purchase-add')||show('inventory')||show('company'))?`
     <div class="nav-divider"></div>
     <div style="padding:4px 0">
       <div class="sb-label">${t('settings')}</div>
-      <div class="nav-item" data-page="phones"><span class="nav-icon">📱</span>${t('phones')}</div>
-      <div class="nav-item" data-page="suppliers"><span class="nav-icon">🏢</span>${t('suppliers')}</div>
-      <div class="nav-item" data-page="purchase-add"><span class="nav-icon">🛒</span>${t('purchaseAdd')}</div>
-      <div class="nav-item" data-page="inventory"><span class="nav-icon">📦</span>${t('inventory')}</div>
-      <div class="nav-item" data-page="company"><span class="nav-icon">⚙️</span>${t('company')}</div>
-    </div>
+      ${navItem('phones','📱',t('phones'))}
+      ${navItem('suppliers','🏢',t('suppliers'))}
+      ${navItem('purchase-add','🛒',t('purchaseAdd'))}
+      ${navItem('inventory','📦',t('inventory'))}
+      ${navItem('company','⚙️',t('company'))}
+    </div>`:''}
+    ${role==='boss'?`
+    <div class="nav-divider"></div>
+    <div style="padding:4px 0">
+      <div class="sb-label">系统管理</div>
+      <div class="nav-item" data-page="user-mgmt"><span class="nav-icon">👥</span>账号管理</div>
+    </div>`:''}
     <div style="height:16px"></div>`;
-  // Bind click events
+
   sidebar.querySelectorAll('.nav-item[data-page]').forEach(el => {
     el.addEventListener('click', () => nav(el.dataset.page));
     if (el.dataset.page === currentPage) el.classList.add('active');
@@ -1190,7 +1266,8 @@ const PAGES = {
   'stats-profit': renderStatsProfit, 'reminder-tomorrow': renderReminderTomorrow,
   'reminder-overdue': renderReminderOverdue, 'payment-query': renderPaymentQuery,
   'phones': renderPhones, 'suppliers': renderSuppliers,
-  'purchase-add': renderPurchaseAdd, 'inventory': renderInventory, 'company': renderCompany
+  'purchase-add': renderPurchaseAdd, 'inventory': renderInventory, 'company': renderCompany,
+  'audit': renderAudit, 'user-mgmt': renderUserMgmt
 };
 
 // Track last sync time
@@ -1230,8 +1307,15 @@ function nav(page) {
   buildSidebar();
   buildMobileNav(page);
   closeMobMore();
-  // 受保护页面：先验证密码
-  if (PROTECTED_PAGES.includes(page) && !_reportUnlocked) {
+  // 权限检查
+  const _u = getCurrentUser();
+  if (!_u) { showLoginOverlay(); return; }
+  if (!canAccess(page)) {
+    alert('您没有权限访问此页面');
+    return;
+  }
+  // 受保护页面：先验证密码（仅老板/主管）
+  if (PROTECTED_PAGES.includes(page) && !_reportUnlocked && (_u.role==='boss'||_u.role==='manager')) {
     requirePassword(page, () => nav(page));
     return;
   }
@@ -1393,6 +1477,141 @@ function periodSelect(id, defaultVal, onchange) {
 const SUPABASE_URL = 'https://mkjvfjocmatgfhwxgamj.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ranZmam9jbWF0Z2Zod3hnYW1qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MzIxNDQsImV4cCI6MjA5NTAwODE0NH0.YDeuCQkt50wK9oHeLWlF_b6IYXeiDtplOWUa1-A4X30';
 const STORAGE_BUCKET = 'FXGJ';
+// ══════════════════════════════════════════════════════
+// 🔐 权限系统 AUTH SYSTEM
+// ══════════════════════════════════════════════════════
+
+// 角色对应可访问页面
+const ROLE_PAGES = {
+  boss:      'all', // 全部页面
+  manager:   ['home','sale-add','sale-list','payment-add','early-payment',
+               'stats-collection','stats-profit','finance-report','expenses',
+               'store-stats','fund-stats','reminder-tomorrow','reminder-overdue',
+               'payment-query','phones','suppliers','purchase-add','inventory','company'],
+  sales:     ['home','sale-add','sale-list','reminder-tomorrow','reminder-overdue','payment-query'],
+  entry:     ['home','sale-add','sale-list','payment-add','early-payment',
+               'reminder-tomorrow','reminder-overdue','payment-query'],
+  collector: ['home','sale-list','payment-add','early-payment',
+               'reminder-tomorrow','reminder-overdue','payment-query'],
+  auditor:   ['audit'],
+};
+
+const ROLE_LABEL = {
+  boss:'老板', manager:'主管', sales:'业务员',
+  entry:'录入员', collector:'催收员', auditor:'内审员'
+};
+
+// SHA-256 加密
+async function sha256(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// 获取当前登录用户
+function getCurrentUser() {
+  try { return JSON.parse(sessionStorage.getItem('morodok_user') || 'null'); }
+  catch(e) { return null; }
+}
+
+// 检查页面访问权限
+function canAccess(page) {
+  const u = getCurrentUser();
+  if (!u) return false;
+  if (u.role === 'boss') return true;
+  const allowed = ROLE_PAGES[u.role] || [];
+  return Array.isArray(allowed) && allowed.includes(page);
+}
+
+// 登录
+window.doLogin = async function() {
+  const username = (document.getElementById('loginUser')?.value||'').trim();
+  const password = (document.getElementById('loginPass')?.value||'').trim();
+  const errEl = document.getElementById('loginErr');
+  const btn = document.getElementById('loginBtn');
+  if (!username || !password) {
+    if(errEl){errEl.textContent='请输入用户名和密码';errEl.style.display='block';}
+    return;
+  }
+  if(btn){btn.textContent='验证中...';btn.disabled=true;}
+  if(errEl) errEl.style.display='none';
+  try {
+    const hash = await sha256(password);
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/morodok_users?username=eq.${encodeURIComponent(username)}&active=eq.true&select=*`,
+      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
+    );
+    const users = await res.json();
+    if (!Array.isArray(users) || users.length === 0) {
+      throw new Error('用户名不存在或已禁用');
+    }
+    const user = users[0];
+    if (user.password_hash !== hash) throw new Error('密码错误');
+    // 保存登录状态
+    sessionStorage.setItem('morodok_user', JSON.stringify({
+      id: user.id, username: user.username,
+      role: user.role, displayName: user.display_name
+    }));
+    // 显示用户信息
+    showUserHeader(user);
+    // 隐藏登录框，启动系统
+    const overlay = document.getElementById('loginOverlay');
+    if(overlay) overlay.style.display = 'none';
+    startApp();
+  } catch(e) {
+    if(errEl){errEl.textContent=e.message||'登录失败';errEl.style.display='block';}
+    if(btn){btn.textContent='登 录';btn.disabled=false;}
+  }
+};
+
+// 退出登录
+window.doLogout = function() {
+  if (!confirm('确定要退出登录吗？')) return;
+  sessionStorage.removeItem('morodok_user');
+  location.reload();
+};
+
+// 显示用户信息到顶部
+function showUserHeader(user) {
+  const chip = document.getElementById('userChip');
+  const btn = document.getElementById('logoutBtn');
+  if(chip) { chip.textContent = `${user.display_name||user.username} · ${ROLE_LABEL[user.role]||user.role}`; chip.style.display='inline-flex'; }
+  if(btn) btn.style.display='inline-block';
+}
+
+// 启动系统（登录后调用）
+async function startApp() {
+  const u = getCurrentUser();
+  if (!u) return;
+  // 内审员直接进审核页
+  if (u.role === 'auditor') {
+    document.getElementById('loadingOverlay')?.classList.remove('show');
+    buildSidebar();
+    nav('audit');
+    return;
+  }
+  tryConnect();
+}
+
+// 刷新内审通知角标
+async function refreshAuditBadge() {
+  const u = getCurrentUser();
+  if (!u || u.role !== 'sales') return;
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/morodok_audits?is_read=eq.false&status=eq.有问题&select=id`,
+      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
+    );
+    const rows = await res.json();
+    const cnt = Array.isArray(rows) ? rows.length : 0;
+    const el = document.getElementById('auditNotif');
+    if (el) {
+      if (cnt > 0) { el.textContent = cnt; el.style.display = 'inline-flex'; }
+      else { el.style.display = 'none'; }
+    }
+  } catch(e) {}
+}
+
+
 
 // 临时存储待上传的图片
 window._pendingImages = {};
@@ -4650,15 +4869,37 @@ window.saveCompany = function() {
 // ══════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════
+// 显示登录页
+function showLoginOverlay() {
+  const o = document.getElementById('loginOverlay');
+  if (o) { o.style.display='flex'; document.getElementById('loadingOverlay')?.classList.remove('show'); }
+}
+
 (async function() {
   // Set language
   const btn = document.getElementById('langToggle');
   if (btn) btn.textContent = getLangLabel(_lang);
   const ht = document.getElementById('headerTitle');
   if (ht) ht.textContent = t('systemTitle');
+  startDateClock();
+
+  // 检查是否已登录
+  const u = getCurrentUser();
+  if (!u) {
+    showLoginOverlay();
+    return; // 等待用户登录
+  }
+  // 已登录：显示用户信息
+  showUserHeader(u);
   buildSidebar();
   buildMobileNav('home');
   showLoading(t('loading'));
+  // 内审员不需要连接DB
+  if (u.role === 'auditor') {
+    document.getElementById('loadingOverlay')?.classList.remove('show');
+    nav('audit');
+    return;
+  }
 
   // Auto-retry — Render free-tier can take up to 90s to wake up
   let retryCount = 0;
@@ -4673,6 +4914,7 @@ window.saveCompany = function() {
     };
     upd(); setInterval(upd, 10000);
   }
+  window.startDateClock = startDateClock;
 
   // Show a nice waking-up screen instead of just spinner
   function showWakingUp() {
@@ -4700,7 +4942,7 @@ window.saveCompany = function() {
     lo.classList.add('show');
   }
 
-  async function tryConnect() {
+  window.tryConnect = async function tryConnect() {
     const result = await loadDB();
     if (result.ok) {
       hideLoading();
@@ -4708,7 +4950,8 @@ window.saveCompany = function() {
       nav(savedPage);
       updateBadges();
       setInterval(updateBadges, 60000);
-      startDateClock();
+      setInterval(refreshAuditBadge, 60000);
+      refreshAuditBadge();
       return;
     }
     const lastErr = result.reason || 'Unknown';
@@ -4742,6 +4985,463 @@ window.saveCompany = function() {
 
   tryConnect();
 })();
+
+// ══════════════════════════════════════════════════════
+// 📋 内审模块 AUDIT MODULE
+// ══════════════════════════════════════════════════════
+function renderAudit() {
+  return `
+  <div class="page-header">
+    <div class="page-title">📋 合同审核</div>
+    <div class="page-sub">查看合同详情 · 审核材料图片 · 标记审核状态</div>
+  </div>
+  <div class="card">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+      <input id="auditSearch" type="text" placeholder="搜索客户姓名 / 合同号" oninput="renderAuditList()"
+        style="flex:1;min-width:180px;padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit">
+      <select id="auditStatus" onchange="renderAuditList()"
+        style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit">
+        <option value="">全部状态</option>
+        <option value="待审核">⏳ 待审核</option>
+        <option value="已通过">✅ 已通过</option>
+        <option value="有问题">⚠️ 有问题</option>
+        <option value="待补充">📌 待补充</option>
+      </select>
+    </div>
+    <div id="auditListWrap"></div>
+  </div>
+  <!-- 审核详情弹窗 -->
+  <div id="auditDetailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;overflow-y:auto;padding:20px;box-sizing:border-box">
+    <div style="background:#fff;border-radius:16px;max-width:860px;margin:0 auto;padding:28px;position:relative">
+      <button onclick="document.getElementById('auditDetailModal').style.display='none'"
+        style="position:absolute;top:16px;right:16px;background:#f5f5f5;border:none;border-radius:50%;width:32px;height:32px;font-size:16px;cursor:pointer">✕</button>
+      <div id="auditDetailContent"></div>
+    </div>
+  </div>`;
+}
+
+window.renderAuditList = async function() {
+  const wrap = document.getElementById('auditListWrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="text-align:center;padding:20px;color:#90a4ae">加载中...</div>';
+
+  const q = (document.getElementById('auditSearch')?.value||'').toLowerCase();
+  const st = document.getElementById('auditStatus')?.value||'';
+
+  // 获取所有合同
+  const sales = (DB_get('sales')||[]).filter(s => {
+    if (q && !s.customer?.toLowerCase().includes(q) && !s.id?.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  // 获取审核记录
+  let auditMap = {};
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/morodok_audits?select=*`,
+      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
+    const rows = await res.json();
+    if (Array.isArray(rows)) rows.forEach(r => { auditMap[r.contract_id] = r; });
+  } catch(e) {}
+
+  // 过滤审核状态
+  const filtered = sales.filter(s => {
+    const audit = auditMap[s.id];
+    const status = audit?.status || '待审核';
+    if (st && status !== st) return false;
+    return true;
+  });
+
+  if (!filtered.length) {
+    wrap.innerHTML = '<div style="text-align:center;padding:30px;color:#90a4ae">暂无合同</div>';
+    return;
+  }
+
+  const statusStyle = {
+    '待审核': 'background:#fff3e0;color:#e65100',
+    '已通过': 'background:#e8f5e9;color:#2e7d32',
+    '有问题': 'background:#ffebee;color:#c62828',
+    '待补充': 'background:#e3f2fd;color:#1565c0'
+  };
+
+  wrap.innerHTML = `<div class="table-wrap"><table>
+    <tr>
+      <th>合同号</th><th>客户</th><th>电话</th><th>型号</th>
+      <th>签约日期</th><th>期数</th><th>审核状态</th><th>操作</th>
+    </tr>
+    ${filtered.map(s => {
+      const audit = auditMap[s.id];
+      const status = audit?.status || '待审核';
+      const sty = statusStyle[status] || '';
+      return `<tr>
+        <td class="fw700 text-blue">#${s.id}</td>
+        <td class="fw700">${esc(s.customer||'')}</td>
+        <td>${esc(s.customerPhone||'')}</td>
+        <td style="font-size:12px">${esc(s.modelName||'-')}</td>
+        <td>${s.date||''}</td>
+        <td>${s.periods||'-'}期</td>
+        <td><span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;${sty}">${status}</span></td>
+        <td><button onclick="openAuditDetail('${s.id}')" class="btn btn-primary btn-sm">审核</button></td>
+      </tr>`;
+    }).join('')}
+  </table></div>`;
+};
+
+window.openAuditDetail = async function(contractId) {
+  const modal = document.getElementById('auditDetailModal');
+  const content = document.getElementById('auditDetailContent');
+  if (!modal || !content) return;
+  modal.style.display = 'block';
+  content.innerHTML = '<div style="text-align:center;padding:30px;color:#90a4ae">加载合同数据...</div>';
+
+  const s = (DB_get('sales')||[]).find(x => String(x.id) === String(contractId));
+  if (!s) { content.innerHTML = '<div style="color:red">合同不存在</div>'; return; }
+
+  // 获取审核记录
+  let audit = null;
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/morodok_audits?contract_id=eq.${contractId}&select=*`,
+      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
+    const rows = await res.json();
+    if (Array.isArray(rows) && rows.length) audit = rows[0];
+  } catch(e) {}
+
+  // 获取图片列表
+  let images = [];
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/storage/v1/object/list/${STORAGE_BUCKET}/contracts/${contractId}`,
+      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
+    const files = await res.json();
+    if (Array.isArray(files)) {
+      images = files.map(f => ({
+        name: f.name,
+        url: `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/contracts/${contractId}/${f.name}`
+      }));
+    }
+  } catch(e) {}
+
+  // 递归获取子文件夹图片
+  if (images.length === 0) {
+    try {
+      const folders = ['身份证正面', '身份证背面', 'FB', '银行流水', '收款码', '其他'];
+      for (const folder of folders) {
+        const res = await fetch(
+          `${SUPABASE_URL}/storage/v1/object/list/${STORAGE_BUCKET}/contracts/${contractId}/${folder}`,
+          { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
+        const files = await res.json();
+        if (Array.isArray(files)) {
+          files.forEach(f => images.push({
+            name: `${folder}/${f.name}`,
+            url: `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/contracts/${contractId}/${folder}/${f.name}`,
+            cat: folder
+          }));
+        }
+      }
+    } catch(e) {}
+  }
+
+  const curStatus = audit?.status || '待审核';
+  const curNotes = audit?.notes || '';
+  const statusStyle = {'待审核':'#e65100','已通过':'#2e7d32','有问题':'#c62828','待补充':'#1565c0'};
+
+  content.innerHTML = `
+    <h3 style="margin:0 0 16px;color:#0d2137">合同审核 — #${s.id}</h3>
+    <!-- 基本信息 -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px">
+      ${[['客户姓名',s.customer],['手机号',s.customerPhone||'—'],['型号',s.modelName||'—'],
+         ['签约日期',s.date],['期数',`${s.periods}期`],['合同金额',`$${fmt(s.installmentAmount||0)}/期`],
+         ['店铺',s.storeName||'—'],['业务员',s.salesperson||'—']].map(([k,v])=>`
+        <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
+          <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${k}</div>
+          <div style="font-weight:600;font-size:13px;color:#263238">${v||'—'}</div>
+        </div>`).join('')}
+    </div>
+
+    <!-- 还款计划 -->
+    <div style="margin-bottom:20px">
+      <div style="font-weight:700;color:#0d2137;margin-bottom:8px;font-size:13px">📅 还款计划</div>
+      <div class="table-wrap" style="max-height:200px;overflow-y:auto"><table>
+        <tr><th>期次</th><th>到期日</th><th>本金</th><th>利息</th><th>状态</th></tr>
+        ${(s.schedule||[]).map(p=>`<tr>
+          <td>${p.period}期</td>
+          <td>${p.dueDate||'—'}</td>
+          <td>$${fmt(+p.principalDue||0)}</td>
+          <td>$${fmt(+p.interestDue||0)}</td>
+          <td>${p.paid?'<span style="color:var(--green)">✅ 已还</span>':'<span style="color:var(--amber)">⏳ 待还</span>'}</td>
+        </tr>`).join('')}
+      </table></div>
+    </div>
+
+    <!-- 图片区 -->
+    <div style="margin-bottom:20px">
+      <div style="font-weight:700;color:#0d2137;margin-bottom:8px;font-size:13px">📎 客户材料（共${images.length}张）</div>
+      ${images.length ? `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
+        ${images.map(img=>`
+        <div style="border-radius:10px;overflow:hidden;border:1px solid #e0e0e0;cursor:pointer" onclick="window.open('${img.url}','_blank')">
+          <img src="${img.url}" style="width:100%;height:100px;object-fit:cover;display:block" onerror="this.style.display='none';this.nextSibling.style.display='flex'">
+          <div style="display:none;height:100px;align-items:center;justify-content:center;background:#f5f5f5;font-size:11px;color:#90a4ae">📄 ${img.name.split('/').pop()}</div>
+          <div style="padding:4px 6px;font-size:10px;color:#78909c;background:#fafafa">${img.cat||''} ${img.name.split('/').pop()}</div>
+        </div>`).join('')}
+      </div>` : '<div style="color:#90a4ae;font-size:13px;padding:10px">暂无上传图片</div>'}
+    </div>
+
+    <!-- 审核操作 -->
+    <div style="background:#f8f9fa;border-radius:12px;padding:16px">
+      <div style="font-weight:700;color:#0d2137;margin-bottom:12px;font-size:13px">✍️ 审核操作</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        ${['已通过','有问题','待补充','待审核'].map(st=>`
+        <button onclick="setAuditStatus('${contractId}','${st}',this)"
+          style="padding:8px 16px;border-radius:20px;border:2px solid ${statusStyle[st]||'#ccc'};
+                 background:${curStatus===st?statusStyle[st]:'transparent'};
+                 color:${curStatus===st?'#fff':statusStyle[st]||'#333'};
+                 font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s"
+          data-st="${st}">
+          ${{ '已通过':'✅ 已通过','有问题':'⚠️ 有问题','待补充':'📌 待补充','待审核':'⏳ 待审核' }[st]}
+        </button>`).join('')}
+      </div>
+      <textarea id="auditNotes_${contractId}" placeholder="审核备注（问题说明、补充要求等）"
+        style="width:100%;box-sizing:border-box;height:80px;padding:10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical">${curNotes}</textarea>
+      <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
+        <button onclick="saveAudit('${contractId}')"
+          style="padding:10px 24px;background:#1565c0;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">
+          💾 保存审核
+        </button>
+        <span id="auditSaveMsg_${contractId}" style="font-size:12px;color:var(--green)"></span>
+      </div>
+    </div>`;
+  // 更新当前状态到全局
+  window._currentAuditStatus = window._currentAuditStatus || {};
+  window._currentAuditStatus[contractId] = curStatus;
+};
+
+window.setAuditStatus = function(contractId, status, btn) {
+  if (!window._currentAuditStatus) window._currentAuditStatus = {};
+  window._currentAuditStatus[contractId] = status;
+  // 更新按钮样式
+  const statusStyle = {'待审核':'#e65100','已通过':'#2e7d32','有问题':'#c62828','待补充':'#1565c0'};
+  btn.closest('div').querySelectorAll('button[data-st]').forEach(b => {
+    const st = b.dataset.st;
+    const color = statusStyle[st] || '#ccc';
+    if (st === status) {
+      b.style.background = color; b.style.color = '#fff';
+    } else {
+      b.style.background = 'transparent'; b.style.color = color;
+    }
+  });
+};
+
+window.saveAudit = async function(contractId) {
+  const u = getCurrentUser();
+  const status = (window._currentAuditStatus||{})[contractId] || '待审核';
+  const notes = document.getElementById(`auditNotes_${contractId}`)?.value || '';
+  const msgEl = document.getElementById(`auditSaveMsg_${contractId}`);
+  const s = (DB_get('sales')||[]).find(x => String(x.id) === String(contractId));
+
+  try {
+    // 查是否已有记录
+    const checkRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/morodok_audits?contract_id=eq.${contractId}&select=id`,
+      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
+    const existing = await checkRes.json();
+
+    const payload = {
+      contract_id: String(contractId),
+      status, notes,
+      auditor_id: u?.id || null,
+      auditor_name: u?.displayName || u?.username || '',
+      sales_name: s?.salesperson || '',
+      is_read: false,
+      updated_at: new Date().toISOString()
+    };
+
+    if (existing.length) {
+      // UPDATE
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/morodok_audits?contract_id=eq.${contractId}`,
+        { method: 'PATCH', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify(payload) });
+    } else {
+      // INSERT
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/morodok_audits`,
+        { method: 'POST', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify(payload) });
+    }
+    if (msgEl) { msgEl.textContent = '✅ 保存成功'; setTimeout(()=>msgEl.textContent='', 3000); }
+    renderAuditList();
+  } catch(e) {
+    if (msgEl) { msgEl.textContent = '❌ 保存失败：'+e.message; msgEl.style.color='red'; }
+  }
+};
+
+// 初始化审核页时自动加载列表
+window._auditPageInited = false;
+const _origInitPage = initPage;
+window.initPage = function(page) {
+  _origInitPage(page);
+  if (page === 'audit') {
+    renderAuditList();
+  }
+};
+
+// ══════════════════════════════════════════════════════
+// 👥 账号管理 USER MANAGEMENT (老板专用)
+// ══════════════════════════════════════════════════════
+function renderUserMgmt() {
+  return `
+  <div class="page-header">
+    <div class="page-title">👥 账号管理</div>
+    <div class="page-sub">创建员工账号 · 分配角色 · 重置密码</div>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div class="card-title" style="margin:0">员工账号列表</div>
+      <button onclick="showAddUserForm()" class="btn btn-primary">➕ 新增账号</button>
+    </div>
+    <div id="userListWrap"><div style="text-align:center;padding:20px;color:#90a4ae">加载中...</div></div>
+  </div>
+  <div class="card" id="addUserCard" style="display:none">
+    <div class="card-title">➕ 新增 / 编辑账号</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#546e7a;display:block;margin-bottom:5px">用户名</label>
+        <input id="nuUsername" type="text" placeholder="登录用户名（英文）"
+          style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#546e7a;display:block;margin-bottom:5px">显示姓名</label>
+        <input id="nuDisplay" type="text" placeholder="员工姓名"
+          style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#546e7a;display:block;margin-bottom:5px">密码</label>
+        <input id="nuPassword" type="password" placeholder="初始密码"
+          style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#546e7a;display:block;margin-bottom:5px">角色</label>
+        <select id="nuRole"
+          style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+          <option value="sales">业务员</option>
+          <option value="entry">录入员</option>
+          <option value="collector">催收员</option>
+          <option value="auditor">内审员</option>
+          <option value="manager">主管</option>
+          <option value="boss">老板</option>
+        </select>
+      </div>
+    </div>
+    <div id="addUserMsg" style="margin-bottom:10px;font-size:12px"></div>
+    <div style="display:flex;gap:10px">
+      <button onclick="saveNewUser()" class="btn btn-primary">💾 保存</button>
+      <button onclick="document.getElementById('addUserCard').style.display='none'" class="btn btn-outline">取消</button>
+    </div>
+  </div>`;
+}
+
+window.showAddUserForm = function() {
+  document.getElementById('addUserCard').style.display = 'block';
+  document.getElementById('nuUsername').value = '';
+  document.getElementById('nuDisplay').value = '';
+  document.getElementById('nuPassword').value = '';
+  document.getElementById('nuRole').value = 'sales';
+  document.getElementById('addUserMsg').textContent = '';
+};
+
+window.saveNewUser = async function() {
+  const username = document.getElementById('nuUsername')?.value.trim();
+  const display  = document.getElementById('nuDisplay')?.value.trim();
+  const password = document.getElementById('nuPassword')?.value.trim();
+  const role     = document.getElementById('nuRole')?.value;
+  const msg = document.getElementById('addUserMsg');
+  if (!username||!display||!password||!role) {
+    if(msg){msg.textContent='❌ 请填写所有字段';msg.style.color='red';} return;
+  }
+  try {
+    const hash = await sha256(password);
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/morodok_users`,
+      { method:'POST', headers:{ 'apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}`,
+        'Content-Type':'application/json','Prefer':'return=minimal' },
+        body: JSON.stringify({ username, password_hash:hash, role, display_name:display, active:true }) });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || '创建失败');
+    }
+    if(msg){msg.textContent='✅ 账号创建成功';msg.style.color='green';}
+    document.getElementById('addUserCard').style.display='none';
+    loadUserList();
+  } catch(e) {
+    if(msg){msg.textContent='❌ '+e.message;msg.style.color='red';}
+  }
+};
+
+window.loadUserList = async function() {
+  const wrap = document.getElementById('userListWrap');
+  if (!wrap) return;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/morodok_users?select=*&order=created_at.asc`,
+      { headers:{ 'apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}` } });
+    const users = await res.json();
+    if (!Array.isArray(users)||!users.length) {
+      wrap.innerHTML='<div style="padding:20px;color:#90a4ae;text-align:center">暂无账号</div>'; return;
+    }
+    const roleBg = {boss:'#ffebee',manager:'#e8eaf6',sales:'#e8f5e9',entry:'#e3f2fd',collector:'#fff3e0',auditor:'#f3e5f5'};
+    const roleColor = {boss:'#c62828',manager:'#283593',sales:'#2e7d32',entry:'#1565c0',collector:'#e65100',auditor:'#6a1b9a'};
+    wrap.innerHTML = `<div class="table-wrap"><table>
+      <tr><th>用户名</th><th>显示姓名</th><th>角色</th><th>状态</th><th>创建时间</th><th>操作</th></tr>
+      ${users.map(u=>`<tr>
+        <td class="fw700">${esc(u.username)}</td>
+        <td>${esc(u.display_name)}</td>
+        <td><span style="padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:${roleBg[u.role]||'#f5f5f5'};color:${roleColor[u.role]||'#333'}">${ROLE_LABEL[u.role]||u.role}</span></td>
+        <td>${u.active?'<span style="color:var(--green)">✅ 正常</span>':'<span style="color:var(--red)">🚫 禁用</span>'}</td>
+        <td style="font-size:12px;color:#90a4ae">${u.created_at?.slice(0,10)||''}</td>
+        <td>
+          <button onclick="resetUserPwd('${u.id}','${esc(u.username)}')" class="btn btn-outline btn-sm" style="font-size:11px;margin-right:4px">🔑 重置密码</button>
+          <button onclick="toggleUserActive('${u.id}',${u.active})" class="btn btn-outline btn-sm" style="font-size:11px;color:${u.active?'var(--red)':'var(--green)'}">${u.active?'禁用':'启用'}</button>
+        </td>
+      </tr>`).join('')}
+    </table></div>`;
+  } catch(e) {
+    wrap.innerHTML = `<div style="color:red;padding:16px">加载失败: ${e.message}</div>`;
+  }
+};
+
+window.resetUserPwd = async function(userId, username) {
+  const newPwd = prompt(`重置 ${username} 的密码：`);
+  if (!newPwd || newPwd.length < 4) { alert('密码至少4位'); return; }
+  try {
+    const hash = await sha256(newPwd);
+    await fetch(`${SUPABASE_URL}/rest/v1/morodok_users?id=eq.${userId}`,
+      { method:'PATCH', headers:{ 'apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}`,
+        'Content-Type':'application/json','Prefer':'return=minimal' },
+        body: JSON.stringify({ password_hash: hash }) });
+    alert(`✅ ${username} 密码已重置为：${newPwd}`);
+  } catch(e) { alert('重置失败：'+e.message); }
+};
+
+window.toggleUserActive = async function(userId, current) {
+  if (!confirm(current?'确定禁用该账号？':'确定启用该账号？')) return;
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/morodok_users?id=eq.${userId}`,
+      { method:'PATCH', headers:{ 'apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}`,
+        'Content-Type':'application/json','Prefer':'return=minimal' },
+        body: JSON.stringify({ active: !current }) });
+    loadUserList();
+  } catch(e) { alert('操作失败：'+e.message); }
+};
+
+// 初始化账号管理页时加载列表
+const _origInitPage2 = window.initPage;
+window.initPage = function(page) {
+  _origInitPage2(page);
+  if (page === 'user-mgmt') loadUserList();
+};
+
+
 </script>
 </body>
 </html>
