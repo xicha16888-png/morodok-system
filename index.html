@@ -2535,11 +2535,19 @@ function renderPaymentAdd() {
     <div id="payMsg"></div>
   </div>
 
-  <!-- 收款记录（按日期分组）-->
+  <!-- 收款记录-->
   <div class="card">
     <div class="card-header" style="flex-wrap:wrap;gap:10px">
       <div class="card-title" style="margin:0">📋 收款记录（${pays.length}笔）</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <div style="display:flex;border:1.5px solid var(--border);border-radius:8px;overflow:hidden;font-size:12px">
+          <button id="payViewDate" onclick="setPayView('date')"
+            style="padding:6px 12px;border:none;background:var(--navy);color:#fff;cursor:pointer;font-family:inherit;font-size:12px">📅 按日期</button>
+          <button id="payViewContract" onclick="setPayView('contract')"
+            style="padding:6px 12px;border:none;background:#fff;color:#546e7a;cursor:pointer;font-family:inherit;font-size:12px">📋 按合同</button>
+          <button id="payViewEarly" onclick="setPayView('early')"
+            style="padding:6px 12px;border:none;background:#fff;color:#546e7a;cursor:pointer;font-family:inherit;font-size:12px">⚡ 提前还款</button>
+        </div>
         <input id="paySearch" placeholder="搜索姓名/合同号..." oninput="filterPays()"
           style="padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit;min-width:160px">
         <select id="payDateFilter" onchange="filterPays()"
@@ -2555,23 +2563,146 @@ function renderPaymentAdd() {
   </div>`;
 }
 
+let _payViewMode = 'date'; // date | contract | early
+
+window.setPayView = function(mode) {
+  _payViewMode = mode;
+  // Update button styles
+  ['date','contract','early'].forEach(m => {
+    const btn = document.getElementById('payView' + m.charAt(0).toUpperCase() + m.slice(1));
+    if (btn) {
+      btn.style.background = m === mode ? 'var(--navy)' : '#fff';
+      btn.style.color = m === mode ? '#fff' : '#546e7a';
+    }
+  });
+  filterPays();
+};
+
 window.filterPays = function() {
-  const q = (document.getElementById('paySearch')?.value||'').toLowerCase();
+  const q  = (document.getElementById('paySearch')?.value||'').toLowerCase();
   const df = document.getElementById('payDateFilter')?.value||'';
   const td = today();
-  const u = getCurrentUser();
-  const isCollector = u?.role === 'collector';
+  const u  = getCurrentUser();
+  const isC = u?.role === 'collector';
+
   let pays = (DB_get('payments')||[]).slice().reverse();
-  if (q) pays = pays.filter(p => (p.customer||'').toLowerCase().includes(q) || String(p.contractId).includes(q));
+  if (q)  pays = pays.filter(p => (p.customer||'').toLowerCase().includes(q) || String(p.contractId).includes(q));
   if (df === 'today') pays = pays.filter(p => (p.date||'').replace(/\//g,'-') === td);
-  else if (df === 'week') {
-    const wStart = addDays(td, -6);
-    pays = pays.filter(p => { const d=(p.date||'').replace(/\//g,'-'); return d>=wStart&&d<=td; });
-  }
-  else if (df === 'month') pays = pays.filter(p => (p.date||'').replace(/\//g,'-').slice(0,7) === td.slice(0,7));
+  else if (df === 'week')  { const w=addDays(td,-6); pays=pays.filter(p=>{const d=(p.date||'').replace(/\//g,'-');return d>=w&&d<=td;}); }
+  else if (df === 'month') pays=pays.filter(p=>(p.date||'').replace(/\//g,'-').slice(0,7)===td.slice(0,7));
+
   const wrap = document.getElementById('payTableWrap');
-  if (wrap) wrap.innerHTML = buildPayTableGrouped(pays, isCollector);
+  if (!wrap) return;
+
+  if (_payViewMode === 'contract') wrap.innerHTML = buildPayTableByContract(pays, isC);
+  else if (_payViewMode === 'early') wrap.innerHTML = buildPayTableEarly(pays, isC);
+  else wrap.innerHTML = buildPayTableGrouped(pays, isC);
 };
+
+// ── 按合同+期次排列 ──
+function buildPayTableByContract(pays, isCollector) {
+  if (!pays.length) return `<div class="empty-state"><div class="ei">📝</div><p>暂无记录</p></div>`;
+  const sales = DB_get('sales') || [];
+  // 按合同分组
+  const groups = {};
+  pays.forEach(p => {
+    if (!groups[p.contractId]) groups[p.contractId] = [];
+    groups[p.contractId].push(p);
+  });
+
+  return Object.keys(groups).sort().map(cid => {
+    const s = sales.find(x => String(x.id) === String(cid));
+    const cPays = groups[cid].slice().sort((a,b) => a.period - b.period);
+    const total = cPays.reduce((a,p)=>a+(+p.principal||0)+(+p.interest||0)+(+p.penalty||0),0);
+    return `
+    <div style="margin-bottom:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--navy);color:#fff;border-radius:8px 8px 0 0;font-size:12px">
+        <span style="font-weight:700">${esc(s?.customer || cid)} <span style="opacity:.7;font-size:11px">#${cid}</span></span>
+        <span>${cPays.length}期 · <b style="color:#81d4fa">${fmt(total)}</b></span>
+      </div>
+      <div style="border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
+        ${cPays.map((p,i) => {
+          const tot = (+p.principal||0)+(+p.interest||0)+(+p.penalty||0);
+          const isEarly = p.isEarlyPaid;
+          const bg = isEarly ? '#e8f5e9' : (i%2===0?'#fff':'#f9fafb');
+          const borderLeft = isEarly ? 'border-left:3px solid #4caf50;' : '';
+          return `<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:${bg};${borderLeft}border-bottom:1px solid #f0f0f0;flex-wrap:wrap">
+            <div style="flex:1;min-width:100px">
+              <span style="font-weight:700;color:var(--blue)">第${p.period}期</span>
+              ${isEarly ? '<span style="background:#e8f5e9;color:#2e7d32;font-size:10px;padding:1px 7px;border-radius:8px;margin-left:6px;font-weight:700">⚡提前</span>' : ''}
+              <span style="font-size:11px;color:#90a4ae;margin-left:6px">${p.date}</span>
+            </div>
+            ${isCollector ? `<b style="color:var(--green)">${fmt(tot)}</b>` : `
+            <div style="font-size:12px;color:#546e7a">
+              本金 <b>${fmt(p.principal)}</b> · 利息 <b>${fmt((+p.interest||0))}</b>
+              ${(+p.penalty||0)>0?` · 滞纳 <b style="color:var(--red)">${fmt(p.penalty)}</b>`:''}
+              <b style="color:var(--green);margin-left:6px">${fmt(tot)}</b>
+            </div>`}
+            <div style="display:flex;gap:4px">
+              <button onclick="editPayment(${p.id})" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px">✏️</button>
+              <button onclick="deletePayment(${p.id})" class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 8px">🗑️</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── 提前还款视图 ──
+function buildPayTableEarly(pays, isCollector) {
+  const sales = DB_get('sales') || [];
+  const td = today();
+  // 提前还款 = 付款日期早于期次到期日 的付款（isEarlyPaid标记 或 日期倒推）
+  const earlyPays = pays.filter(p => {
+    if (p.isEarlyPaid) return true;
+    // 查合同期次到期日
+    const s = sales.find(x => String(x.id) === String(p.contractId));
+    const sch = s?.schedule?.find(x => x.period === p.period);
+    if (!sch?.dueDate) return false;
+    const dueD = sch.dueDate.replace(/\//g,'-');
+    const payD = (p.date||'').replace(/\//g,'-');
+    return payD < dueD; // 付款日 < 到期日 = 提前
+  });
+
+  if (!earlyPays.length) return `<div class="empty-state"><div class="ei">⚡</div><p>暂无提前还款记录</p></div>`;
+
+  const total = earlyPays.reduce((a,p)=>a+(+p.principal||0)+(+p.interest||0)+(+p.penalty||0),0);
+  return `
+  <div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:13px">
+    ⚡ 共 <b>${earlyPays.length}</b> 笔提前还款 · 合计 <b style="color:var(--green)">${fmt(total)}</b>
+  </div>
+  <div style="border:1px solid #e0e0e0;border-radius:10px;overflow:hidden">
+    ${earlyPays.map((p,i) => {
+      const tot = (+p.principal||0)+(+p.interest||0)+(+p.penalty||0);
+      const s = sales.find(x => String(x.id) === String(p.contractId));
+      const sch = s?.schedule?.find(x => x.period === p.period);
+      const dueD = (sch?.dueDate||'').replace(/\//g,'-');
+      const payD = (p.date||'').replace(/\//g,'-');
+      const dayEarly = dueD ? Math.floor((new Date(dueD)-new Date(payD))/86400000) : 0;
+      const bg = i%2===0?'#fff':'#f9fafb';
+      return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:${bg};border-bottom:1px solid #f0f0f0;flex-wrap:wrap">
+        <div style="flex:1;min-width:130px">
+          <div style="font-weight:700;font-size:13px">${esc(p.customer)}
+            <span style="background:#e8f5e9;color:#2e7d32;font-size:10px;padding:1px 7px;border-radius:8px;margin-left:4px;font-weight:700">⚡提前${dayEarly>0?dayEarly+'天':''}</span>
+          </div>
+          <div style="font-size:11px;color:#90a4ae">#${p.contractId} · 第${p.period}期 · 付款日 ${payD} · 原到期 ${dueD}</div>
+        </div>
+        <div style="text-align:right">
+          ${isCollector ? `<b style="color:var(--green);font-size:15px">${fmt(tot)}</b>` : `
+          <div style="font-size:12px;color:#546e7a">本金 ${fmt(p.principal)} · 利息 ${fmt(p.interest||0)}</div>
+          <b style="color:var(--green)">${fmt(tot)}</b>`}
+        </div>
+        <div style="display:flex;gap:4px">
+          <button onclick="editPayment(${p.id})" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px">✏️</button>
+          <button onclick="deletePayment(${p.id})" class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 8px">🗑️</button>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+
 
 // 催收员：按合同比例自动拆分本金/利息
 window.calcCollectorTotal = function() {
@@ -2624,11 +2755,14 @@ function buildPayTableGrouped(pays, isCollector) {
       <div style="border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
         ${dayPays.map((p,i) => {
           const total = (+p.principal||0)+(+p.interest||0)+(+p.serviceFee||0)+(+p.penalty||0);
-          const bg = i%2===0?'#fff':'#f9fafb';
-          return `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:${bg};border-bottom:1px solid #f0f0f0;flex-wrap:wrap">
+          const isEarly = p.isEarlyPaid;
+          const bg = isEarly ? '#e8f5e9' : (i%2===0?'#fff':'#f9fafb');
+          const borderLeft = isEarly ? 'border-left:3px solid #4caf50;' : '';
+          return `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:${bg};${borderLeft}border-bottom:1px solid #f0f0f0;flex-wrap:wrap">
             <div style="flex:1;min-width:120px">
               <div style="font-weight:700;font-size:13px">${esc(p.customer)}
                 ${p.isPartial ? '<span style="background:#fff3e0;color:#e65100;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">部分收款</span>' : ''}
+                ${isEarly ? '<span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">⚡提前还款</span>' : ''}
               </div>
               <div style="font-size:11px;color:#90a4ae">#${p.contractId} · 第${p.period}期${p.shortfall>0?` · 差额 <b style="color:var(--red)">${fmt(p.shortfall)}</b>`:''}</div>
             </div>
@@ -5616,15 +5750,19 @@ window.importExcel = function(input) {
 
           // 已还期次 → 准备生成收款记录
           if (isPaid && (paidPrincipal > 0 || paidInterest > 0 || paidPenalty > 0)) {
+            const payDate = dueDate || contractDate;
+            const isEarlyPaid = dueDate && dueDate.replace(/\//g,'-') > today(); // 到期日在今天之后=提前还款
             periodPayments.push({
               contractId,
               customer: custEn || custKh,
               period: p + 1,
-              date: dueDate || contractDate,
+              date: isEarlyPaid ? today() : payDate, // 提前还款用今天作为实际收款日
               principal: paidPrincipal,
               interest: paidInterest,
               serviceFee: 0,
               penalty: paidPenalty,
+              isEarlyPaid,
+              dueDateOriginal: dueDate,
             });
           }
         }
