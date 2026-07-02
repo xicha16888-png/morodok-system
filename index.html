@@ -1451,15 +1451,16 @@ function renderHome() {
   return `
   <div class="page-header">
     <div class="page-title">🏠 ${t('homeWelcome')}</div>
-    <div class="page-sub">${td} · ${t('homeSub')}</div>
+    <div class="page-sub">${td}</div>
   </div>
+  ${(()=>{const u=getCurrentUser();return(u&&(u.role==='boss'||u.role==='manager'))?`
   <div class="stats-grid">
     <div class="stat-card blue"><span class="stat-icon">📋</span><div class="stat-label">${t('totalContracts')}</div><div class="stat-value">${sales.length}</div><div class="stat-sub">${sales.filter(s=>s.status==='进行中'||s.status==='Active').length} ${t('inProgress')} · ${sales.filter(s=>s.status==='提前结清'||s.status==='Early Settled').length} ${t('earlySettledCount')}</div></div>
     <div class="stat-card green"><span class="stat-icon">💵</span><div class="stat-label">${t('collected')}</div><div class="stat-value">${fmt(tPaid)}</div></div>
     <div class="stat-card amber"><span class="stat-icon">⏳</span><div class="stat-label">${t('pendingPrincipal')}</div><div class="stat-value">${fmt(pending)}</div></div>
     <div class="stat-card red"><span class="stat-icon">🚨</span><div class="stat-label">${t('overdueOrders')}</div><div class="stat-value">${overdue.length}</div></div>
-  </div>
-  ${overdue.length > 0 ? `<div class="alert alert-red">⚠️ ${overdue.length} ${_lang==='km'?'—':_lang==='zh'?'笔逾期，合计':'overdue,'} ${fmt(overdue.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}<button class="btn btn-danger btn-sm" style="margin-left:12px" onclick="nav('reminder-overdue')">${_lang==='zh'?'立即查看':t("viewNow")}</button></div>` : ''}
+  </div>`:''})()}
+  
   <div class="home-grid">
     ${[['➕',t('saleAdd'),t('newContractSub').slice(0,10),'sale-add'],['💳',t('paymentAdd'),_lang==='km'?'ចុះបង្ហាញការទូទាត់':_lang==='zh'?'录入收款记录':'Record payment','payment-add'],
        ['📊',t('statsCollection')+'🔐',_lang==='km'?'សង្ខេបប្រចាំខែ':_lang==='zh'?'月度汇总':'Monthly summary','stats-collection'],['💰',t('statsProfit')+'🔐',_lang==='km'?'វិភាគប្រាក់ចំណេញ':_lang==='zh'?'盈利分析':'Profit analysis','stats-profit'],
