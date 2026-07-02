@@ -2285,16 +2285,27 @@ window.filterSales = function() {
 
 window.viewSchedule = function(id) {
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id)); if (!s) return;
-  const emgHtml = (s.emergencyContacts||[]).filter(c=>c.name||c.phone).map(c=>
-    `<span>${c.rel?'['+c.rel+'] ':''}${c.name||''} ${c.phone?'📞'+c.phone:''}</span>`
-  ).join(' &nbsp;|&nbsp; ');
+  const contacts = (s.emergencyContacts||[]).filter(c=>c.name||c.phone);
+  const emgHtml = contacts.length ? `
+    <div style="margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;color:#546e7a;margin-bottom:8px">🆘 紧急联系人</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        ${contacts.map((c,i)=>`
+        <div style="background:#fff9f0;border:1px solid #ffe082;border-radius:10px;padding:10px 14px;min-width:140px;flex:1">
+          <div style="font-size:10px;color:#90a4ae;margin-bottom:3px">联系人 ${i+1}</div>
+          <div style="font-weight:700;font-size:14px;color:#263238">${esc(c.name||'—')}</div>
+          ${c.rel?`<div style="font-size:11px;color:#78909c;margin-bottom:4px">${esc(c.rel)}</div>`:''}
+          ${c.phone?`<a href="tel:${c.phone}" style="display:inline-flex;align-items:center;gap:5px;color:#e65100;font-weight:700;font-size:14px;text-decoration:none">📞 ${c.phone}</a>`:''}
+        </div>`).join('')}
+      </div>
+    </div>` : '';
   showModal(`${t('repaySchedule')} — ${esc(s.customer)} (#${s.id})`,
-    `<div style="font-size:12px;color:var(--muted);margin-bottom:6px">
+    `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">
       月利率：${(+s.interestRate||0).toFixed(2)}% &nbsp;|&nbsp;
       每日滞纳金：${fmt(s.dailyLateFee||0)} &nbsp;|&nbsp;
       店家返点：${fmt(s.storeRebate||0)}
     </div>
-    ${emgHtml ? `<div style="font-size:12px;background:#fff3e0;padding:6px 10px;border-radius:6px;margin-bottom:10px">🆘 紧急联系人：${emgHtml}</div>` : ''}
+    ${emgHtml}
     <div class="table-wrap"><table>
       <tr><th>${t('period')}</th><th>${t('colDate')}</th><th>${t('colPrincipalPaid')}</th><th>${t('colInterestPaid')}</th><th>${t('colTotal')}</th><th>${t('colStatus')}</th></tr>
       ${s.schedule.map(p => `<tr>
@@ -3156,26 +3167,92 @@ function renderReminderTomorrow() {
 function renderReminderOverdue() {
   const td = today(), sales = DB_get('sales')||[], items = [];
   sales.forEach(s => {
-    if (s.status === '提前结清') return; // 跳过已提前结清
+    if (s.status === '提前结清') return;
     s.schedule.forEach(p => {
-      if (!p.paid && p.dueDate && p.dueDate.replace(/\//g,'-') < td) { // dueDate 必须有效
+      if (!p.paid && p.dueDate && p.dueDate.replace(/\//g,'-') < td) {
         const days = Math.floor((new Date(td)-new Date(p.dueDate))/86400000);
-        if (days >= 0) items.push({s,p,days}); // 防止异常日期导致负数
+        if (days >= 0) items.push({s,p,days});
       }
     });
   });
-  items.sort((a,b) => a.days-b.days);
+
+  function emgCards(s) {
+    const contacts = (s.emergencyContacts||[]).filter(c=>c.name||c.phone);
+    if (!contacts.length) return '<div style="font-size:12px;color:#90a4ae">暂无紧急联系人</div>';
+    return `<div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${contacts.map((c,i)=>`
+      <div style="background:#fff;border:1px solid #ffe082;border-radius:10px;padding:10px 12px;min-width:130px;flex:1">
+        <div style="font-size:10px;color:#90a4ae;margin-bottom:3px">联系人 ${i+1}</div>
+        <div style="font-weight:700;font-size:13px;color:#263238">${esc(c.name||'—')}</div>
+        ${c.rel?`<div style="font-size:11px;color:#78909c">${esc(c.rel)}</div>`:''}
+        ${c.phone?`<a href="tel:${c.phone}" style="display:inline-flex;align-items:center;gap:4px;color:#e65100;font-weight:700;font-size:13px;text-decoration:none;margin-top:3px">📞 ${c.phone}</a>`:''}
+      </div>`).join('')}
+    </div>`;
+  }
+
+  // 按合同聚合
+  const contractMap = {};
+  items.forEach(({s,p,days}) => {
+    if (!contractMap[s.id]) contractMap[s.id] = {s, periods:[], maxDays:0};
+    contractMap[s.id].periods.push({p,days});
+    contractMap[s.id].maxDays = Math.max(contractMap[s.id].maxDays, days);
+  });
+  const contracts = Object.values(contractMap).sort((a,b)=>b.maxDays-a.maxDays);
+  const totalOwedAll = items.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
+
   return `
   <div class="page-header"><div class="page-title">🚨 ${t('overdueTitle')}</div></div>
-  ${items.length?`<div class="alert alert-red">⚠️ ${items.length} — ${fmt(items.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}</div>`:`<div class="alert alert-green">✅ ${t('noOverdue')}</div>`}
-  <div class="card">${items.map(({s,p,days})=>`
-    <div class="reminder-item ${days>30?'overdue':'warn'}">
-      <div><div class="fw700">${esc(s.customer)} <span class="text-muted" style="font-weight:400;font-size:12px">${esc(s.customerPhone||'')}</span></div>
-        <div style="font-size:12px;color:var(--muted)">#${s.id} · ${p.period}/${s.periods} ${t("period")} · 到期日：${p.dueDate}</div></div>
-      <div style="text-align:right"><div class="fw700 text-red" style="font-size:15px">${fmt((+p.principalDue)+(+p.interestDue))}</div>
-        <span class="badge badge-red">${t("daysOverdue")} ${days} ${t("days")}</span><br>
-        <button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="navToPayment('${s.id}',${p.period})">${t('registerPayment')}</button></div>
-    </div>`).join('')||`<div class="empty-state"><div class="ei">🏅</div><p>${t('noOverdue')}</p></div>`}
+  ${items.length
+    ? `<div class="alert alert-red">⚠️ 共 <b>${contracts.length}</b> 个客户 · <b>${items.length}</b> 笔逾期 · 合计欠款 <b>${fmt(totalOwedAll)}</b></div>`
+    : `<div class="alert alert-green">✅ ${t('noOverdue')}</div>`}
+  <div class="card" style="padding:0;overflow:hidden">
+    ${contracts.map(({s, periods, maxDays}) => {
+      const totalOwed = periods.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
+      const color = maxDays>=30?'var(--red)':maxDays>=15?'var(--amber)':'#f57f17';
+      const bg = maxDays>=30?'#ffebee':maxDays>=15?'#fff8e1':'#fffde7';
+      const uid = 'od_'+s.id;
+      return `
+      <div style="border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;background:#fff"
+          onclick="const d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'block':'none'">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:14px">${esc(s.customer)}
+              <span style="font-weight:400;font-size:12px;color:#90a4ae;margin-left:6px">${esc(s.customerPhone||'')}</span>
+            </div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">
+              #${s.id} · ${s.modelName||'-'} · <b style="color:${color}">${periods.length}</b> 笔逾期
+            </div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-weight:800;font-size:16px;color:var(--red)">${fmt(totalOwed)}</div>
+            <span style="background:${bg};color:${color};padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700">最长 ${maxDays} 天</span>
+          </div>
+          <div style="color:#bbb;font-size:14px">▾</div>
+        </div>
+        <div id="${uid}" style="display:none;background:#fafafa;padding:14px 16px;border-top:1px solid #f0f0f0">
+          <div style="font-size:12px;font-weight:700;color:#546e7a;margin-bottom:8px">📅 逾期期次明细</div>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+            ${periods.map(({p,days})=>`
+            <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:8px 12px">
+              <div>
+                <span style="font-weight:700;color:#1565c0">第 ${p.period} 期</span>
+                <span style="font-size:12px;color:#90a4ae;margin-left:8px">到期 ${p.dueDate}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-weight:700;color:var(--red)">${fmt((+p.principalDue||0)+(+p.interestDue||0))}</span>
+                <span style="background:${days>=30?'#ffebee':days>=15?'#fff3e0':'#fff8e1'};color:${days>=30?'var(--red)':days>=15?'var(--amber)':'#f57f17'};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${days}天</span>
+                <button onclick="event.stopPropagation();navToPayment('${s.id}',${p.period})" class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 10px">${t('registerPayment')}</button>
+              </div>
+            </div>`).join('')}
+          </div>
+          <div style="font-size:12px;font-weight:700;color:#546e7a;margin-bottom:8px">🆘 紧急联系人</div>
+          ${emgCards(s)}
+          <div style="margin-top:12px">
+            <button onclick="viewSchedule('${s.id}')" class="btn btn-outline btn-sm">📋 查看完整还款计划</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('')||`<div class="empty-state" style="padding:40px"><div class="ei">🏅</div><p>${t('noOverdue')}</p></div>`}
   </div>`;
 }
 
