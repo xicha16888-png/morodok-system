@@ -2461,27 +2461,70 @@ window.deleteSale = function(id) {
 // ══════════════════════════════════════════════════════
 function renderPaymentAdd() {
   const sales = (DB_get('sales')||[]).filter(s => s.status === '进行中');
-  const pendingId = window._resolvedContractId || '';
-  const pendingPeriod = window._pendingPayPeriod || '';
   const pendingText = window._pendingPayText || '';
   const opts = sales.map(s => `<option value="#${s.id} — ${s.customer} (${s.periods}期 每期${fmt(s.monthlyPayment)})" data-id="${s.id}"></option>`).join('');
   const pays = (DB_get('payments')||[]).slice().reverse();
+  const u = getCurrentUser();
+  const isCollector = u?.role === 'collector';
+
+  // 今日/本月快览
+  const td = today();
+  const todayPays  = pays.filter(p => (p.date||'').replace(/\//g,'-') === td);
+  const todayAmt   = todayPays.reduce((a,p)=>a+(+p.principal||0)+(+p.interest||0)+(+p.penalty||0),0);
+  const monthPfx   = td.slice(0,7);
+  const monthPays  = pays.filter(p => (p.date||'').replace(/\//g,'-').slice(0,7) === monthPfx);
+  const monthAmt   = monthPays.reduce((a,p)=>a+(+p.principal||0)+(+p.interest||0)+(+p.penalty||0),0);
+
   return `
   <div class="page-header"><div class="page-title">💳 ${t('paymentTitle')}</div></div>
+
+  <!-- 今日快览 -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
+    <div style="background:#fff;border-radius:10px;padding:14px 16px;border-left:4px solid var(--green);box-shadow:0 1px 4px rgba(0,0,0,.07)">
+      <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">今日收款</div>
+      <div style="font-size:20px;font-weight:800;color:var(--green)">${fmt(todayAmt)}</div>
+      <div style="font-size:11px;color:#90a4ae;margin-top:2px">${todayPays.length} 笔</div>
+    </div>
+    <div style="background:#fff;border-radius:10px;padding:14px 16px;border-left:4px solid var(--blue);box-shadow:0 1px 4px rgba(0,0,0,.07)">
+      <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">本月收款</div>
+      <div style="font-size:20px;font-weight:800;color:var(--blue)">${fmt(monthAmt)}</div>
+      <div style="font-size:11px;color:#90a4ae;margin-top:2px">${monthPays.length} 笔</div>
+    </div>
+    <div style="background:#fff;border-radius:10px;padding:14px 16px;border-left:4px solid var(--amber);box-shadow:0 1px 4px rgba(0,0,0,.07)">
+      <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">总记录</div>
+      <div style="font-size:20px;font-weight:800;color:var(--amber)">${pays.length}</div>
+      <div style="font-size:11px;color:#90a4ae;margin-top:2px">全部收款记录</div>
+    </div>
+  </div>
+
+  <!-- 录入表单 -->
   <div class="card">
     <div class="form-grid">
       <div class="form-group span3"><label>${t('selectContract')}</label>
         <datalist id="pContractList">${opts}</datalist>
         <input id="pContract" list="pContractList" placeholder="输入客户名或合同号搜索..." value="${pendingText}" oninput="resolveContract()" style="width:100%">
       </div>
-      <div class="form-group"><label>${t("paymentDate")}</label><input type="date" id="pDate" value="${today()}"></div>
+      <div class="form-group"><label>${t("paymentDate")}</label><input type="date" id="pDate" value="${td}"></div>
       <div class="form-group"><label>${t("payPeriod")}</label><select id="pPeriod" onchange="autoFillPayment()"></select></div>
+      ${isCollector ? `
+      <div class="form-group">
+        <label>应还总额</label>
+        <input id="pExpected" readonly style="background:#f5f5f5;color:#546e7a;font-size:14px;font-weight:600">
+      </div>
+      <div class="form-group">
+        <label style="color:var(--green);font-weight:700">实收总额 ($) <span style="font-size:11px;font-weight:400;color:#90a4ae">本金+利息</span></label>
+        <input type="number" id="pTotalReceived" placeholder="0.00" step="0.01" oninput="calcCollectorTotal()"
+          style="border:2px solid var(--green);font-size:15px;font-weight:700">
+      </div>
+      <div class="form-group"><label>实收滞纳金 ($)</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcCollectorTotal()"></div>
+      <div class="form-group"><label>实收合计</label><input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px"></div>
+      <input type="hidden" id="pPrincipal"><input type="hidden" id="pInterest">
+      ` : `
       <div class="form-group"><label>${t("paidPrincipal")}</label><input type="number" id="pPrincipal" placeholder="0.00" step="0.01" oninput="calcPayTotal()"></div>
       <div class="form-group"><label>${t("colInterestPaid")}</label><input type="number" id="pInterest" placeholder="0.00" step="0.01" oninput="calcPayTotal()"></div>
-      <div class="form-group"><label>${_lang==='zh'?'实收滞纳金':_lang==='en'?'Penalty Received':'ពិន័យដែលបានទទួល'}</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcPayTotal()"></div>
-      <div class="form-group"><label>${_lang==='km'?'សរុបទូទាត់':_lang==='en'?'Total Payment ($)':'总还款金额 ($)'}</label>
-        <input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px">
-      </div>
+      <div class="form-group"><label>实收滞纳金 ($)</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcPayTotal()"></div>
+      <div class="form-group"><label>总还款金额 ($)</label><input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px"></div>
+      `}
       <div class="form-group"><label>备注</label><input id="pNote" placeholder="可选"></div>
     </div>
     <div class="btn-row">
@@ -2490,24 +2533,125 @@ function renderPaymentAdd() {
     </div>
     <div id="payMsg"></div>
   </div>
+
+  <!-- 收款记录（按日期分组）-->
   <div class="card">
-    <div class="card-header">
-      <div class="card-title">${t("recentPayments")}（${pays.length}笔）</div>
-      <div class="search-row" style="margin:0">
-        <input id="paySearch" placeholder="${_lang==='km'?'ស្វែងរកអតិថិជន...':_lang==='en'?'Search customer...':'搜索客户...'}" oninput="filterPays()" style="max-width:200px">
+    <div class="card-header" style="flex-wrap:wrap;gap:10px">
+      <div class="card-title" style="margin:0">📋 收款记录（${pays.length}笔）</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input id="paySearch" placeholder="搜索姓名/合同号..." oninput="filterPays()"
+          style="padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit;min-width:160px">
+        <select id="payDateFilter" onchange="filterPays()"
+          style="padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit">
+          <option value="">全部日期</option>
+          <option value="today">今天</option>
+          <option value="week">本周</option>
+          <option value="month">本月</option>
+        </select>
       </div>
     </div>
-    <div id="payTableWrap">${buildPayTable(pays)}</div>
+    <div id="payTableWrap">${buildPayTableGrouped(pays, isCollector)}</div>
   </div>`;
 }
 
 window.filterPays = function() {
   const q = (document.getElementById('paySearch')?.value||'').toLowerCase();
+  const df = document.getElementById('payDateFilter')?.value||'';
+  const td = today();
+  const u = getCurrentUser();
+  const isCollector = u?.role === 'collector';
   let pays = (DB_get('payments')||[]).slice().reverse();
-  if (q) pays = pays.filter(p => p.customer.toLowerCase().includes(q) || String(p.contractId).includes(q));
+  if (q) pays = pays.filter(p => (p.customer||'').toLowerCase().includes(q) || String(p.contractId).includes(q));
+  if (df === 'today') pays = pays.filter(p => (p.date||'').replace(/\//g,'-') === td);
+  else if (df === 'week') {
+    const wStart = addDays(td, -6);
+    pays = pays.filter(p => { const d=(p.date||'').replace(/\//g,'-'); return d>=wStart&&d<=td; });
+  }
+  else if (df === 'month') pays = pays.filter(p => (p.date||'').replace(/\//g,'-').slice(0,7) === td.slice(0,7));
   const wrap = document.getElementById('payTableWrap');
-  if (wrap) wrap.innerHTML = buildPayTable(pays);
+  if (wrap) wrap.innerHTML = buildPayTableGrouped(pays, isCollector);
 };
+
+// 催收员：按合同比例自动拆分本金/利息
+window.calcCollectorTotal = function() {
+  const received = +(document.getElementById('pTotalReceived')?.value||0);
+  const penalty  = +(document.getElementById('pPenalty')?.value||0);
+  const tot = document.getElementById('pTotal');
+  if (tot) tot.value = fmt(received + penalty);
+
+  // 自动按应还比例拆分本金/利息到隐藏字段
+  const id = window._resolvedContractId||'';
+  const period = +(document.getElementById('pPeriod')?.value||0);
+  const s = (DB_get('sales')||[]).find(x=>String(x.id)===String(id));
+  const p = s?.schedule.find(x=>x.period===period);
+  if (p) {
+    const totalDue = (+p.principalDue||0)+(+p.interestDue||0);
+    const ratio = totalDue > 0 ? received/totalDue : 0;
+    const pi = document.getElementById('pPrincipal');
+    const ii = document.getElementById('pInterest');
+    if (pi) pi.value = Math.min(received, (+p.principalDue||0) * ratio).toFixed(2);
+    if (ii) ii.value = Math.min(received - (+p.principalDue||0) * ratio, (+p.interestDue||0) * ratio).toFixed(2);
+    // 简单方法：按应还直接填，超付算本金
+    const principal = Math.min(received, +p.principalDue||0);
+    const interest  = Math.max(0, received - principal);
+    if (pi) pi.value = principal.toFixed(2);
+    if (ii) ii.value = interest.toFixed(2);
+  }
+};
+
+// 收款记录按日期分组显示
+function buildPayTableGrouped(pays, isCollector) {
+  if (!pays.length) return `<div class="empty-state"><div class="ei">📝</div><p>${t('noRecord')}</p></div>`;
+
+  // 按日期分组
+  const groups = {};
+  pays.forEach(p => {
+    const d = (p.date||'').replace(/\//g,'-');
+    if (!groups[d]) groups[d] = [];
+    groups[d].push(p);
+  });
+
+  return Object.keys(groups).sort().reverse().map(date => {
+    const dayPays = groups[date];
+    const dayTotal = dayPays.reduce((a,p)=>a+(+p.principal||0)+(+p.interest||0)+(+p.penalty||0),0);
+    return `
+    <div style="margin-bottom:4px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--navy);color:#fff;border-radius:8px 8px 0 0;font-size:12px">
+        <span style="font-weight:700">📅 ${date}</span>
+        <span>${dayPays.length} 笔 · <b style="color:#81d4fa">${fmt(dayTotal)}</b></span>
+      </div>
+      <div style="border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
+        ${dayPays.map((p,i) => {
+          const total = (+p.principal||0)+(+p.interest||0)+(+p.serviceFee||0)+(+p.penalty||0);
+          const bg = i%2===0?'#fff':'#f9fafb';
+          return `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:${bg};border-bottom:1px solid #f0f0f0;flex-wrap:wrap">
+            <div style="flex:1;min-width:120px">
+              <div style="font-weight:700;font-size:13px">${esc(p.customer)}
+                ${p.isPartial ? '<span style="background:#fff3e0;color:#e65100;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">部分收款</span>' : ''}
+              </div>
+              <div style="font-size:11px;color:#90a4ae">#${p.contractId} · 第${p.period}期${p.shortfall>0?` · 差额 <b style="color:var(--red)">${fmt(p.shortfall)}</b>`:''}</div>
+            </div>
+            ${isCollector ? `
+            <div style="text-align:right">
+              <div style="font-weight:800;font-size:15px;color:var(--green)">${fmt(total)}</div>
+              ${(+p.penalty||0)>0?`<div style="font-size:11px;color:var(--red)">含滞纳金 ${fmt(p.penalty)}</div>`:''}
+            </div>` : `
+            <div style="font-size:12px;color:#546e7a;text-align:right">
+              <div>本金 <b>${fmt(p.principal)}</b> · 利息 <b>${fmt((+p.interest||0)+(+p.serviceFee||0))}</b></div>
+              ${(+p.penalty||0)>0?`<div style="color:var(--red)">滞纳金 ${fmt(p.penalty)}</div>`:''}
+              <div style="font-weight:800;font-size:14px;color:var(--green)">合计 ${fmt(total)}</div>
+            </div>`}
+            <div style="display:flex;gap:4px;flex-shrink:0">
+              <button onclick="editPayment(${p.id})" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px">✏️</button>
+              <button onclick="deletePayment(${p.id})" class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 8px">🗑️</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
 
 window.deletePayment = function(id) {
   const pays = DB_get('payments')||[];
@@ -2545,6 +2689,96 @@ window.deletePayment = function(id) {
   });
 };
 
+// ── 修改收款记录 ──
+window.editPayment = function(id) {
+  const pays = DB_get('payments')||[];
+  const pay = pays.find(p => p.id === id);
+  if (!pay) return;
+  showModal(`✏️ 修改收款记录 — ${pay.customer} 第${pay.period}期`,`
+    <div class="form-grid" style="gap:12px">
+      <div class="form-group">
+        <label style="font-size:12px;font-weight:600;color:#546e7a">收款日期</label>
+        <input id="epDate" type="date" value="${(pay.date||'').replace(/\//g,'-')}"
+          style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+      </div>
+      <div class="form-group">
+        <label style="font-size:12px;font-weight:600;color:#546e7a">实收本金 ($)</label>
+        <input id="epPrincipal" type="number" step="0.01" value="${pay.principal||0}"
+          style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+      </div>
+      <div class="form-group">
+        <label style="font-size:12px;font-weight:600;color:#546e7a">实收利息 ($)</label>
+        <input id="epInterest" type="number" step="0.01" value="${pay.interest||0}"
+          style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+      </div>
+      <div class="form-group">
+        <label style="font-size:12px;font-weight:600;color:#546e7a">滞纳金 ($)</label>
+        <input id="epPenalty" type="number" step="0.01" value="${pay.penalty||0}"
+          style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label style="font-size:12px;font-weight:600;color:#546e7a">备注</label>
+        <input id="epNote" type="text" value="${pay.note||''}" placeholder="可选"
+          style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+      </div>
+    </div>
+    <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px 12px;margin:12px 0;font-size:12px;color:#5d4037">
+      📌 合同：<b>#${pay.contractId}</b> · 客户：<b>${pay.customer}</b> · 第 <b>${pay.period}</b> 期
+    </div>
+    <div id="epMsg" style="margin-bottom:8px;font-size:12px"></div>
+    <div style="display:flex;gap:10px">
+      <button onclick="saveEditPayment(${id})" class="btn btn-primary">💾 保存修改</button>
+      <button onclick="closeModal()" class="btn btn-outline">取消</button>
+    </div>
+  `);
+};
+
+window.saveEditPayment = function(id) {
+  const pays = DB_get('payments')||[];
+  const idx = pays.findIndex(p => p.id === id);
+  if (idx < 0) return;
+  const pay = pays[idx];
+
+  const newDate      = document.getElementById('epDate')?.value || pay.date;
+  const newPrincipal = parseFloat(document.getElementById('epPrincipal')?.value||0);
+  const newInterest  = parseFloat(document.getElementById('epInterest')?.value||0);
+  const newPenalty   = parseFloat(document.getElementById('epPenalty')?.value||0);
+  const newNote      = document.getElementById('epNote')?.value || '';
+  const msgEl        = document.getElementById('epMsg');
+
+  if (!newDate) { if(msgEl){msgEl.textContent='❌ 请填写收款日期';msgEl.style.color='red';} return; }
+
+  // Update payment record
+  pays[idx] = { ...pay, date: newDate, principal: newPrincipal, interest: newInterest, penalty: newPenalty, note: newNote };
+  DB_set('payments', pays);
+
+  // Update the schedule paid amounts
+  const sales = DB_get('sales')||[];
+  const si = sales.findIndex(s => s.id === pay.contractId);
+  if (si >= 0) {
+    const pi = sales[si].schedule.findIndex(p => p.period === pay.period);
+    if (pi >= 0) {
+      sales[si].schedule[pi] = {
+        ...sales[si].schedule[pi],
+        paid: true,
+        paidDate: newDate,
+        paidPrincipal: newPrincipal,
+        paidInterest: newInterest,
+        penalty: newPenalty
+      };
+      DB_set('sales', sales);
+    }
+  }
+
+  closeModal();
+  // Refresh table
+  const allPays = (DB_get('payments')||[]).slice().reverse();
+  const wrap = document.getElementById('payTableWrap');
+  if (wrap) wrap.innerHTML = buildPayTable(allPays);
+  showMsg('payMsg', '✅ 修改成功', 'green');
+  updateBadges();
+};
+
 function buildPayTable(pays) {
   if (!pays.length) return `<div class="empty-state"><div class="ei">📝</div><p>${t('noRecord')}</p></div>`;
   return `<div class="table-wrap"><table>
@@ -2560,7 +2794,10 @@ function buildPayTable(pays) {
         <td>${fmt((+p.interest||0)+(+p.serviceFee||0))}</td>
         <td>${(+p.penalty||0)>0?`<span class="text-red">${fmt(p.penalty)}</span>`:'—'}</td>
         <td class="fw700 text-green">${fmt(total)}</td>
-        <td><button class="btn btn-danger btn-sm" onclick="deletePayment(${p.id})">${t('deleteBtn')}</button></td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-outline btn-sm" style="margin-right:4px;font-size:11px" onclick="editPayment(${p.id})">✏️ 修改</button>
+          <button class="btn btn-danger btn-sm" style="font-size:11px" onclick="deletePayment(${p.id})">${t('deleteBtn')}</button>
+        </td>
       </tr>`;
     }).join('')}
   </table></div>`;
@@ -2600,10 +2837,15 @@ window.autoFillPayment = function() {
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
   const p = s?.schedule.find(x => x.period === period);
   if (p) {
+    const totalDue = (+p.principalDue||0)+(+p.interestDue||0)+(+p.serviceFeeDue||0);
+    // 催收员：填应还总额
+    const expEl = document.getElementById('pExpected');
+    if (expEl) expEl.value = fmt(totalDue);
+    // 普通录入：分别填本金利息
     const pi = document.getElementById('pPrincipal');
     const ii = document.getElementById('pInterest');
-    if (pi) pi.value = (+p.principalDue).toFixed(2);
-    if (ii) ii.value = ((+p.interestDue||0)+(+p.serviceFeeDue||0)).toFixed(2);
+    if (pi && pi.type !== 'hidden') pi.value = (+p.principalDue).toFixed(2);
+    if (ii && ii.type !== 'hidden') ii.value = ((+p.interestDue||0)+(+p.serviceFeeDue||0)).toFixed(2);
     calcPayTotal();
   }
 };
@@ -2689,30 +2931,116 @@ window.calcPayTotal = function() {
 };
 window.submitPayment = function() {
   const contractId = window._resolvedContractId || '';
-  const periodNo = +(document.getElementById('pPeriod')?.value||0);
-  const pDate = document.getElementById('pDate')?.value||today();
-  const principal  = +(document.getElementById('pPrincipal')?.value||0);
-  const interest   = +(document.getElementById('pInterest')?.value||0);
-  const serviceFee = 0;
+  const periodNo   = +(document.getElementById('pPeriod')?.value||0);
+  const pDate      = document.getElementById('pDate')?.value || today();
   const penalty    = +(document.getElementById('pPenalty')?.value||0);
-  if (!contractId) { showMsg('payMsg',t('msgFillContract'),'red'); return; }
-  if (!principal&&!interest) { showMsg('payMsg',t('msgFillAmounts'),'red'); return; }
+  const u          = getCurrentUser();
+  const isCollector = u?.role === 'collector';
+
+  if (!contractId) { showMsg('payMsg', t('msgFillContract'), 'red'); return; }
+
   const sales = DB_get('sales')||[];
-  const si = sales.findIndex(s => s.id === contractId); if (si < 0) return;
+  const si = sales.findIndex(s => String(s.id) === String(contractId));
+  if (si < 0) return;
   const s = sales[si];
-  const pi = s.schedule.findIndex(p => p.period === periodNo); if (pi < 0) return;
-  if (s.schedule[pi].paid) { showMsg('payMsg',t('msgPeriodPaid'),'amber'); return; }
-  s.schedule[pi] = {...s.schedule[pi], paid:true, paidDate:pDate, paidPrincipal:principal, paidInterest:interest, paidServiceFee:serviceFee, penalty, paidStatus:'paid'};
-  if (s.schedule.every(p => p.paid)) s.status = '已结清';
-  sales[si] = s; DB_set('sales', sales);
+  const pi = s.schedule.findIndex(p => p.period === periodNo);
+  if (pi < 0) return;
+  if (s.schedule[pi].paid) { showMsg('payMsg', t('msgPeriodPaid'), 'amber'); return; }
+
+  const sched       = s.schedule[pi];
+  const duePrincipal = +sched.principalDue || 0;
+  const dueInterest  = (+sched.interestDue||0) + (+sched.serviceFeeDue||0);
+  const dueTotalAmt  = duePrincipal + dueInterest;
+
+  let principal, interest, serviceFee = 0, actualReceived;
+
+  if (isCollector) {
+    // ── 催收员：填实收总额，系统自动拆分 ──
+    actualReceived = +(document.getElementById('pTotalReceived')?.value||0);
+    if (!actualReceived) { showMsg('payMsg', '请输入实收金额', 'red'); return; }
+
+    // 拆分规则：优先满足利息，剩余算本金
+    interest  = Math.min(actualReceived, dueInterest);
+    principal = Math.max(0, actualReceived - interest);
+
+  } else {
+    // ── 老板/主管/录入员：手动填本金+利息 ──
+    principal = +(document.getElementById('pPrincipal')?.value||0);
+    interest  = +(document.getElementById('pInterest')?.value||0);
+    actualReceived = principal + interest;
+    if (!principal && !interest) { showMsg('payMsg', t('msgFillAmounts'), 'red'); return; }
+  }
+
+  const total = actualReceived + penalty;
+
+  // ── 判断足额/不足额 ──
+  const TOLERANCE = 0.05; // 5分容差
+  const isFullPaid = actualReceived >= dueTotalAmt - TOLERANCE;
+  const shortfall  = Math.max(0, dueTotalAmt - actualReceived);
+
+  if (isFullPaid) {
+    // ✅ 足额 → 标记已还
+    sales[si].schedule[pi] = {
+      ...sched,
+      paid: true,
+      paidDate: pDate,
+      paidPrincipal: parseFloat(principal.toFixed(2)),
+      paidInterest: parseFloat(interest.toFixed(2)),
+      paidServiceFee: serviceFee,
+      penalty,
+      paidStatus: 'paid',
+      shortfall: 0
+    };
+    if (sales[si].schedule.every(p => p.paid)) sales[si].status = '已结清';
+    showMsg('payMsg', `✅ ${s.customer} 第${periodNo}期 — 实收 ${fmt(total)}，已结清`, 'green');
+  } else {
+    // ⚠️ 不足额 → 记录部分收款，不标记已还，继续计逾期
+    sales[si].schedule[pi] = {
+      ...sched,
+      paid: false,           // 未全额，保留在逾期
+      partialPaid: true,     // 标记有部分收款
+      partialDate: pDate,
+      partialPrincipal: parseFloat(principal.toFixed(2)),
+      partialInterest: parseFloat(interest.toFixed(2)),
+      partialPenalty: penalty,
+      shortfall: parseFloat(shortfall.toFixed(2))
+    };
+    showMsg('payMsg',
+      `⚠️ ${s.customer} 第${periodNo}期 — 实收 ${fmt(total)}，差额 <b style="color:red">${fmt(shortfall)}</b>，期次保留在逾期列表`,
+      'amber');
+  }
+
+  DB_set('sales', sales);
+
+  // 保存收款记录（不足额也记录，备查）
   const pays = DB_get('payments')||[];
-  pays.push({id:newId(), contractId, customer:s.customer, period:periodNo, date:pDate, principal, interest, serviceFee, penalty});
+  pays.push({
+    id: newId(), contractId, customer: s.customer, period: periodNo,
+    date: pDate, principal: parseFloat(principal.toFixed(2)),
+    interest: parseFloat(interest.toFixed(2)), serviceFee, penalty,
+    isPartial: !isFullPaid,
+    shortfall: isFullPaid ? 0 : parseFloat(shortfall.toFixed(2))
+  });
   DB_set('payments', pays);
-  const total = principal + interest + serviceFee + penalty;
-  showMsg('payMsg', `✅ ${s.customer} — ${t('period')} ${periodNo}：${fmt(total)}`, 'green');
-  ['pPenalty','pNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = id==='pPenalty'?'0':'0'; });
-  document.getElementById('pTotal').value = '';
-  loadContractPeriods(); updateBadges();
+
+  // 重置表单
+  ['pPenalty','pNote','pTotalReceived'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = id === 'pPenalty' ? '0' : '';
+  });
+  const totEl = document.getElementById('pTotal');
+  if (totEl) totEl.value = '';
+  const expEl = document.getElementById('pExpected');
+  if (expEl) expEl.value = '';
+
+  loadContractPeriods();
+  updateBadges();
+
+  // 刷新收款记录列表
+  const allPays = (DB_get('payments')||[]).slice().reverse();
+  const isC = getCurrentUser()?.role === 'collector';
+  const wrap = document.getElementById('payTableWrap');
+  if (wrap) wrap.innerHTML = buildPayTableGrouped(allPays, isC);
 };
 // ══════════════════════════════════════════════════════
 // STATS
