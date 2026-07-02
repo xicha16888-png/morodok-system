@@ -2649,40 +2649,41 @@ function buildPayTableByContract(pays, isCollector) {
   }).join('');
 }
 
-// ── 提前还款视图（读 earlyPayments 表）──
+// ── 提前还款视图（以Excel导入的提前结清合同为准）──
 function buildPayTableEarly(pays, isCollector) {
-  const earlyList = DB_get('earlyPayments') || [];
+  const sales = DB_get('sales') || [];
+  const earlyList = sales.filter(s => s.status === '提前结清');
+
   if (!earlyList.length) return `<div class="empty-state"><div class="ei">⚡</div><p>暂无提前还款记录</p></div>`;
 
-  const sales = DB_get('sales') || [];
-  const total = earlyList.reduce((a,r) => a + (+r.negotiated||+r.negotiatedAmount||0), 0);
+  const totalAll = earlyList.reduce((a,s) =>
+    a + s.schedule.reduce((b,p) => b + (+p.paidPrincipal||0) + (+p.paidInterest||0) + (+p.penalty||0), 0), 0);
+
+  const sorted = [...earlyList].sort((a,b) => (b.date||'').localeCompare(a.date||''));
 
   return `
   <div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:13px">
-    ⚡ 共 <b>${earlyList.length}</b> 笔提前结清 · 客户合计还款 <b style="color:var(--green)">${fmt(total)}</b>
+    ⚡ 共 <b>${earlyList.length}</b> 笔提前结清 · 客户实收合计 <b style="color:var(--green)">${fmt(totalAll)}</b>
   </div>
-  <div style="border:1px solid #e0e0e0;border-radius:10px;overflow:hidden">
-    ${[...earlyList].sort((a,b)=>b.date?.localeCompare(a.date||'')).map((r,i) => {
-      const s = sales.find(x => String(x.id) === String(r.contractId));
-      const negotiated = +r.negotiated || +r.negotiatedAmount || 0;
-      const profit = +r.actualProfit || 0;
-      const remainP = (() => {
-        if (!s) return +r.remainPrincipal || 0;
-        return s.schedule.reduce((a,p) => a + (+p.principalDue||0) - (+p.paidPrincipal||0), 0);
-      })();
+  <div style="border:1px solid #c8e6c9;border-radius:10px;overflow:hidden">
+    ${sorted.map((s,i) => {
+      const paidTotal   = s.schedule.reduce((a,p) => a+(+p.paidPrincipal||0)+(+p.paidInterest||0)+(+p.penalty||0), 0);
+      const paidPeriods = s.schedule.filter(p => p.paid).length;
+      const totalPeriods= s.schedule.length;
       const bg = i%2===0 ? '#e8f5e9' : '#f1f8f1';
       return `<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:${bg};border-left:3px solid #4caf50;border-bottom:1px solid #c8e6c9;flex-wrap:wrap">
         <div style="flex:1;min-width:140px">
-          <div style="font-weight:700;font-size:13px">${esc(r.customer)}
+          <div style="font-weight:700;font-size:13px">${esc(s.customer)}
             <span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 7px;border-radius:8px;margin-left:5px;font-weight:700">⚡提前结清</span>
           </div>
-          <div style="font-size:11px;color:#546e7a;margin-top:2px">#${r.contractId} · ${r.date} · 原剩余本金 ${fmt(remainP)}</div>
-          ${r.note ? `<div style="font-size:11px;color:#78909c">${esc(r.note)}</div>` : ''}
+          <div style="font-size:11px;color:#546e7a;margin-top:2px">
+            #${s.id} · 签约 ${s.date} · ${s.modelName||'-'} · 已还 ${paidPeriods}/${totalPeriods} 期
+          </div>
+          <div style="font-size:11px;color:#90a4ae">${esc(s.customerPhone||'')}</div>
         </div>
         <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:12px;color:#546e7a">协商还款</div>
-          <div style="font-weight:800;font-size:16px;color:#2e7d32">${fmt(negotiated)}</div>
-          <div style="font-size:11px;color:var(--muted)">净利润 <b style="color:${profit>=0?'var(--green)':'var(--red)'}">${fmt(profit)}</b></div>
+          <div style="font-size:11px;color:#546e7a">实收合计</div>
+          <div style="font-weight:800;font-size:16px;color:#2e7d32">${fmt(paidTotal)}</div>
         </div>
       </div>`;
     }).join('')}
