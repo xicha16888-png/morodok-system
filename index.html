@@ -274,6 +274,7 @@ tr:hover td{background:#f8faff}
   .stats-grid{grid-template-columns:repeat(2,1fr)}
 }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -5256,6 +5257,10 @@ function renderCompany() {
     <button class="btn btn-outline" onclick="window.open('/api/backup')">📤 ${_lang==='km'?'ទាញយក JSON':_lang==='en'?'Download JSON Backup':'下载 JSON 备份'}</button>
     <button class="btn btn-primary" onclick="exportExcel()" style="background:#1e7e34">📊 ${_lang==='km'?'នាំចេញ Excel':_lang==='en'?'Export to Excel':'导出 Excel 报表'}</button>
     <button class="btn btn-primary" onclick="localBackup()" style="background:#7b1fa2">💾 ${_lang==='km'?'បម្រុងទុកខែនេះ':_lang==='en'?'Monthly Backup':'月度备份下载'}</button>
+    <label class="btn btn-primary" style="background:#e65100;cursor:pointer;margin:0">
+      📥 导入 Excel 总表
+      <input type="file" accept=".xlsx,.xls" onchange="importExcel(this)" style="display:none">
+    </label>
   </div>
   <div id="backupReminder" style="margin-top:10px"></div>
   <div style="font-size:12px;color:var(--muted);margin-top:6px">
@@ -5517,7 +5522,194 @@ function showLoginOverlay() {
 })();
 
 // ══════════════════════════════════════════════════════
-// 📋 内审模块 AUDIT MODULE
+// 📥 Excel 总表导入
+// ══════════════════════════════════════════════════════
+window.importExcel = function(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = ''; // 清空，允许重复上传同一文件
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: false });
+      const ws = wb.Sheets['合同总表'];
+      if (!ws) { alert('❌ 找不到「合同总表」工作表，请检查 Excel 文件格式'); return; }
+
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      if (rows.length < 2) { alert('❌ 表格没有数据'); return; }
+
+      const header = rows[0];
+      // 找到每期数据的起始列（第1期-到期日）
+      const p1Start = header.indexOf('第1期-到期日');
+      if (p1Start < 0) { alert('❌ 找不到期次列，请检查格式'); return; }
+
+      const existingSales = DB_get('sales') || [];
+      const existingIds = new Set(existingSales.map(s => String(s.id)));
+      const allPeriodPayments = []; // 所有已还期次的收款记录
+
+      const imported = [], updated = [], skipped = [];
+
+      for (let ri = 1; ri < rows.length; ri++) {
+        const r = rows[ri];
+        const contractId = String(r[0] || '').trim();
+        if (!contractId) continue;
+
+        // 解析基础信息
+        const contractDate  = String(r[1] || '').trim();
+        const shopCode      = String(r[2] || '').trim();
+        const custEn        = String(r[3] || '').trim();
+        const custKh        = String(r[4] || '').trim();
+        const custPhone     = String(r[5] || '').trim();
+        const emg1Phone     = String(r[6] || '').trim();
+        const emg2Phone     = String(r[7] || '').trim();
+        const emg3Phone     = String(r[8] || '').trim();
+        const brand         = String(r[9] || '').trim();
+        const model         = String(r[10] || '').trim();
+        const salePrice     = +r[11] || 0;
+        const deposit       = +r[12] || 0;
+        const loanAmt       = +r[13] || 0;
+        const periods       = +r[14] || 0;
+        const actualPeriods = +r[15] || periods;
+        const monthlyPay    = +r[16] || 0;
+        const storeRebate   = +r[17] || 0;
+        const dailyLateFee  = +r[18] || 0;
+        const status        = String(r[19] || '进行中').trim();
+        const note          = String(r[27] || '').trim();
+
+        // 解析紧急联系人
+        const emergencyContacts = [
+          emg1Phone ? { name: '', phone: emg1Phone, rel: '' } : null,
+          emg2Phone ? { name: '', phone: emg2Phone, rel: '' } : null,
+          emg3Phone ? { name: '', phone: emg3Phone, rel: '' } : null,
+        ].filter(Boolean);
+
+        // 解析每期还款计划（直接读Excel的值，不重新计算）
+        const schedule = [];
+        const periodPayments = []; // 已还期次 → 同步生成收款记录
+
+        for (let p = 0; p < actualPeriods; p++) {
+          const base = p1Start + p * 7;
+          const dueDate      = String(r[base]     || '').trim();
+          const principalDue = parseFloat((+r[base + 1] || 0).toFixed(2));
+          const paidPrincipal= parseFloat((+r[base + 2] || 0).toFixed(2));
+          const interestDue  = parseFloat((+r[base + 3] || 0).toFixed(2));
+          const paidInterest = parseFloat((+r[base + 4] || 0).toFixed(2));
+          const paidPenalty  = parseFloat((+r[base + 5] || 0).toFixed(2));
+          const paidStatus   = String(r[base + 6] || '').trim();
+          const isPaid       = paidStatus === '已还';
+
+          schedule.push({
+            period:         p + 1,
+            dueDate:        dueDate,
+            principalDue:   principalDue,
+            interestDue:    interestDue,
+            serviceFeeDue:  0,
+            paid:           isPaid,
+            paidDate:       isPaid ? dueDate : null,
+            paidPrincipal:  isPaid ? paidPrincipal : 0,
+            paidInterest:   isPaid ? paidInterest : 0,
+            paidServiceFee: 0,
+            penalty:        isPaid ? paidPenalty : 0,
+            paidStatus:     isPaid ? 'paid' : ''
+          });
+
+          // 已还期次 → 准备生成收款记录
+          if (isPaid && (paidPrincipal > 0 || paidInterest > 0 || paidPenalty > 0)) {
+            periodPayments.push({
+              contractId,
+              customer: custEn || custKh,
+              period: p + 1,
+              date: dueDate || contractDate,
+              principal: paidPrincipal,
+              interest: paidInterest,
+              serviceFee: 0,
+              penalty: paidPenalty,
+            });
+          }
+        }
+
+        // 推算月利率（首期有数据时计算）
+        const firstPeriod = schedule[0];
+        const interestRate = (loanAmt > 0 && firstPeriod?.interestDue > 0)
+          ? parseFloat(((firstPeriod.interestDue / loanAmt) * 100).toFixed(4))
+          : 7;
+
+        const contract = {
+          id:                contractId,
+          date:              contractDate,
+          storeName:         shopCode,
+          salesperson:       '',
+          customer:          custEn || custKh,
+          customerKhmer:     custKh,
+          customerPhone:     custPhone,
+          emergencyContacts,
+          modelId:           '',
+          modelName:         model || brand,
+          salePrice,
+          deposit,
+          installmentAmount: loanAmt,
+          periods,
+          svcPeriods:        0,
+          interestRate,
+          serviceFeeRate:    0,
+          monthlyPayment:    monthlyPay,
+          storeRebate,
+          dailyLateFee,
+          status,
+          note,
+          schedule
+        };
+
+        if (existingIds.has(contractId)) {
+          // 已存在 → 更新
+          const idx = existingSales.findIndex(s => String(s.id) === contractId);
+          existingSales[idx] = contract;
+          updated.push(contractId);
+        } else {
+          // 新合同 → 添加
+          existingSales.push(contract);
+          imported.push(contractId);
+        }
+
+        // 收集本合同的已还收款记录
+        allPeriodPayments.push(...periodPayments);
+      }
+
+      DB_set('sales', existingSales);
+
+      // 同步收款记录：去重后合并（以合同ID+期次为key）
+      const existingPays = DB_get('payments') || [];
+      const existingPayKeys = new Set(existingPays.map(p => `${p.contractId}_${p.period}`));
+      const newPays = allPeriodPayments.filter(p => !existingPayKeys.has(`${p.contractId}_${p.period}`));
+      // 给新收款记录分配ID
+      let payIdBase = Math.max(0, ...existingPays.map(p => p.id || 0)) + 1;
+      newPays.forEach(p => { p.id = payIdBase++; });
+      DB_set('payments', [...existingPays, ...newPays]);
+
+      const msg = [
+        imported.length ? `✅ 新增 ${imported.length} 笔合同` : '',
+        updated.length  ? `🔄 更新 ${updated.length} 笔合同` : '',
+        newPays.length  ? `💳 同步 ${newPays.length} 条收款记录` : '',
+      ].filter(Boolean).join(' · ');
+
+      showModal('📥 导入完成', `
+        <div style="font-size:15px;font-weight:700;color:var(--green);margin-bottom:12px">${msg}</div>
+        ${imported.length ? `<div style="font-size:12px;color:#546e7a;margin-bottom:8px">新增合同号：${imported.slice(0,10).join(', ')}${imported.length>10?'...':''}</div>` : ''}
+        ${updated.length  ? `<div style="font-size:12px;color:#1565c0;margin-bottom:8px">已更新合同号：${updated.slice(0,10).join(', ')}${updated.length>10?'...':''}</div>` : ''}
+        <div style="margin-top:14px;font-size:12px;color:#90a4ae">数据已同步到服务器，请刷新页面查看最新数据。</div>
+        <button class="btn btn-primary" style="margin-top:12px" onclick="closeModal();nav('sale-list')">查看合同列表</button>
+      `);
+
+    } catch(err) {
+      alert('❌ 导入失败：' + err.message);
+      console.error(err);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+};
+
+
 // ══════════════════════════════════════════════════════
 function renderAudit() {
   return `
