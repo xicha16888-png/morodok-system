@@ -519,6 +519,11 @@ const I18N = {
     overdueTitle: '逾期未还款提醒', noOverdue: '暂无逾期账单',
     queryTitle: '需还款查询', next30days: '未来30天',
     registerPayment: '登记收款', daysLeft: '还剩', days: '天',
+    overduePeriodDetail: '逾期期次明细', contactLabel: '联系人', noContact: '暂无紧急联系人',
+    fullSchedule: '查看完整还款计划', longestDays: '最长', overdueCount: '笔逾期',
+    overdueClients: '个客户', totalOwed: '合计欠款', searchPlaceholder: '搜索姓名 / 电话 / 合同号',
+    periodLabel: '第', dueLabel: '到期', allStatus: '全部状态', filterAll: '全部天数',
+    filter7: '7天以内', filter15: '15-30天', filter30: '30天以上',
     daysOverdue: '逾期', period: '期',
     // Messages
     msgFillCustomer: '请填写客户姓名', msgFillPrice: '请填写销售价格',
@@ -694,6 +699,11 @@ const I18N = {
     overdueTitle: 'Overdue Payment Alert', noOverdue: 'No overdue payments',
     queryTitle: 'Payment Query', next30days: 'Next 30 Days',
     registerPayment: 'Record Payment', daysLeft: 'days left', days: 'days',
+    overduePeriodDetail: 'Overdue Installments', contactLabel: 'Contact', noContact: 'No emergency contacts',
+    fullSchedule: 'Full Repayment Schedule', longestDays: 'Max', overdueCount: 'overdue',
+    overdueClients: 'clients', totalOwed: 'Total Owed', searchPlaceholder: 'Search name / phone / contract',
+    periodLabel: 'Period', dueLabel: 'Due', allStatus: 'All', filterAll: 'All',
+    filter7: 'Within 7d', filter15: '15-30d', filter30: '30d+',
     daysOverdue: 'days overdue', period: 'Period',
     // Messages
     msgFillCustomer: 'Please enter customer name', msgFillPrice: 'Please enter sale price',
@@ -870,6 +880,11 @@ const I18N = {
     overdueTitle: 'ការរំលឹកការបង់ប្រាក់ហួសកំណត់', noOverdue: 'គ្មានការបង់ប្រាក់ហួសកំណត់',
     queryTitle: 'ការសំណួរការបង់ប្រាក់', next30days: '30 ថ្ងៃខាងមុខ',
     registerPayment: 'ចុះឈ្មោះការបង់ប្រាក់', daysLeft: 'ថ្ងៃទៀត', days: 'ថ្ងៃ',
+    overduePeriodDetail: 'ពត៌មានលម្អិតរយៈពេលហួស', contactLabel: 'អ្នកទំនាក់ទំនង', noContact: 'គ្មានអ្នកទំនាក់ទំនងបន្ទាន់',
+    fullSchedule: 'មើលផែនការបង់ប្រាក់ពេញ', longestDays: 'យូរបំផុត', overdueCount: 'ហួសកំណត់',
+    overdueClients: 'អតិថិជន', totalOwed: 'សរុបជំពាក់', searchPlaceholder: 'ស្វែងរកឈ្មោះ / ទូរស័ព្ទ / លេខកិច្ចសន្យា',
+    periodLabel: 'ខែ', dueLabel: 'ថ្ងៃផុតកំណត់', allStatus: 'ទាំងអស់', filterAll: 'ទាំងអស់',
+    filter7: 'ក្នុង 7ថ្ងៃ', filter15: '15-30ថ្ងៃ', filter30: '30ថ្ងៃ+',
     daysOverdue: 'ថ្ងៃហួសកំណត់', period: 'ខែ',
     // Messages
     msgFillCustomer: 'សូមបញ្ចូលឈ្មោះអតិថិជន', msgFillPrice: 'សូមបញ្ចូលតម្លៃលក់',
@@ -2288,11 +2303,11 @@ window.viewSchedule = function(id) {
   const contacts = (s.emergencyContacts||[]).filter(c=>c.name||c.phone);
   const emgHtml = contacts.length ? `
     <div style="margin-bottom:14px">
-      <div style="font-size:12px;font-weight:700;color:#546e7a;margin-bottom:8px">🆘 紧急联系人</div>
+      <div style="font-size:12px;font-weight:700;color:#546e7a;margin-bottom:8px">${t('emergencyTitle')}</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         ${contacts.map((c,i)=>`
         <div style="background:#fff9f0;border:1px solid #ffe082;border-radius:10px;padding:10px 14px;min-width:140px;flex:1">
-          <div style="font-size:10px;color:#90a4ae;margin-bottom:3px">联系人 ${i+1}</div>
+          <div style="font-size:10px;color:#90a4ae;margin-bottom:3px">${t('contactLabel')} ${i+1}</div>
           <div style="font-weight:700;font-size:14px;color:#263238">${esc(c.name||'—')}</div>
           ${c.rel?`<div style="font-size:11px;color:#78909c;margin-bottom:4px">${esc(c.rel)}</div>`:''}
           ${c.phone?`<a href="tel:${c.phone}" style="display:inline-flex;align-items:center;gap:5px;color:#e65100;font-weight:700;font-size:14px;text-decoration:none">📞 ${c.phone}</a>`:''}
@@ -3176,20 +3191,6 @@ function renderReminderOverdue() {
     });
   });
 
-  function emgCards(s) {
-    const contacts = (s.emergencyContacts||[]).filter(c=>c.name||c.phone);
-    if (!contacts.length) return '<div style="font-size:12px;color:#90a4ae">暂无紧急联系人</div>';
-    return `<div style="display:flex;gap:8px;flex-wrap:wrap">
-      ${contacts.map((c,i)=>`
-      <div style="background:#fff;border:1px solid #ffe082;border-radius:10px;padding:10px 12px;min-width:130px;flex:1">
-        <div style="font-size:10px;color:#90a4ae;margin-bottom:3px">联系人 ${i+1}</div>
-        <div style="font-weight:700;font-size:13px;color:#263238">${esc(c.name||'—')}</div>
-        ${c.rel?`<div style="font-size:11px;color:#78909c">${esc(c.rel)}</div>`:''}
-        ${c.phone?`<a href="tel:${c.phone}" style="display:inline-flex;align-items:center;gap:4px;color:#e65100;font-weight:700;font-size:13px;text-decoration:none;margin-top:3px">📞 ${c.phone}</a>`:''}
-      </div>`).join('')}
-    </div>`;
-  }
-
   // 按合同聚合
   const contractMap = {};
   items.forEach(({s,p,days}) => {
@@ -3197,64 +3198,116 @@ function renderReminderOverdue() {
     contractMap[s.id].periods.push({p,days});
     contractMap[s.id].maxDays = Math.max(contractMap[s.id].maxDays, days);
   });
-  const contracts = Object.values(contractMap).sort((a,b)=>b.maxDays-a.maxDays);
+  // 少到多排序
+  const allContracts = Object.values(contractMap).sort((a,b)=>a.maxDays-b.maxDays);
   const totalOwedAll = items.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
+
+  // 紧急联系人卡片（多语言）
+  function emgCards(s) {
+    const contacts = (s.emergencyContacts||[]).filter(c=>c.name||c.phone);
+    if (!contacts.length) return `<div style="font-size:12px;color:#90a4ae">${t('noContact')}</div>`;
+    return `<div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${contacts.map((c,i)=>`
+      <div style="background:#fff;border:1px solid #ffe082;border-radius:10px;padding:10px 12px;min-width:130px;flex:1">
+        <div style="font-size:10px;color:#90a4ae;margin-bottom:3px">${t('contactLabel')} ${i+1}</div>
+        <div style="font-weight:700;font-size:13px;color:#263238">${esc(c.name||'—')}</div>
+        ${c.rel?`<div style="font-size:11px;color:#78909c">${esc(c.rel)}</div>`:''}
+        ${c.phone?`<a href="tel:${c.phone}" style="display:inline-flex;align-items:center;gap:4px;color:#e65100;font-weight:700;font-size:13px;text-decoration:none;margin-top:3px">📞 ${c.phone}</a>`:''}
+      </div>`).join('')}
+    </div>`;
+  }
 
   return `
   <div class="page-header"><div class="page-title">🚨 ${t('overdueTitle')}</div></div>
   ${items.length
-    ? `<div class="alert alert-red">⚠️ 共 <b>${contracts.length}</b> 个客户 · <b>${items.length}</b> 笔逾期 · 合计欠款 <b>${fmt(totalOwedAll)}</b></div>`
+    ? `<div class="alert alert-red">⚠️ <b>${allContracts.length}</b> ${t('overdueClients')} · <b>${items.length}</b> ${t('overdueCount')} · ${t('totalOwed')} <b>${fmt(totalOwedAll)}</b></div>`
     : `<div class="alert alert-green">✅ ${t('noOverdue')}</div>`}
-  <div class="card" style="padding:0;overflow:hidden">
-    ${contracts.map(({s, periods, maxDays}) => {
+
+  <!-- 搜索 + 筛选 -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+    <input id="odSearch" type="text" placeholder="${t('searchPlaceholder')}"
+      oninput="filterOverdue()"
+      style="flex:1;min-width:180px;padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit">
+    <select id="odDayFilter" onchange="filterOverdue()"
+      style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit">
+      <option value="">${t('filterAll')}</option>
+      <option value="7">${t('filter7')}</option>
+      <option value="15">${t('filter15')}</option>
+      <option value="30">${t('filter30')}</option>
+    </select>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden" id="overdueListCard">
+    ${allContracts.map(({s, periods, maxDays}) => {
       const totalOwed = periods.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
       const color = maxDays>=30?'var(--red)':maxDays>=15?'var(--amber)':'#f57f17';
       const bg = maxDays>=30?'#ffebee':maxDays>=15?'#fff8e1':'#fffde7';
       const uid = 'od_'+s.id;
+      // periods也从少到多
+      const sortedPeriods = [...periods].sort((a,b)=>a.days-b.days);
       return `
-      <div style="border-bottom:1px solid var(--border)">
+      <div class="od-item" data-name="${(s.customer||'').toLowerCase()}" data-phone="${s.customerPhone||''}" data-id="${s.id}" data-days="${maxDays}" style="border-bottom:1px solid var(--border)">
         <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;background:#fff"
-          onclick="const d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'block':'none'">
+          onclick="const d=document.getElementById('${uid}');const arr=this.querySelector('.od-arr');d.style.display=d.style.display==='none'?'block':'none';arr.style.transform=d.style.display==='none'?'':'rotate(180deg)'">
           <div style="flex:1;min-width:0">
             <div style="font-weight:700;font-size:14px">${esc(s.customer)}
               <span style="font-weight:400;font-size:12px;color:#90a4ae;margin-left:6px">${esc(s.customerPhone||'')}</span>
             </div>
             <div style="font-size:12px;color:var(--muted);margin-top:2px">
-              #${s.id} · ${s.modelName||'-'} · <b style="color:${color}">${periods.length}</b> 笔逾期
+              #${s.id} · ${s.modelName||'-'} · <b style="color:${color}">${periods.length}</b> ${t('overdueCount')}
             </div>
           </div>
           <div style="text-align:right;flex-shrink:0">
             <div style="font-weight:800;font-size:16px;color:var(--red)">${fmt(totalOwed)}</div>
-            <span style="background:${bg};color:${color};padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700">最长 ${maxDays} 天</span>
+            <span style="background:${bg};color:${color};padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700">${t('longestDays')} ${maxDays} ${t('days')}</span>
           </div>
-          <div style="color:#bbb;font-size:14px">▾</div>
+          <div class="od-arr" style="color:#bbb;font-size:14px;transition:transform .2s">▾</div>
         </div>
         <div id="${uid}" style="display:none;background:#fafafa;padding:14px 16px;border-top:1px solid #f0f0f0">
-          <div style="font-size:12px;font-weight:700;color:#546e7a;margin-bottom:8px">📅 逾期期次明细</div>
+          <div style="font-size:12px;font-weight:700;color:#546e7a;margin-bottom:8px">📅 ${t('overduePeriodDetail')}</div>
           <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
-            ${periods.map(({p,days})=>`
+            ${sortedPeriods.map(({p,days})=>`
             <div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:8px 12px">
               <div>
-                <span style="font-weight:700;color:#1565c0">第 ${p.period} 期</span>
-                <span style="font-size:12px;color:#90a4ae;margin-left:8px">到期 ${p.dueDate}</span>
+                <span style="font-weight:700;color:#1565c0">${t('periodLabel')} ${p.period} ${t('period')}</span>
+                <span style="font-size:12px;color:#90a4ae;margin-left:8px">${t('dueLabel')} ${p.dueDate}</span>
               </div>
-              <div style="display:flex;align-items:center;gap:8px">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
                 <span style="font-weight:700;color:var(--red)">${fmt((+p.principalDue||0)+(+p.interestDue||0))}</span>
-                <span style="background:${days>=30?'#ffebee':days>=15?'#fff3e0':'#fff8e1'};color:${days>=30?'var(--red)':days>=15?'var(--amber)':'#f57f17'};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${days}天</span>
+                <span style="background:${days>=30?'#ffebee':days>=15?'#fff3e0':'#fff8e1'};color:${days>=30?'var(--red)':days>=15?'var(--amber)':'#f57f17'};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${days} ${t('days')}</span>
                 <button onclick="event.stopPropagation();navToPayment('${s.id}',${p.period})" class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 10px">${t('registerPayment')}</button>
               </div>
             </div>`).join('')}
           </div>
-          <div style="font-size:12px;font-weight:700;color:#546e7a;margin-bottom:8px">🆘 紧急联系人</div>
+          <div style="font-size:12px;font-weight:700;color:#546e7a;margin-bottom:8px">${t('emergencyTitle')}</div>
           ${emgCards(s)}
           <div style="margin-top:12px">
-            <button onclick="viewSchedule('${s.id}')" class="btn btn-outline btn-sm">📋 查看完整还款计划</button>
+            <button onclick="viewSchedule('${s.id}')" class="btn btn-outline btn-sm">📋 ${t('fullSchedule')}</button>
           </div>
         </div>
       </div>`;
     }).join('')||`<div class="empty-state" style="padding:40px"><div class="ei">🏅</div><p>${t('noOverdue')}</p></div>`}
   </div>`;
 }
+
+// 逾期列表搜索 + 筛选
+window.filterOverdue = function() {
+  const q = (document.getElementById('odSearch')?.value||'').toLowerCase();
+  const dayFilter = document.getElementById('odDayFilter')?.value||'';
+  document.querySelectorAll('.od-item').forEach(el => {
+    const name = el.dataset.name||'';
+    const phone = el.dataset.phone||'';
+    const id = el.dataset.id||'';
+    const days = parseInt(el.dataset.days||'0');
+    const matchQ = !q || name.includes(q) || phone.includes(q) || id.toLowerCase().includes(q);
+    let matchD = true;
+    if (dayFilter==='7') matchD = days <= 7;
+    else if (dayFilter==='15') matchD = days > 7 && days <= 30;
+    else if (dayFilter==='30') matchD = days > 30;
+    el.style.display = (matchQ && matchD) ? '' : 'none';
+  });
+};
+
 
 function renderPaymentQuery() {
   const td = today(), nd = addDays(td, 30), sales = DB_get('sales')||[], items = [];
