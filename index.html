@@ -2683,7 +2683,7 @@ window.deletePayment = function(id) {
   // Refresh table
   const allPays = (DB_get('payments')||[]).slice().reverse();
   const wrap = document.getElementById('payTableWrap');
-  if (wrap) wrap.innerHTML = buildPayTable(allPays);
+  refreshPayTable();
   showMsg('payMsg', `✅ ${_lang==='km'?'បានលុបដោយជោគជ័យ':_lang==='en'?'Deleted successfully':'已删除，合同还款状态已还原'}`, 'green');
   updateBadges();
   });
@@ -2774,7 +2774,7 @@ window.saveEditPayment = function(id) {
   // Refresh table
   const allPays = (DB_get('payments')||[]).slice().reverse();
   const wrap = document.getElementById('payTableWrap');
-  if (wrap) wrap.innerHTML = buildPayTable(allPays);
+  refreshPayTable();
   showMsg('payMsg', '✅ 修改成功', 'green');
   updateBadges();
 };
@@ -2801,6 +2801,23 @@ function buildPayTable(pays) {
       </tr>`;
     }).join('')}
   </table></div>`;
+}
+
+
+// 统一刷新收款记录（尊重当前筛选）
+function refreshPayTable() {
+  const u = getCurrentUser();
+  const isC = u?.role === 'collector';
+  const q = (document.getElementById('paySearch')?.value||'').toLowerCase();
+  const df = document.getElementById('payDateFilter')?.value||'';
+  const td = today();
+  let pays = (DB_get('payments')||[]).slice().reverse();
+  if (q) pays = pays.filter(p => (p.customer||'').toLowerCase().includes(q) || String(p.contractId).includes(q));
+  if (df==='today') pays = pays.filter(p=>(p.date||'').replace(/\//g,'-')===td);
+  else if (df==='week') { const w=addDays(td,-6); pays=pays.filter(p=>{const d=(p.date||'').replace(/\//g,'-');return d>=w&&d<=td;}); }
+  else if (df==='month') pays=pays.filter(p=>(p.date||'').replace(/\//g,'-').slice(0,7)===td.slice(0,7));
+  const wrap = document.getElementById('payTableWrap');
+  if (wrap) wrap.innerHTML = buildPayTableGrouped(pays, isC);
 }
 
 window.resolveContract = function() {
