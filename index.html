@@ -2975,8 +2975,21 @@ window.getContractId = function() {
 window.loadContractPeriods = function() {
   const id = window._resolvedContractId || '';
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
-  const sel = document.getElementById('pPeriod'); if (!s||!sel) return;
-  sel.innerHTML = s.schedule.filter(p => !p.paid).map(p => `<option value="${p.period}">${p.period} ${t("period")} (到期:${p.dueDate})</option>`).join('');
+  const sel = document.getElementById('pPeriod');
+  const expEl = document.getElementById('pExpected');
+  if (!s || !sel) return;
+
+  const unpaid = s.schedule.filter(p => !p.paid);
+  if (unpaid.length === 0) {
+    sel.innerHTML = '<option value="">⚠️ 该合同所有期次已还清</option>';
+    if (expEl) expEl.value = '$0.00';
+    const totEl = document.getElementById('pTotal');
+    if (totEl) totEl.value = '';
+    return;
+  }
+  sel.innerHTML = unpaid.map(p =>
+    `<option value="${p.period}">${p.period} ${t("period")} (到期:${p.dueDate})</option>`
+  ).join('');
   autoFillPayment();
 };
 window.autoFillPayment = function() {
