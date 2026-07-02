@@ -3165,8 +3165,8 @@ window.filterProfitTable = function() {
 
 function renderReminderTomorrow() {
   const tomorrow = addDays(today(), 1), sales = DB_get('sales')||[], items = [];
-  sales.forEach(s => { if (s.status==='提前结清') return; s.schedule.forEach(p => { if (!p.paid && p.dueDate === tomorrow) items.push({s,p}); }); });
-  const total = items.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0);
+  sales.forEach(s => { if (s.status==='提前结清') return; s.schedule.forEach(p => { if (!p.paid && p.dueDate && p.dueDate.replace(/\//g,'-') === tomorrow) items.push({s,p}); }); });
+  const total = items.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
   return `
   <div class="page-header"><div class="page-title">⏰ ${t('tomorrowTitle')}</div><div class="page-sub">${tomorrow} · ${t('tomorrowDue')}</div></div>
   ${items.length?`<div class="alert alert-blue">📅 ${items.length} ${t("tomorrowDue")} — ${fmt(total)}</div>`:`<div class="alert alert-green">🎉 明日无到期账单</div>`}
@@ -3312,19 +3312,40 @@ window.filterOverdue = function() {
 
 function renderPaymentQuery() {
   const td = today(), nd = addDays(td, 30), sales = DB_get('sales')||[], items = [];
-  sales.forEach(s => s.schedule.forEach(p => { if (!p.paid && p.dueDate >= td && p.dueDate <= nd) items.push({s,p}); }));
-  items.sort((a,b) => a.p.dueDate.localeCompare(b.p.dueDate));
+  sales.forEach(s => {
+    if (s.status === '提前结清' || s.status === '已结清') return;
+    s.schedule.forEach(p => {
+      if (!p.paid && p.dueDate) {
+        const dd = p.dueDate.replace(/\//g,'-');
+        if (dd >= td && dd <= nd) items.push({s, p, dd});
+      }
+    });
+  });
+  items.sort((a,b) => a.dd.localeCompare(b.dd));
+  const totalAmt = items.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
   return `
   <div class="page-header"><div class="page-title">📋 ${t('queryTitle')}</div><div class="page-sub">${td} → ${nd} · ${t('next30days')}</div></div>
-  ${items.length?`<div class="alert alert-amber">📅 未来30天共 ${items.length} 笔，应收合计 ${fmt(items.reduce((a,{p})=>a+(+p.principalDue)+(+p.interestDue),0))}</div>`:''}
-  <div class="card">${items.map(({s,p})=>{const dl=Math.floor((new Date(p.dueDate)-new Date(td))/86400000);return`
-    <div class="reminder-item ${dl<=3?'warn':'info'}">
-      <div><div class="fw700">${esc(s.customer)}</div>
-        <div style="font-size:12px;color:var(--muted)">#${s.id} · ${t("period")} ${p.period} · 到期：${p.dueDate}</div></div>
-      <div style="text-align:right"><div class="fw700" style="font-size:15px">${fmt((+p.principalDue)+(+p.interestDue))}</div>
-        <div style="font-size:11px;color:var(--muted)">${t("daysLeft")} ${dl} ${t("days")}</div>
-        <button class="btn btn-primary btn-sm" style="margin-top:4px" onclick="navToPayment('${s.id}',${p.period})">${t('registerPayment')}</button></div>
-    </div>`;}).join('')||`<div class="empty-state"><div class="ei">📭</div><p>${t("noRecord")}</p></div>`}
+  ${items.length ? `<div class="alert alert-amber">📅 ${_lang==='zh'?'未来30天共':_lang==='en'?'Next 30 days:':'30ថ្ងៃខាងមុខ:'} <b>${items.length}</b> ${_lang==='zh'?'笔':_lang==='en'?'payments':'ការទូទាត់'} · ${_lang==='zh'?'应收合计':_lang==='en'?'Total due':'សរុប'} <b>${fmt(totalAmt)}</b></div>` : ''}
+  <div class="card">
+    ${items.map(({s,p,dd})=>{
+      const dl = Math.floor((new Date(dd)-new Date(td))/86400000);
+      const urgent = dl <= 3;
+      return `
+    <div class="reminder-item ${urgent?'warn':'info'}">
+      <div style="flex:1;min-width:0">
+        <div class="fw700" style="font-size:14px">${esc(s.customer)}
+          <span style="font-weight:400;font-size:12px;color:#90a4ae;margin-left:6px">${esc(s.customerPhone||'')}</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">#${s.id} · ${t("period")} ${p.period}/${s.periods} · ${s.modelName||'-'}</div>
+        <div style="font-size:12px;color:var(--muted)">${_lang==='zh'?'到期':_lang==='en'?'Due':'ផុតកំណត់'}：<b style="color:${urgent?'var(--red)':'var(--amber)'}">${p.dueDate}</b></div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div class="fw700" style="font-size:15px">${fmt((+p.principalDue||0)+(+p.interestDue||0))}</div>
+        <div style="font-size:11px;color:${urgent?'var(--red)':'var(--muted)'};font-weight:${urgent?700:400}">${t("daysLeft")} <b>${dl}</b> ${t("days")}</div>
+        <button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="navToPayment('${s.id}',${p.period})">${t('registerPayment')}</button>
+      </div>
+    </div>`;
+    }).join('')||`<div class="empty-state"><div class="ei">📭</div><p>${t("noRecord")}</p></div>`}
   </div>`;
 }
 
