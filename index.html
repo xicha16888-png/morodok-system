@@ -2521,10 +2521,18 @@ function renderPaymentAdd() {
       <div class="form-group"><label>实收合计</label><input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px"></div>
       <input type="hidden" id="pPrincipal"><input type="hidden" id="pInterest">
       ` : `
-      <div class="form-group"><label>${t("paidPrincipal")}</label><input type="number" id="pPrincipal" placeholder="0.00" step="0.01" oninput="calcPayTotal()"></div>
-      <div class="form-group"><label>${t("colInterestPaid")}</label><input type="number" id="pInterest" placeholder="0.00" step="0.01" oninput="calcPayTotal()"></div>
-      <div class="form-group"><label>实收滞纳金 ($)</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcPayTotal()"></div>
-      <div class="form-group"><label>总还款金额 ($)</label><input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px"></div>
+      <div class="form-group">
+        <label>应还总额</label>
+        <input id="pExpected" readonly style="background:#f5f5f5;color:#546e7a;font-size:14px;font-weight:600">
+      </div>
+      <div class="form-group">
+        <label style="color:var(--green);font-weight:700">实收总额 ($) <span style="font-size:11px;font-weight:400;color:#90a4ae">本金+利息</span></label>
+        <input type="number" id="pTotalReceived" placeholder="0.00" step="0.01" oninput="calcCollectorTotal()"
+          style="border:2px solid var(--green);font-size:15px;font-weight:700">
+      </div>
+      <div class="form-group"><label>实收滞纳金 ($)</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcCollectorTotal()"></div>
+      <div class="form-group"><label>实收合计</label><input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px"></div>
+      <input type="hidden" id="pPrincipal"><input type="hidden" id="pInterest">
       `}
       <div class="form-group"><label>备注</label><input id="pNote" placeholder="可选"></div>
     </div>
@@ -3096,22 +3104,13 @@ window.submitPayment = function() {
 
   let principal, interest, serviceFee = 0, actualReceived;
 
-  if (isCollector) {
-    // ── 催收员：填实收总额，系统自动拆分 ──
-    actualReceived = +(document.getElementById('pTotalReceived')?.value||0);
-    if (!actualReceived) { showMsg('payMsg', '请输入实收金额', 'red'); return; }
+  // 所有角色统一填实收总额，系统自动拆分本金/利息
+  actualReceived = +(document.getElementById('pTotalReceived')?.value||0);
+  if (!actualReceived) { showMsg('payMsg', '请输入实收金额', 'red'); return; }
 
-    // 拆分规则：优先满足利息，剩余算本金
-    interest  = Math.min(actualReceived, dueInterest);
-    principal = Math.max(0, actualReceived - interest);
-
-  } else {
-    // ── 老板/主管/录入员：手动填本金+利息 ──
-    principal = +(document.getElementById('pPrincipal')?.value||0);
-    interest  = +(document.getElementById('pInterest')?.value||0);
-    actualReceived = principal + interest;
-    if (!principal && !interest) { showMsg('payMsg', t('msgFillAmounts'), 'red'); return; }
-  }
+  // 按应还比例拆分：利息优先，剩余算本金
+  interest  = Math.min(actualReceived, dueInterest);
+  principal = Math.max(0, actualReceived - interest);
 
   const total = actualReceived + penalty;
 
