@@ -2623,7 +2623,10 @@ function buildPayTableByContract(pays, isCollector) {
       <div style="border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
         ${cPays.map((p,i) => {
           const tot = (+p.principal||0)+(+p.interest||0)+(+p.penalty||0);
-          const isEarly = p.isEarlyPaid;
+          const isEarly = p.isEarlyPaid || (() => {
+            const _s = (DB_get('sales')||[]).find(x=>String(x.id)===String(p.contractId));
+            return _s?.status === '提前结清';
+          })();
           const bg = isEarly ? '#e8f5e9' : (i%2===0?'#fff':'#f9fafb');
           const borderLeft = isEarly ? 'border-left:3px solid #4caf50;' : '';
           return `<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:${bg};${borderLeft}border-bottom:1px solid #f0f0f0;flex-wrap:wrap">
@@ -2653,16 +2656,11 @@ function buildPayTableByContract(pays, isCollector) {
 function buildPayTableEarly(pays, isCollector) {
   const sales = DB_get('sales') || [];
   const td = today();
-  // 提前还款 = 付款日期早于期次到期日 的付款（isEarlyPaid标记 或 日期倒推）
+  // 提前还款 = 合同状态为「提前结清」的付款记录
   const earlyPays = pays.filter(p => {
     if (p.isEarlyPaid) return true;
-    // 查合同期次到期日
     const s = sales.find(x => String(x.id) === String(p.contractId));
-    const sch = s?.schedule?.find(x => x.period === p.period);
-    if (!sch?.dueDate) return false;
-    const dueD = sch.dueDate.replace(/\//g,'-');
-    const payD = (p.date||'').replace(/\//g,'-');
-    return payD < dueD; // 付款日 < 到期日 = 提前
+    return s?.status === '提前结清';
   });
 
   if (!earlyPays.length) return `<div class="empty-state"><div class="ei">⚡</div><p>暂无提前还款记录</p></div>`;
@@ -2755,7 +2753,10 @@ function buildPayTableGrouped(pays, isCollector) {
       <div style="border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
         ${dayPays.map((p,i) => {
           const total = (+p.principal||0)+(+p.interest||0)+(+p.serviceFee||0)+(+p.penalty||0);
-          const isEarly = p.isEarlyPaid;
+          const isEarly = p.isEarlyPaid || (() => {
+            const _s = (DB_get('sales')||[]).find(x=>String(x.id)===String(p.contractId));
+            return _s?.status === '提前结清';
+          })();
           const bg = isEarly ? '#e8f5e9' : (i%2===0?'#fff':'#f9fafb');
           const borderLeft = isEarly ? 'border-left:3px solid #4caf50;' : '';
           return `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:${bg};${borderLeft}border-bottom:1px solid #f0f0f0;flex-wrap:wrap">
@@ -5751,12 +5752,12 @@ window.importExcel = function(input) {
           // 已还期次 → 准备生成收款记录
           if (isPaid && (paidPrincipal > 0 || paidInterest > 0 || paidPenalty > 0)) {
             const payDate = dueDate || contractDate;
-            const isEarlyPaid = dueDate && dueDate.replace(/\//g,'-') > today(); // 到期日在今天之后=提前还款
+            const isEarlyPaid = status === '提前结清'; // 整个合同提前结清 = 提前还款
             periodPayments.push({
               contractId,
               customer: custEn || custKh,
               period: p + 1,
-              date: isEarlyPaid ? today() : payDate, // 提前还款用今天作为实际收款日
+              date: payDate || contractDate,
               principal: paidPrincipal,
               interest: paidInterest,
               serviceFee: 0,
