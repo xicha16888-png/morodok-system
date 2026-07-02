@@ -2623,10 +2623,7 @@ function buildPayTableByContract(pays, isCollector) {
       <div style="border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
         ${cPays.map((p,i) => {
           const tot = (+p.principal||0)+(+p.interest||0)+(+p.penalty||0);
-          const isEarly = p.isEarlyPaid || (() => {
-            const _s = (DB_get('sales')||[]).find(x=>String(x.id)===String(p.contractId));
-            return _s?.status === '提前结清';
-          })();
+          const isEarly = false; // 提前结清在单独的⚡视图显示
           const bg = isEarly ? '#e8f5e9' : (i%2===0?'#fff':'#f9fafb');
           const borderLeft = isEarly ? 'border-left:3px solid #4caf50;' : '';
           return `<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:${bg};${borderLeft}border-bottom:1px solid #f0f0f0;flex-wrap:wrap">
@@ -2652,48 +2649,40 @@ function buildPayTableByContract(pays, isCollector) {
   }).join('');
 }
 
-// ── 提前还款视图 ──
+// ── 提前还款视图（读 earlyPayments 表）──
 function buildPayTableEarly(pays, isCollector) {
+  const earlyList = DB_get('earlyPayments') || [];
+  if (!earlyList.length) return `<div class="empty-state"><div class="ei">⚡</div><p>暂无提前还款记录</p></div>`;
+
   const sales = DB_get('sales') || [];
-  const td = today();
-  // 提前还款 = 合同状态为「提前结清」的付款记录
-  const earlyPays = pays.filter(p => {
-    if (p.isEarlyPaid) return true;
-    const s = sales.find(x => String(x.id) === String(p.contractId));
-    return s?.status === '提前结清';
-  });
+  const total = earlyList.reduce((a,r) => a + (+r.negotiated||+r.negotiatedAmount||0), 0);
 
-  if (!earlyPays.length) return `<div class="empty-state"><div class="ei">⚡</div><p>暂无提前还款记录</p></div>`;
-
-  const total = earlyPays.reduce((a,p)=>a+(+p.principal||0)+(+p.interest||0)+(+p.penalty||0),0);
   return `
   <div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:13px">
-    ⚡ 共 <b>${earlyPays.length}</b> 笔提前还款 · 合计 <b style="color:var(--green)">${fmt(total)}</b>
+    ⚡ 共 <b>${earlyList.length}</b> 笔提前结清 · 客户合计还款 <b style="color:var(--green)">${fmt(total)}</b>
   </div>
   <div style="border:1px solid #e0e0e0;border-radius:10px;overflow:hidden">
-    ${earlyPays.map((p,i) => {
-      const tot = (+p.principal||0)+(+p.interest||0)+(+p.penalty||0);
-      const s = sales.find(x => String(x.id) === String(p.contractId));
-      const sch = s?.schedule?.find(x => x.period === p.period);
-      const dueD = (sch?.dueDate||'').replace(/\//g,'-');
-      const payD = (p.date||'').replace(/\//g,'-');
-      const dayEarly = dueD ? Math.floor((new Date(dueD)-new Date(payD))/86400000) : 0;
-      const bg = i%2===0?'#fff':'#f9fafb';
-      return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:${bg};border-bottom:1px solid #f0f0f0;flex-wrap:wrap">
-        <div style="flex:1;min-width:130px">
-          <div style="font-weight:700;font-size:13px">${esc(p.customer)}
-            <span style="background:#e8f5e9;color:#2e7d32;font-size:10px;padding:1px 7px;border-radius:8px;margin-left:4px;font-weight:700">⚡提前${dayEarly>0?dayEarly+'天':''}</span>
+    ${[...earlyList].sort((a,b)=>b.date?.localeCompare(a.date||'')).map((r,i) => {
+      const s = sales.find(x => String(x.id) === String(r.contractId));
+      const negotiated = +r.negotiated || +r.negotiatedAmount || 0;
+      const profit = +r.actualProfit || 0;
+      const remainP = (() => {
+        if (!s) return +r.remainPrincipal || 0;
+        return s.schedule.reduce((a,p) => a + (+p.principalDue||0) - (+p.paidPrincipal||0), 0);
+      })();
+      const bg = i%2===0 ? '#e8f5e9' : '#f1f8f1';
+      return `<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:${bg};border-left:3px solid #4caf50;border-bottom:1px solid #c8e6c9;flex-wrap:wrap">
+        <div style="flex:1;min-width:140px">
+          <div style="font-weight:700;font-size:13px">${esc(r.customer)}
+            <span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 7px;border-radius:8px;margin-left:5px;font-weight:700">⚡提前结清</span>
           </div>
-          <div style="font-size:11px;color:#90a4ae">#${p.contractId} · 第${p.period}期 · 付款日 ${payD} · 原到期 ${dueD}</div>
+          <div style="font-size:11px;color:#546e7a;margin-top:2px">#${r.contractId} · ${r.date} · 原剩余本金 ${fmt(remainP)}</div>
+          ${r.note ? `<div style="font-size:11px;color:#78909c">${esc(r.note)}</div>` : ''}
         </div>
-        <div style="text-align:right">
-          ${isCollector ? `<b style="color:var(--green);font-size:15px">${fmt(tot)}</b>` : `
-          <div style="font-size:12px;color:#546e7a">本金 ${fmt(p.principal)} · 利息 ${fmt(p.interest||0)}</div>
-          <b style="color:var(--green)">${fmt(tot)}</b>`}
-        </div>
-        <div style="display:flex;gap:4px">
-          <button onclick="editPayment(${p.id})" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px">✏️</button>
-          <button onclick="deletePayment(${p.id})" class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 8px">🗑️</button>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:12px;color:#546e7a">协商还款</div>
+          <div style="font-weight:800;font-size:16px;color:#2e7d32">${fmt(negotiated)}</div>
+          <div style="font-size:11px;color:var(--muted)">净利润 <b style="color:${profit>=0?'var(--green)':'var(--red)'}">${fmt(profit)}</b></div>
         </div>
       </div>`;
     }).join('')}
@@ -2753,10 +2742,7 @@ function buildPayTableGrouped(pays, isCollector) {
       <div style="border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
         ${dayPays.map((p,i) => {
           const total = (+p.principal||0)+(+p.interest||0)+(+p.serviceFee||0)+(+p.penalty||0);
-          const isEarly = p.isEarlyPaid || (() => {
-            const _s = (DB_get('sales')||[]).find(x=>String(x.id)===String(p.contractId));
-            return _s?.status === '提前结清';
-          })();
+          const isEarly = false; // 提前结清在单独的⚡视图显示
           const bg = isEarly ? '#e8f5e9' : (i%2===0?'#fff':'#f9fafb');
           const borderLeft = isEarly ? 'border-left:3px solid #4caf50;' : '';
           return `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:${bg};${borderLeft}border-bottom:1px solid #f0f0f0;flex-wrap:wrap">
