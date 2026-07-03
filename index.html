@@ -891,7 +891,9 @@ window.toggleLang = function() {
   if (btn) btn.textContent = getLangLabel(_lang);
   const ht = document.getElementById('headerTitle');
   if (ht) ht.textContent = t('systemTitle');
-  renderLoginOverlay();
+  // 只有登录页正在显示时才更新它，不能无条件调用
+  const _loginEl = document.getElementById('loginOverlay');
+  if (_loginEl && _loginEl.style.display !== 'none') renderLoginOverlay();
   buildSidebar();
   const page = document.querySelector('.nav-item.active')?.dataset?.page || 'home';
   nav(page);
