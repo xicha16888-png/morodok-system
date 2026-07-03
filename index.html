@@ -4688,13 +4688,12 @@ function renderFinanceReport() {
     ${(() => {
       const td = today();
       const allSales = DB_get('sales')||[];
-      // 只看选定月份到期的逾期期次
-      const selM = sel.m || td.slice(0,7);
+      // 统计所有当前未还、到期日已过的期次（不限制到期日所属月份，与"逾期未还提醒"页面口径一致）
       const overduePeriods = [];
       allSales.forEach(s => {
         if (s.status === '已结清' || s.status === '提前结清') return;
         s.schedule.forEach(p => {
-          if (!p.paid && p.dueDate && p.dueDate.replace(/\//g,'-') < td && p.dueDate.replace(/\//g,'-').slice(0,7) === selM) {
+          if (!p.paid && p.dueDate && p.dueDate.replace(/\//g,'-') < td) {
             const diffDays = Math.floor((new Date(td) - new Date(p.dueDate)) / 86400000);
             overduePeriods.push({ sale: s, period: p, diffDays });
           }
