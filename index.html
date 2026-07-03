@@ -2354,15 +2354,15 @@ window.viewSchedule = function(id) {
     </div>` : '';
   showModal(`${t('repaySchedule')} — ${esc(s.customer)} (#${s.id})`,
     `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">
-      月利率：${(+s.interestRate||0).toFixed(2)}% &nbsp;|&nbsp;
-      ${tl("每日滞纳金","Daily Late Fee","ពិន័យ​ប្រចាំ​ថ្ងៃ")}：${fmt(s.dailyLateFee||0)} &nbsp;|&nbsp;
-      店家返点：${fmt(s.storeRebate||0)}
+      ${tl('月利率','Monthly Rate','អត្រា​ប្រចាំ​ខែ')}：${(+s.interestRate||0).toFixed(2)}% &nbsp;|&nbsp;
+      ${tl('每日滞纳金','Daily Late Fee','ពិន័យ​ប្រចាំ​ថ្ងៃ')}：${fmt(s.dailyLateFee||0)} &nbsp;|&nbsp;
+      ${tl('店家返点','Store Rebate','កម្រៃ​ហាង')}：${fmt(s.storeRebate||0)}
     </div>
     ${emgHtml}
     <div class="table-wrap"><table>
       <tr><th>${t('period')}</th><th>${t('colDate')}</th><th>${t('colPrincipalPaid')}</th><th>${t('colInterestPaid')}</th><th>${t('colTotal')}</th><th>${t('colStatus')}</th></tr>
       ${s.schedule.map(p => `<tr>
-        <td>${p.period} ${t("period")}</td><td>${p.dueDate}</td>
+        <td>${p.period} ${tl('期','','')}</td><td>${p.dueDate}</td>
         <td>${p.paid ? fmt(p.paidPrincipal||0) : fmt(p.principalDue)}</td>
         <td>${p.paid ? fmt((+p.paidInterest||0)+(+p.paidServiceFee||0)) : fmt((+p.interestDue||0)+(+p.serviceFeeDue||0))}</td>
         <td class="fw700">${p.paid
@@ -2956,7 +2956,7 @@ function buildPayTable(pays) {
         <td>${p.date}</td>
         <td class="fw700">${esc(p.customer)}</td>
         <td class="text-blue">#${p.contractId}</td>
-        <td>${p.period} ${t("period")}</td>
+        <td>${p.period} ${tl('期','','')}</td>
         <td>${fmt(p.principal)}</td>
         <td>${fmt((+p.interest||0)+(+p.serviceFee||0))}</td>
         <td>${(+p.penalty||0)>0?`<span class="text-red">${fmt(p.penalty)}</span>`:'—'}</td>
@@ -3059,15 +3059,15 @@ window.navToPayment = function(contractId, period) {
       ? fmt((+p.paidPrincipal||0)+(+p.paidInterest||0)+(+p.paidServiceFee||0)+(+p.penalty||0))
       : fmt((+p.principalDue)+(+p.interestDue||0)+(+p.serviceFeeDue||0));
     const statusBadge = p.paid
-      ? '<span class="badge badge-green">已还 ' + p.paidDate + '</span>'
+      ? '<span class="badge badge-green">' + tl('已还','Paid','បាន​បង') + ' ' + p.paidDate + '</span>'
       : (p.dueDate < today()
-          ? '<span class="badge badge-red">逾期</span>'
-          : '<span class="badge badge-amber">待还</span>');
+          ? '<span class="badge badge-red">' + tl('逾期','Overdue','ហួស​កំណត់') + '</span>'
+          : '<span class="badge badge-amber">' + tl('待还','Pending','រង់​ចាំ') + '</span>');
     const actionBtn = !p.paid
-      ? '<button class="btn btn-primary btn-sm" onclick="quickPay(\'' + s.id + '\',' + p.period + ');closeModal()">登记还款</button>'
+      ? '<button class="btn btn-primary btn-sm" onclick="quickPay(\'' + s.id + '\',' + p.period + ');closeModal()">' + tl('登记还款','Register','ចុះ​ការ​បង') + '</button>'
       : '—';
     rows += '<tr style="' + rowStyle + '">'
-      + '<td>' + p.period + '期</td>'
+      + '<td>' + p.period + tl('期','','') + '</td>'
       + '<td>' + p.dueDate + '</td>'
       + '<td>' + (p.paid ? fmt(p.paidPrincipal||0) : fmt(p.principalDue)) + '</td>'
       + '<td>' + (p.paid ? fmt((+p.paidInterest||0)+(+p.paidServiceFee||0)) : fmt((+p.interestDue||0)+(+p.serviceFeeDue||0))) + '</td>'
@@ -3078,17 +3078,17 @@ window.navToPayment = function(contractId, period) {
   });
 
   const body = '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">'
-    + '首付：' + fmt(s.deposit||0) + ' &nbsp;|&nbsp; '
-    + '月利率：' + (+s.interestRate||0).toFixed(2) + '% &nbsp;|&nbsp; '
-    + '每日滞纳金：' + fmt(s.dailyLateFee||0) + ' &nbsp;|&nbsp; '
-    + '店家返点：' + fmt(s.storeRebate||0)
+    + tl('首付','Deposit','ប្រាក់​កក់') + '：' + fmt(s.deposit||0) + ' &nbsp;|&nbsp; '
+    + tl('月利率','Rate','អត្រា') + '：' + (+s.interestRate||0).toFixed(2) + '% &nbsp;|&nbsp; '
+    + tl('每日滞纳金','Late Fee','ពិន័យ') + '：' + fmt(s.dailyLateFee||0) + ' &nbsp;|&nbsp; '
+    + tl('店家返点','Rebate','កម្រៃ') + '：' + fmt(s.storeRebate||0)
     + '</div>'
     + '<div class="table-wrap"><table>'
-    + '<tr><th>期</th><th>到期日</th><th>本金</th><th>应收利息</th><th>合计</th><th>状态</th><th>操作</th></tr>'
+    + '<tr><th>' + tl('期','#','ខែ') + '</th><th>' + tl('到期日','Due Date','ថ្ងៃ​ផុត') + '</th><th>' + tl('本金','Principal','ដើម') + '</th><th>' + tl('应收利息','Interest','ការ​ប្រាក់') + '</th><th>' + tl('合计','Total','សរុប') + '</th><th>' + tl('状态','Status','ស្ថានភាព') + '</th><th>' + tl('操作','Action','សកម្ម') + '</th></tr>'
     + rows
     + '</table></div>';
 
-  showModal('💳 ' + esc(s.customer) + ' (#' + s.id + ') — 还款登记', body);
+  showModal('💳 ' + esc(s.customer) + ' (#' + s.id + ') — ' + tl('还款登记','Payment','ការ​ទូ​ទាត់'), body);
 };
 
 window.quickPay = function(contractId, period) {
@@ -6124,13 +6124,13 @@ window.openAuditDetail = async function(contractId) {
     <div style="margin-bottom:20px">
       <div style="font-weight:700;color:#0d2137;margin-bottom:8px;font-size:13px">📅 还款计划</div>
       <div class="table-wrap" style="max-height:200px;overflow-y:auto"><table>
-        <tr><th>期次</th><th>到期日</th><th>本金</th><th>利息</th><th>状态</th></tr>
+        <tr><th>${tl('期次','Period','ខែ')}</th><th>${tl('到期日','Due Date','ថ្ងៃ​ផុត')}</th><th>${tl('本金','Principal','ដើម')}</th><th>${tl('利息','Interest','ការ​ប្រាក់')}</th><th>${tl('状态','Status','ស្ថានភាព')}</th></tr>
         ${(s.schedule||[]).map(p=>`<tr>
           <td>${p.period}期</td>
           <td>${p.dueDate||'—'}</td>
           <td>$${fmt(+p.principalDue||0)}</td>
           <td>$${fmt(+p.interestDue||0)}</td>
-          <td>${p.paid?'<span style="color:var(--green)">✅ 已还</span>':'<span style="color:var(--amber)">⏳ 待还</span>'}</td>
+          <td>${p.paid?('<span style="color:var(--green)">✅ '+tl('已还','Paid','បាន​បង')+'</span>'):('<span style="color:var(--amber)">⏳ '+tl('待还','Pending','រង់​ចាំ')+'</span>')}</td>
         </tr>`).join('')}
       </table></div>
     </div>
