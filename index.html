@@ -2585,8 +2585,10 @@ function renderPaymentAdd() {
       <div class="card-title" style="margin:0">📋 ${tl('收款记录','Payment Records','កំណត់​ត្រា​ការ​បង់')}（${pays.length}${tl('笔','','')}）</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <div style="display:flex;border:1.5px solid var(--border);border-radius:8px;overflow:hidden;font-size:12px">
+          <button id="payViewMonth" onclick="setPayView('month')"
+            style="padding:6px 12px;border:none;background:#fff;color:#546e7a;cursor:pointer;font-family:inherit;font-size:12px">📆 ${tl('按月','By Month','តាម​ខែ')}</button>
           <button id="payViewDate" onclick="setPayView('date')"
-            style="padding:6px 12px;border:none;background:var(--navy);color:#fff;cursor:pointer;font-family:inherit;font-size:12px">📅 ${tl('按日期','By Date','តាម​កាលបរិច្ឆេទ')}</button>
+            style="padding:6px 12px;border:none;background:var(--navy);color:#fff;cursor:pointer;font-family:inherit;font-size:12px">📅 ${tl('按日期','By Date','តាម​ថ្ងៃ')}</button>
           <button id="payViewContract" onclick="setPayView('contract')"
             style="padding:6px 12px;border:none;background:#fff;color:#546e7a;cursor:pointer;font-family:inherit;font-size:12px">📋 ${tl('按合同','By Contract','តាម​កិច្ចសន្យា')}</button>
           <button id="payViewEarly" onclick="setPayView('early')"
@@ -2612,7 +2614,7 @@ let _payViewMode = 'date'; // date | contract | early
 window.setPayView = function(mode) {
   _payViewMode = mode;
   // Update button styles
-  ['date','contract','early'].forEach(m => {
+  ['month','date','contract','early'].forEach(m => {
     const btn = document.getElementById('payView' + m.charAt(0).toUpperCase() + m.slice(1));
     if (btn) {
       btn.style.background = m === mode ? 'var(--navy)' : '#fff';
@@ -2640,6 +2642,7 @@ window.filterPays = function() {
 
   if (_payViewMode === 'contract') wrap.innerHTML = buildPayTableByContract(pays, isC);
   else if (_payViewMode === 'early') wrap.innerHTML = buildPayTableEarly(pays, isC);
+  else if (_payViewMode === 'month') wrap.innerHTML = buildPayTableByMonth(pays, isC);
   else wrap.innerHTML = buildPayTableGrouped(pays, isC);
 };
 
@@ -2761,6 +2764,71 @@ window.calcCollectorTotal = function() {
     if (pi) pi.value = principal.toFixed(2);
     if (ii) ii.value = interest.toFixed(2);
   }
+};
+
+
+// ── 按月分组（折叠展开）──
+function buildPayTableByMonth(pays, isCollector) {
+  if (!pays.length) return '<div class="empty-state"><div class="ei">📝</div><p>' + tl('暂无记录','No records','គ្មាន​កំណត់​ត្រា') + '</p></div>';
+
+  // 按月分组
+  const groups = {};
+  pays.forEach(p => {
+    const m = (p.date||'').replace(/\//g,'-').slice(0,7);
+    if (!groups[m]) groups[m] = [];
+    groups[m].push(p);
+  });
+
+  return Object.keys(groups).sort().reverse().map((month, gi) => {
+    const mPays = groups[month];
+    const mTotal = mPays.reduce((a,p)=>a+(+p.principal||0)+(+p.interest||0)+(+p.penalty||0),0);
+    const mId = 'month_' + month.replace('-','_');
+    const isFirst = gi === 0;
+
+    const rows = mPays.slice().sort((a,b)=>((b.date||'')>(a.date||'')?1:-1)).map((p,i) => {
+      const total = (+p.principal||0)+(+p.interest||0)+(+p.serviceFee||0)+(+p.penalty||0);
+      const bg = i%2===0?'#fff':'#f9fafb';
+      return '<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:'+bg+';border-bottom:1px solid #f0f0f0;flex-wrap:wrap">'
+        + '<div style="flex:1;min-width:120px">'
+        + '<div style="font-weight:700;font-size:13px">' + esc(p.customer) + '</div>'
+        + '<div style="font-size:11px;color:#90a4ae">#' + p.contractId + ' · ' + tl('第','','ខែ') + p.period + tl('期','','') + ' · ' + p.date + '</div>'
+        + '</div>'
+        + (isCollector
+          ? '<div style="font-weight:800;font-size:15px;color:var(--green)">' + fmt(total) + '</div>'
+          : '<div style="font-size:12px;color:#546e7a;text-align:right">'
+            + '<div>' + tl('本金','P','ដើម') + ' <b>' + fmt(p.principal) + '</b> · ' + tl('利息','I','ការ​ប្រាក់') + ' <b>' + fmt((+p.interest||0)+(+p.serviceFee||0)) + '</b></div>'
+            + ((+p.penalty||0)>0 ? '<div style="color:var(--red)">' + tl('滞纳金','Late','ពិន័យ') + ' ' + fmt(p.penalty) + '</div>' : '')
+            + '<div style="font-weight:800;font-size:14px;color:var(--green)">' + fmt(total) + '</div>'
+            + '</div>'
+        )
+        + '<div style="display:flex;gap:4px;flex-shrink:0">'
+        + '<button onclick="editPayment(' + p.id + ')" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px">✏️</button>'
+        + '<button onclick="deletePayment(' + p.id + ')" class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 8px">🗑️</button>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+
+    return '<div style="margin-bottom:8px;border-radius:10px;overflow:hidden;border:1px solid #e0e0e0">'
+      + '<div onclick="toggleMonthGroup("'+mId+'")" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--navy);color:#fff;cursor:pointer;font-size:13px">'
+      + '<span style="font-weight:700;font-size:14px">📆 ' + month + '</span>'
+      + '<span style="display:flex;align-items:center;gap:12px">'
+      + '<span>' + mPays.length + ' ' + tl('笔','records','ករណី') + '</span>'
+      + '<b style="color:#81d4fa;font-size:15px">' + fmt(mTotal) + '</b>'
+      + '<span id="' + mId + '_arrow" style="font-size:16px;transition:transform .2s">' + (isFirst?'▲':'▼') + '</span>'
+      + '</span>'
+      + '</div>'
+      + '<div id="' + mId + '" style="display:' + (isFirst?'block':'none') + '">' + rows + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+window.toggleMonthGroup = function(id) {
+  const el = document.getElementById(id);
+  const arrow = document.getElementById(id + '_arrow');
+  if (!el) return;
+  const isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : 'block';
+  if (arrow) arrow.textContent = isOpen ? '▼' : '▲';
 };
 
 // 收款记录按日期分组显示
