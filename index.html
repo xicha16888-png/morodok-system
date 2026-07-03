@@ -4989,7 +4989,7 @@ function renderStoreStats() {
 
   // 预计算所有店家数据
   const storeData = storeNames.map(name => {
-    const storeSales = sales.filter(s => s.shopName === name);
+    const storeSales = sales.filter(s => (s.shopName||s.storeName) === name);
     const bd30 = calcBadDebt(storeSales, 30);
     const byMonth = {};
     storeSales.forEach(s => { const m = s.date.replace(/\//g,'-').slice(0,7); byMonth[m]=(byMonth[m]||0)+1; });
@@ -5827,6 +5827,7 @@ window.importExcel = function(input) {
           const periods      = +r[9]  || 0;
           const actualPeriods= +r[10] || periods;
           const monthlyPay   = +r[11] || 0;
+          const totalInterest= +r[12] || 0;   // 总利息列
           const storeRebate  = +r[13] || 0;
           const status       = String(r[14] || '进行中').trim();
 
@@ -5853,12 +5854,14 @@ window.importExcel = function(input) {
             ? parseFloat(((firstP.interestDue / loanAmt) * 100).toFixed(4)) : 7;
 
           const contract = {
-            id: contractId, date: contractDate, storeName: shopCode,
+            id: contractId, date: contractDate, storeName: shopCode, shopName: shopCode,
             salesperson: '', customer, customerKhmer: '', customerPhone: '',
             emergencyContacts: [], modelId: '', modelName,
             salePrice, deposit, installmentAmount: loanAmt,
             periods, svcPeriods: 0, interestRate, serviceFeeRate: 0,
             monthlyPayment: monthlyPay, storeRebate, dailyLateFee: 0,
+            totalInterest: totalInterest || schedule.reduce((a,p)=>a+(+p.interestDue||0),0),
+            totalServiceFee: 0,
             status, note: '', schedule
           };
 
