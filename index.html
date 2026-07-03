@@ -4426,8 +4426,10 @@ function renderFinanceReport() {
     // 本月回款总额（顶部卡片用）
     const totalRepay = actualCollected;
 
-    // 坏账金额 = 本月应收 - 本月实收（只取正数）
-    const badDebtAmt2 = Math.max(0, totalDueAmt - actualCollected);
+    // 坏账金额 = 本月到期期次中，到期日已过（不含未到期）但仍未还的部分
+    const badDebtAmt2 = mDuePeriods
+      .filter(p => !p.paid && p.dueDate && p.dueDate.replace(/\//g,'-') <= td)
+      .reduce((a,p) => a + (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0), 0);
     // 坏账率
     const badDebtRate = totalDueAmt > 0
       ? (badDebtAmt2 / totalDueAmt * 100).toFixed(1) : '0.0';
