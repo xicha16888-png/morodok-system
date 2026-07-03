@@ -3481,9 +3481,15 @@ function renderStatsProfit() {
   // 合同利润 = 利息 + 手续费 - 返点（统一算法，与右侧卡片一致）
   const tContractProfit = tInterest + tServiceFee - tRebate;
 
-  // 提前还款
-  const tEarlyProfit   = earlyPays.reduce((a,r)=>a+(+r.actualProfit),0);
-  const tEarlyOrigInt  = earlyPays.reduce((a,r)=>a+(+r.origRemainInterest),0);
+  // 提前还款利润：优先读 earlyPayments 表，没有则从提前结清合同推算
+  const earlySales = sales.filter(s => s.status === '提前结清');
+  const tEarlyProfit = earlyPays.length > 0
+    ? earlyPays.reduce((a,r)=>a+(+r.actualProfit||0),0)
+    : earlySales.reduce((a,s)=>{
+        const collected = s.schedule.reduce((b,p)=>b+(+p.paidInterest||0)+(+p.paidServiceFee||0),0);
+        return a + collected - (+s.storeRebate||0);
+      },0);
+  const tEarlyOrigInt  = earlyPays.reduce((a,r)=>a+(+r.origRemainInterest||0),0);
   const tEarlyDiff     = tEarlyProfit - tEarlyOrigInt;
 
   // 日常开支
@@ -4382,8 +4388,15 @@ function renderFinanceReport() {
     const orderCount = mSales.length;
     const mPays  = pays.filter(p => p.date.slice(0,7) === m);
     const mEarly = earlyPays.filter(r => r.date.slice(0,7) === m);
+    // 提前还款利润：优先读 earlyPayments 表，没有则从提前结清合同推算
+    const mEarlySalesForProfit = sales.filter(s => s.status==='提前结清' && s.date.replace(/\//g,'-').slice(0,7)===m);
+    const mEarlyProfit = mEarly.length > 0
+      ? mEarly.reduce((a,r)=>a+(+r.actualProfit||0),0)
+      : mEarlySalesForProfit.reduce((a,s)=>{
+          const col = s.schedule.reduce((b,p)=>b+(+p.paidInterest||0)+(+p.paidServiceFee||0),0);
+          return a + col - (+s.storeRebate||0);
+        },0);
     const mInterest    = mPays.reduce((a,p) => a + (+p.interest||0), 0);
-    const mEarlyProfit = mEarly.reduce((a,r) => a + (+r.actualProfit||0), 0);
     const mServiceFee  = 0; // 无手续费
     const mRebate      = mSales.reduce((a,s)=>a+(+s.storeRebate||0),0);
     const mPenalty     = mPays.reduce((a,p)=>a+(+p.penalty||0),0);
