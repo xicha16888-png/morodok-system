@@ -2861,41 +2861,40 @@ window.editPayment = function(id) {
   const pays = DB_get('payments')||[];
   const pay = pays.find(p => p.id === id);
   if (!pay) return;
-  showModal(`✏️ 修改收款记录 — ${pay.customer} 第${pay.period}期`,`
+  showModal(`✏️ ${tl('修改收款记录','Edit Payment','កែ​ការ​ទូ​ទាត់')} — ${pay.customer} ${tl('第','#','ខែ')}${pay.period}${tl('期','','')}`,`
     <div class="form-grid" style="gap:12px">
       <div class="form-group">
-        <label style="font-size:12px;font-weight:600;color:#546e7a">收款日期</label>
+        <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('收款日期','Payment Date','ថ្ងៃ​ទូ​ទាត់')}</label>
         <input id="epDate" type="date" value="${(pay.date||'').replace(/\//g,'-')}"
           style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
       </div>
       <div class="form-group">
-        <label style="font-size:12px;font-weight:600;color:#546e7a">实收本金 ($)</label>
+        <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('实收本金','Principal','ដើម')} ($)</label>
         <input id="epPrincipal" type="number" step="0.01" value="${pay.principal||0}"
           style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
       </div>
       <div class="form-group">
-        <label style="font-size:12px;font-weight:600;color:#546e7a">实收利息 ($)</label>
+        <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('实收利息','Interest','ការ​ប្រាក់')} ($)</label>
         <input id="epInterest" type="number" step="0.01" value="${pay.interest||0}"
           style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
       </div>
       <div class="form-group">
-        <label style="font-size:12px;font-weight:600;color:#546e7a">滞纳金 ($)</label>
+        <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('滞纳金','Late Fee','ប្រាក់​ពិន័យ')} ($)</label>
         <input id="epPenalty" type="number" step="0.01" value="${pay.penalty||0}"
           style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
       </div>
       <div class="form-group" style="grid-column:1/-1">
-        <label style="font-size:12px;font-weight:600;color:#546e7a">备注</label>
-        <input id="epNote" type="text" value="${pay.note||''}" placeholder="可选"
+        <label style="font-size:12px;font-weight:600;color:#546e7a">${t('remarks')}</label>
+        <input id="epNote" type="text" value="${pay.note||''}" placeholder="${tl('可选','Optional','ស្រេច​ចិត្ត')}"
           style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
       </div>
     </div>
     <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px 12px;margin:12px 0;font-size:12px;color:#5d4037">
-      📌 合同：<b>#${pay.contractId}</b> · 客户：<b>${pay.customer}</b> · 第 <b>${pay.period}</b> 期
-    </div>
+      📌 ${tl('合同','Contract','កិច្ចសន្យា')}：<b>#${pay.contractId}</b> · ${tl('客户','Customer','អ្នក​ប្រើ')}：<b>${pay.customer}</b> · ${tl('第','#','ខែ')} <b>${pay.period}</b> ${tl('期','','')}</div>
     <div id="epMsg" style="margin-bottom:8px;font-size:12px"></div>
     <div style="display:flex;gap:10px">
-      <button onclick="saveEditPayment(${id})" class="btn btn-primary">💾 保存修改</button>
-      <button onclick="closeModal()" class="btn btn-outline">取消</button>
+      <button onclick="saveEditPayment(${id})" class="btn btn-primary">💾 ${tl('保存修改','Save','រក្សា​ទុក')}</button>
+      <button onclick="closeModal()" class="btn btn-outline">${t('cancel')}</button>
     </div>
   `);
 };
@@ -2913,7 +2912,7 @@ window.saveEditPayment = function(id) {
   const newNote      = document.getElementById('epNote')?.value || '';
   const msgEl        = document.getElementById('epMsg');
 
-  if (!newDate) { if(msgEl){msgEl.textContent='❌ 请填写收款日期';msgEl.style.color='red';} return; }
+  if (!newDate) { if(msgEl){msgEl.textContent='❌ '+tl('请填写收款日期','Please enter payment date','សូម​បញ្ចូល​ថ្ងៃ');msgEl.style.color='red';} return; }
 
   // Update payment record
   pays[idx] = { ...pay, date: newDate, principal: newPrincipal, interest: newInterest, penalty: newPenalty, note: newNote };
