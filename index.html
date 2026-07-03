@@ -279,35 +279,7 @@ tr:hover td{background:#f8faff}
 <body>
 
 <!-- ══ 登录遮罩 ══ -->
-<div id="loginOverlay" style="display:none;position:fixed;inset:0;background:linear-gradient(135deg,#0d2137 0%,#1565c0 100%);z-index:9999;align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:20px;padding:40px 36px;width:340px;max-width:90vw;box-shadow:0 24px 60px rgba(0,0,0,.35)">
-    <div style="text-align:center;margin-bottom:28px">
-      <div style="font-size:36px;margin-bottom:8px">📱</div>
-      <div style="font-size:20px;font-weight:800;color:#0d2137;letter-spacing:1px">MORODOK</div>
-      <div style="font-size:12px;color:#90a4ae;margin-top:4px">手机销售分期管理系统</div>
-    </div>
-    <div style="margin-bottom:16px">
-      <label style="font-size:12px;font-weight:600;color:#546e7a;display:block;margin-bottom:6px">用户名</label>
-      <input id="loginUser" type="text" placeholder="请输入用户名" autocomplete="username"
-        style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;font-family:inherit;outline:none;transition:border .2s"
-        onfocus="this.style.borderColor=\'#1565c0\'" onblur="this.style.borderColor=\'#e0e0e0\'"
-        onkeydown="if(event.key===\'Enter\')document.getElementById(\'loginPass\').focus()">
-    </div>
-    <div style="margin-bottom:20px">
-      <label style="font-size:12px;font-weight:600;color:#546e7a;display:block;margin-bottom:6px">密码</label>
-      <input id="loginPass" type="password" placeholder="请输入密码" autocomplete="current-password"
-        style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;font-family:inherit;outline:none;transition:border .2s"
-        onfocus="this.style.borderColor=\'#1565c0\'" onblur="this.style.borderColor=\'#e0e0e0\'"
-        onkeydown="if(event.key===\'Enter\')doLogin()">
-    </div>
-    <div id="loginErr" style="display:none;background:#ffebee;color:#c62828;font-size:12px;padding:10px 14px;border-radius:8px;margin-bottom:16px;text-align:center"></div>
-    <button onclick="doLogin()" id="loginBtn"
-      style="width:100%;padding:14px;background:linear-gradient(135deg,#1565c0,#0d47a1);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.5px">
-      登 录
-    </button>
-    <div style="text-align:center;margin-top:16px;font-size:11px;color:#b0bec5">忘记密码请联系管理员</div>
-  </div>
-</div>
+<div id="loginOverlay" style="display:none;position:fixed;inset:0;background:linear-gradient(135deg,#0d2137 0%,#1565c0 100%);z-index:9999;align-items:center;justify-content:center"></div>
 
 <div class="header">
   <div class="header-title">📱 <span id="headerTitle">手机销售分期管理系统</span></div>
@@ -902,6 +874,11 @@ const I18N = {
 };
 
 function t(key) { return (I18N[_lang] || I18N.zh)[key] || key; }
+function tl(zh, en, km) {
+  if (_lang === 'en') return en;
+  if (_lang === 'km') return km;
+  return zh;
+}
 
 function getLangLabel(lang) {
   return lang === 'zh' ? '🌐 EN' : lang === 'en' ? '🌐 ខ្មែរ' : '🌐 中文';
@@ -914,10 +891,50 @@ window.toggleLang = function() {
   if (btn) btn.textContent = getLangLabel(_lang);
   const ht = document.getElementById('headerTitle');
   if (ht) ht.textContent = t('systemTitle');
+  renderLoginOverlay();
   buildSidebar();
   const page = document.querySelector('.nav-item.active')?.dataset?.page || 'home';
   nav(page);
 };
+
+function renderLoginOverlay() {
+  const el = document.getElementById('loginOverlay');
+  if (!el) return;
+  const L = {
+    sub:    tl('手机分期管理系统', 'Phone Installment System', 'ប្រព័ន្ធ​គ្រប់​គ្រង​ការ​ដំណើរ​ការ​ទូរ​សព្ទ'),
+    user:   tl('用户名', 'Username', 'ឈ្មោះ​អ្នក​ប្រើ'),
+    userPh: tl('请输入用户名', 'Enter username', 'បញ្ចូល​ឈ្មោះ​អ្នក​ប្រើ'),
+    pass:   tl('密码', 'Password', 'ពាក្យ​សម្ងាត់'),
+    passPh: tl('请输入密码', 'Enter password', 'បញ្ចូល​ពាក្យ​សម្ងាត់'),
+    login:  tl('登 录', 'Login', 'ចូល'),
+    forgot: tl('忘记密码请联系管理员', 'Forgot password? Contact admin', 'ភ្លេច​ពាក្យ​សម្ងាត់? សូម​ទាក់​ទង​អ្នក​គ្រប់​គ្រង'),
+    lang:   getLangLabel(_lang),
+  };
+  el.innerHTML = [
+    '<div style="background:#fff;border-radius:20px;padding:40px 36px;width:340px;max-width:90vw;box-shadow:0 24px 60px rgba(0,0,0,.35)">',
+    '<div style="text-align:center;margin-bottom:28px">',
+    '<div style="font-size:36px;margin-bottom:8px">📱</div>',
+    '<div style="font-size:20px;font-weight:800;color:#0d2137;letter-spacing:1px">MORODOK</div>',
+    '<div style="font-size:12px;color:#90a4ae;margin-top:4px">' + L.sub + '</div>',
+    '<button onclick="toggleLang()" style="margin-top:10px;background:rgba(21,101,192,.1);border:1px solid rgba(21,101,192,.3);color:#1565c0;padding:4px 14px;border-radius:20px;font-size:11px;cursor:pointer;font-family:inherit">' + L.lang + '</button>',
+    '</div>',
+    '<div style="margin-bottom:16px">',
+    '<label style="font-size:12px;font-weight:600;color:#546e7a;display:block;margin-bottom:6px">' + L.user + '</label>',
+    '<input id="loginUser" type="text" placeholder="' + L.userPh + '" autocomplete="username" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;font-family:inherit;outline:none;transition:border .2s" onfocus="this.style.borderColor=\'#1565c0\'" onblur="this.style.borderColor=\'#e0e0e0\'" onkeydown="if(event.key===\'Enter\')document.getElementById(\'loginPass\').focus()">',
+    '</div>',
+    '<div style="margin-bottom:20px">',
+    '<label style="font-size:12px;font-weight:600;color:#546e7a;display:block;margin-bottom:6px">' + L.pass + '</label>',
+    '<input id="loginPass" type="password" placeholder="' + L.passPh + '" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;font-family:inherit;outline:none;transition:border .2s" onfocus="this.style.borderColor=\'#1565c0\'" onblur="this.style.borderColor=\'#e0e0e0\'" onkeydown="if(event.key===\'Enter\')doLogin()">',
+    '</div>',
+    '<div id="loginErr" style="display:none;background:#ffebee;color:#c62828;font-size:12px;padding:10px 14px;border-radius:8px;margin-bottom:16px;text-align:center"></div>',
+    '<button onclick="doLogin()" id="loginBtn" style="width:100%;padding:14px;background:linear-gradient(135deg,#1565c0,#0d47a1);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.5px">',
+    L.login,
+    '</button>',
+    '<div style="text-align:center;margin-top:16px;font-size:11px;color:#b0bec5">' + L.forgot + '</div>',
+    '</div>'
+  ].join('');
+  el.style.display = 'flex';
+}
 
 function buildSidebar() {
   const currentPage = window._currentPage || 'home';
@@ -1463,11 +1480,11 @@ function renderHome() {
   </div>`:''})()}
   
   <div class="home-grid">
-    ${[['➕',t('saleAdd'),t('newContractSub').slice(0,10),'sale-add'],['💳',t('paymentAdd'),_lang==='km'?'ចុះបង្ហាញការទូទាត់':_lang==='zh'?'录入收款记录':'Record payment','payment-add'],
-       ['📊',t('statsCollection')+'🔐',_lang==='km'?'សង្ខេបប្រចាំខែ':_lang==='zh'?'月度汇总':'Monthly summary','stats-collection'],['💰',t('statsProfit')+'🔐',_lang==='km'?'វិភាគប្រាក់ចំណេញ':_lang==='zh'?'盈利分析':'Profit analysis','stats-profit'],
-       ['📈',t('financeReport')+'🔐',_lang==='km'?'ផ្ដល់/ប្រមូល/ចំណេញ':_lang==='zh'?'放款/回款/利润':'Loans/Collections','finance-report'],['⚡',t('earlyPayment'),_lang==='km'?'ទូទាត់ចរចា':_lang==='zh'?'协商结清':'Early settlement','early-payment'],
-       ['🔍',t('saleList'),_lang==='km'?'ស្វែងរកកិច្ចសន្យា':_lang==='zh'?'合同检索':'Contract search','sale-list'],['⏰',t('reminderTomorrow'),_lang==='km'?'ដល់កំណត់ស្អែក':_lang==='zh'?'明日到期':'Due tomorrow','reminder-tomorrow'],
-       ['🚨',t('reminderOverdue'),_lang==='km'?'បញ្ជីហួសកំណត់':_lang==='zh'?'催收列表':'Overdue list','reminder-overdue'],['📋',t('paymentQuery'),_lang==='km'?'ផែនការ30ថ្ងៃ':_lang==='zh'?'30天计划':'30-day plan','payment-query']
+    ${[['➕',t('saleAdd'),t('newContractSub').slice(0,10),'sale-add'],['💳',t('paymentAdd'),tl('录入收款记录','Record payment','ចុះ​ការ​ទូ​ទាត់'),'payment-add'],
+       ['📊',t('statsCollection')+'🔐',tl('月度汇总','Monthly summary','សង្ខេប​ប្រចាំ​ខែ'),'stats-collection'],['💰',t('statsProfit')+'🔐',tl('盈利分析','Profit analysis','វិភាគ​ប្រាក់​ចំណេញ'),'stats-profit'],
+       ['📈',t('financeReport')+'🔐',tl('放款/回款/利润','Loans/Collections','ផ្ដល់/ប្រមូល/ចំណេញ'),'finance-report'],['⚡',t('earlyPayment'),tl('协商结清','Early settlement','ទូ​ទាត់​ចរ​ចា'),'early-payment'],
+       ['🔍',t('saleList'),tl('合同检索','Contract search','ស្វែង​រក​កិច្ចសន្យា'),'sale-list'],['⏰',t('reminderTomorrow'),tl('明日到期','Due tomorrow','ដល់​កំណត់​ស្អែក'),'reminder-tomorrow'],
+       ['🚨',t('reminderOverdue'),tl('催收列表','Overdue list','បញ្ជី​ហួស​កំណត់'),'reminder-overdue'],['📋',t('paymentQuery'),tl('30天计划','30-day plan','ផែន​ការ​30​ថ្ងៃ'),'payment-query']
     ].map(([i,l,s,p]) => `<div class="home-card" onclick="nav('${p}')"><div class="icon">${i}</div><div class="label">${l}</div><div class="sublabel">${s}</div></div>`).join('')}
   </div>
   <div class="card"><div class="card-header"><div class="card-title">${t('quickEntry')}</div></div>
@@ -1546,10 +1563,10 @@ window.doLogin = async function() {
   const errEl = document.getElementById('loginErr');
   const btn = document.getElementById('loginBtn');
   if (!username || !password) {
-    if(errEl){errEl.textContent='请输入用户名和密码';errEl.style.display='block';}
+    if(errEl){errEl.textContent=tl('请输入用户名和密码','Please enter username and password','សូមបញ្ចូលឈ្មោះអ្នកប្រើ និងពាក្យសម្ងាត់');errEl.style.display='block';}
     return;
   }
-  if(btn){btn.textContent='验证中...';btn.disabled=true;}
+  if(btn){btn.textContent=tl('验证中...','Verifying...','កំពុងផ្ទៀងផ្ទាត់...');btn.disabled=true;}
   if(errEl) errEl.style.display='none';
   try {
     const hash = await sha256(password);
@@ -1559,10 +1576,10 @@ window.doLogin = async function() {
     );
     const users = await res.json();
     if (!Array.isArray(users) || users.length === 0) {
-      throw new Error('用户名不存在或已禁用');
+      throw new Error(tl('用户名不存在或已禁用','User not found or disabled','អ្នកប្រើ​មិន​មាន ឬ​ត្រូវបាន​បិទ'));
     }
     const user = users[0];
-    if (user.password_hash !== hash) throw new Error('密码错误');
+    if (user.password_hash !== hash) throw new Error(tl('密码错误','Incorrect password','ពាក្យ​សម្ងាត់​មិន​ត្រូវ'));
     // 保存登录状态
     sessionStorage.setItem('morodok_user', JSON.stringify({
       id: user.id, username: user.username,
@@ -1575,14 +1592,14 @@ window.doLogin = async function() {
     if(overlay) overlay.style.display = 'none';
     startApp();
   } catch(e) {
-    if(errEl){errEl.textContent=e.message||'登录失败';errEl.style.display='block';}
-    if(btn){btn.textContent='登 录';btn.disabled=false;}
+    if(errEl){errEl.textContent=e.message||tl('登录失败','Login failed','ការ​ចូល​បាន​បរាជ័យ');errEl.style.display='block';}
+    if(btn){btn.textContent=tl('登 录','Login','ចូល');btn.disabled=false;}
   }
 };
 
 // 退出登录
 window.doLogout = function() {
-  if (!confirm('确定要退出登录吗？')) return;
+  if (!confirm(tl('确定要退出登录吗？','Confirm logout?','តើ​អ្នក​ប្រាកដ​ជា​ចង់​ចេញ​ទេ?'))) return;
   sessionStorage.removeItem('morodok_user');
   location.reload();
 };
@@ -1803,7 +1820,7 @@ window.uploadExtraImages = async function(input, contractId) {
 
 function renderSaleAdd() {
   const phones = DB_get('phones') || [];
-  const opts = phones.map(p => `<option value="${p.id}">${esc(p.brand)} ${esc(p.model)} ${esc(p.storage||'')} — ${_lang==='zh'?'库存':'Stock'}${p.stock}${_lang==='zh'?'台':'pcs'} (${_lang==='zh'?'建议':'Suggested'}${fmt(p.price)})</option>`).join('');
+  const opts = phones.map(p => `<option value="${p.id}">${esc(p.brand)} ${esc(p.model)} ${esc(p.storage||'')} — ${tl('库存','Stock','ស្តុក')}${p.stock}${tl('台','pcs','គ្រឿង')} (${tl('建议','Suggested','ណែនាំ')}${fmt(p.price)})</option>`).join('');
   // 店铺选项：从 stores 数据 + 历史合同中提取
   const stores = DB_get('stores') || [];
   const allSales = DB_get('sales') || [];
@@ -1917,7 +1934,7 @@ function renderSaleAdd() {
       <input type="hidden" id="sServicePeriods" value="3">
     </div>
 
-    <!-- 备注 -->
+    <!-- remarks -->
     <div style="margin-bottom:14px">
       <label style="font-size:12px;color:#888;font-weight:600;display:block;margin-bottom:6px">${t('remarks')}</label>
       <input id="sNote" placeholder="${t('remarkPlaceholder')}" style="width:100%;padding:12px;border-radius:8px;border:1px solid #ddd;font-size:14px">
@@ -1966,7 +1983,7 @@ window.checkPhoneDup = function() {
   const sales = DB_get('sales')||[];
   const count = sales.filter(s => s.customerPhone === phone).length;
   if (count >= 2) {
-    msg.innerHTML = `<div class="alert alert-amber">⚠️ ${t('msgPhoneDuplicate')} (${_lang==='zh'?'已有':'Already'} ${count} ${_lang==='zh'?'笔合同':'contracts'})</div>`;
+    msg.innerHTML = `<div class="alert alert-amber">⚠️ ${t('msgPhoneDuplicate')} (${tl('已有','Already','មានរួច')} ${count} ${tl('笔合同','contracts','កិច្ចសន្យា')})</div>`;
   } else if (count === 1) {
     msg.innerHTML = `<div class="alert alert-blue">ℹ️ ${_lang==='km'?'លេខនេះមាន 1 កិច្ចសន្យា':_lang==='en'?'This phone has 1 existing contract':'该电话已有 1 笔合同'}</div>`;
   } else {
@@ -2037,8 +2054,7 @@ window.submitSale = function() {
   const firstDue    = document.getElementById('sFirstDue')?.value || '';
   const sDateVal    = document.getElementById('sDate')?.value || '';
   if (firstDue && sDateVal && firstDue.slice(0,7) <= sDateVal.slice(0,7)) {
-    showMsg('saleMsg', _lang==='zh'?'首次还款日不能在合同当月！':
-      _lang==='en'?'First due date cannot be in contract month!':
+    showMsg('saleMsg', _lang==='km'?'ថ្ងៃ​ទូទាត់​ទី​១​មិន​អាច​នៅ​ក្នុង​ខែ​កិច្ចសន្យា​!':_lang==='en'?'First due date cannot be in contract month!':
       'កាលបរិច្ឆេទទូទាត់ដំបូងមិនអាចស្ថិតនៅក្នុងខែតែមួយ!', 'red');
     return;
   }
@@ -2154,14 +2170,14 @@ function renderSaleList() {
       const totalAll = allS.length;
       return `<div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
         <div style="font-size:13px;color:var(--navy)">
-          📦 <b>${_lang==='zh'?'本月单量':_lang==='en'?'This Month':'ខែនេះ'}：</b>
+          📦 <b>${tl('本月单量','This Month','ខែ​នេះ')}：</b>
           <span style="font-size:18px;font-weight:700;color:var(--sky)">${thisMonthSales.length}</span>
-          <span style="color:var(--muted);font-size:12px"> ${_lang==='zh'?'单':_lang==='en'?'orders':'ដំណើរ'}</span>
+          <span style="color:var(--muted);font-size:12px"> ${tl('单','orders','ដំណើរ')}</span>
         </div>
         <div style="font-size:13px;color:var(--navy)">
-          📋 <b>${_lang==='zh'?'总单量':_lang==='en'?'Total':'សរុប'}：</b>
+          📋 <b>${tl('总单量','Total','សរុប')}：</b>
           <span style="font-size:18px;font-weight:700;color:var(--navy)">${totalAll}</span>
-          <span style="color:var(--muted);font-size:12px"> ${_lang==='zh'?'单':_lang==='en'?'orders':'ដំណើរ'}</span>
+          <span style="color:var(--muted);font-size:12px"> ${tl('单','orders','ដំណើរ')}</span>
         </div>
       </div>`;
     })()}
@@ -2173,10 +2189,10 @@ function renderSaleList() {
         <option value="">${t('allStatus')}</option>
         <option value="进行中">${t('active')}</option>
         <option value="已结清">${t('settled')}</option>
-        <option value="提前结清">${_lang==='zh'?'提前结清':_lang==='en'?'Early Settled':'សងមុន'}</option>
+        <option value="提前结清">${tl('提前结清','Early Settled','សង​មុន')}</option>
       </select>
       <select id="saleMonthFilter" onchange="filterSales()" style="min-width:130px">
-        <option value="">${_lang==='zh'?'全部月份':_lang==='en'?'All Months':'គ្រប់ខែ'}</option>
+        <option value="">${tl('全部月份','All Months','ខែ​ទាំង​អស់')}</option>
         ${(() => {
           const allS = DB_get('sales')||[];
           const months = [...new Set(allS.map(s => s.date?.slice(0,7)).filter(Boolean))].sort().reverse();
@@ -2184,7 +2200,7 @@ function renderSaleList() {
         })()}
       </select>
       <select id="saleShopFilter" onchange="filterSales()" style="min-width:120px">
-        <option value="">${_lang==='zh'?'全部店家':_lang==='en'?'All Stores':'ហាងទាំងអស់'}</option>
+        <option value="">${tl('全部店家','All Stores','ហាង​ទាំង​អស់')}</option>
         ${shopOpts}
       </select>
       <button class="btn btn-primary btn-sm" onclick="nav('sale-add')">${t('newContractBtn')}</button>
@@ -2208,7 +2224,7 @@ function buildSalesTable(sales) {
   const uniqueDates = [...new Set(groupOrder)];
 
   let html = `<div class="table-wrap"><table>
-    <tr><th>${t("colNo")}</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>🏪 ${_lang==="zh"?"店家":_lang==="en"?"Store":"ហាង"}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colDeposit")}</th><th>${t("colPrincipal")}</th><th>${t("colPeriods")}</th><th>${t("colMonthly")}</th><th>${t("colProgress")}</th><th>${t("colStatus")}</th><th>${t("colAction")}</th></tr>`;
+    <tr><th>${t("colNo")}</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>🏪 ${tl('店家','Store','ហាង')}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colDeposit")}</th><th>${t("colPrincipal")}</th><th>${t("colPeriods")}</th><th>${t("colMonthly")}</th><th>${t("colProgress")}</th><th>${t("colStatus")}</th><th>${t("colAction")}</th></tr>`;
 
   uniqueDates.forEach(date => {
     const rows = groups[date];
@@ -2216,7 +2232,7 @@ function buildSalesTable(sales) {
     html += `<tr style="background:var(--navy);cursor:pointer" onclick="toggleDateGroup('${groupId}')">
       <td colspan="13" style="color:#fff;font-weight:700;padding:8px 12px;font-size:13px">
         📅 ${date} &nbsp;
-        <span style="background:rgba(255,255,255,0.2);border-radius:12px;padding:2px 10px;font-size:12px">${rows.length} ${_lang==='zh'?'单':_lang==='en'?'orders':'ដំណើរ'}</span>
+        <span style="background:rgba(255,255,255,0.2);border-radius:12px;padding:2px 10px;font-size:12px">${rows.length} ${tl('单','orders','ដំណើរ')}</span>
         <span id="${groupId}_icon" style="float:right;font-size:16px">▼</span>
       </td>
     </tr>`;
@@ -2239,7 +2255,7 @@ function buildSalesTable(sales) {
         <td style="white-space:nowrap">
           <button class="btn btn-outline btn-sm" onclick="viewSchedule('${s.id}')">${t('repaySchedule')}</button>
           <button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="showContractImages('${s.id}')">📎 材料</button>
-          <button class="btn btn-primary btn-sm" style="margin-left:4px" onclick="editSale('${s.id}')">${_lang==='zh'?'编辑':_lang==='km'?'កែប្រែ':'Edit'}</button>
+          <button class="btn btn-primary btn-sm" style="margin-left:4px" onclick="editSale('${s.id}')">${tl('编辑','Edit','កែប្រែ')}</button>
           <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSale('${s.id}')">${t('deleteBtn')}</button>
         </td>
       </tr>`;
@@ -2291,7 +2307,7 @@ window.filterSales = function() {
       <span>🏪 <b>${esc(shop)}</b></span>
       <span>📋 共 <b>${total}</b> 笔</span>
       <span>🔄 进行中 <b class="text-blue">${active}</b></span>
-      <span>✅ 已结清 <b class="text-green">${settled}</b></span>
+      <span>✅ ${tl("已结清","Settled","រួច​រាល់")} <b class="text-green">${settled}</b></span>
       <span>💰 贷款总额 <b>${fmt(totalAmt)}</b></span>
       <a href="#" onclick="nav('store-stats');return false" style="color:var(--sky);text-decoration:none">📊 查看坏账率 →</a>
     </div>`;
@@ -2319,7 +2335,7 @@ window.viewSchedule = function(id) {
   showModal(`${t('repaySchedule')} — ${esc(s.customer)} (#${s.id})`,
     `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">
       月利率：${(+s.interestRate||0).toFixed(2)}% &nbsp;|&nbsp;
-      每日滞纳金：${fmt(s.dailyLateFee||0)} &nbsp;|&nbsp;
+      ${tl("每日滞纳金","Daily Late Fee","ពិន័យ​ប្រចាំ​ថ្ងៃ")}：${fmt(s.dailyLateFee||0)} &nbsp;|&nbsp;
       店家返点：${fmt(s.storeRebate||0)}
     </div>
     ${emgHtml}
@@ -2335,10 +2351,10 @@ window.viewSchedule = function(id) {
         <td>
           ${p.paid
             ? (p.earlySettled
-                ? `<span class="badge badge-amber">${_lang==='zh'?'提前结清':_lang==='en'?'Early Settled':'សងមុន'}</span>`
+                ? `<span class="badge badge-amber">${tl('提前结清','Early Settled','សង​មុន')}</span>`
                 : `<span class="badge badge-green">${t('settled')} ${p.paidDate}</span>`)
             : (p.dueDate < today()
-                ? `<span class="badge badge-red">${_lang==='zh'?'逾期':_lang==='en'?'Overdue':'ហួសសំណត់'}</span>`
+                ? `<span class="badge badge-red">${tl('逾期','Overdue','ហួស​កំណត់')}</span>`
                 : `<span class="badge badge-amber">${t('pending')}</span>`)
           }
         </td>
@@ -2352,7 +2368,7 @@ window.viewSchedule = function(id) {
         const ep = (DB_get('earlyPayments')||[]).find(e => String(e.contractId)===String(s.id));
         const profit = ep ? ep.profit : 0;
         return `<span style="background:#fff3e0;padding:4px 10px;border-radius:8px;border:1px solid var(--amber)">
-          ⚡ ${_lang==='zh'?'提前还款利润':_lang==='en'?'Early Repay Profit':'ប្រាក់ចំណេញសងមុន'}：
+          ⚡ ${tl('提前还款利润','Early Repay Profit','ប្រាក់​ចំណេញ​សង​មុន')}：
           <b style="color:var(--amber)">${fmt(profit)}</b>
         </span>`;
       })() : ''}
@@ -2381,11 +2397,11 @@ window.editSale = function(id) {
       <div><label style="font-size:11px;color:var(--muted)">首付金额 ($)</label><input id="eDeposit" type="number" value="${s.deposit}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">分期期数</label><select id="ePeriods" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${periodOpts}</select></div>
       <div><label style="font-size:11px;color:var(--muted)">首次还款日</label><input id="eFirstDue" type="date" value="${s.firstDue||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">每期利息 ($)</label><input id="eMonthlyInt" type="number" value="${s.totalInterest&&s.periods?(+s.totalInterest/s.periods).toFixed(2):0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl("每期利息","Monthly Interest","ការ​ប្រាក់​ប្រចាំ​ខែ")} ($)</label><input id="eMonthlyInt" type="number" value="${s.totalInterest&&s.periods?(+s.totalInterest/s.periods).toFixed(2):0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">手续费期数</label><select id="eSvcPeriods" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${svcPeriodOpts}</select></div>
       <div><label style="font-size:11px;color:var(--muted)">每期手续费 ($)</label><input id="eMonthlySvc" type="number" value="${s.totalServiceFee&&s.svcPeriods?(+s.totalServiceFee/(s.svcPeriods||s.periods)).toFixed(2):0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">每期还款合计 ($)</label><input id="eMonthly" type="number" value="${s.monthlyPayment||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">每日滞纳金 ($)</label><input id="eDailyFee" type="number" value="${s.dailyLateFee||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl("每期还款合计","Monthly Total","សរុប​ប្រចាំ​ខែ")} ($)</label><input id="eMonthly" type="number" value="${s.monthlyPayment||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl("每日滞纳金","Daily Late Fee","ពិន័យ​ប្រចាំ​ថ្ងៃ")} ($)</label><input id="eDailyFee" type="number" value="${s.dailyLateFee||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">店家返点 ($)</label><input id="eRebate" type="number" value="${s.storeRebate||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div style="grid-column:span 3"><label style="font-size:11px;color:var(--muted)">备注</label><input id="eNote" value="${s.note||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
     </div>
@@ -2453,7 +2469,7 @@ window.saveEditSale = function(id) {
 window.deleteSale = function(id) {
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
   if (!s) return;
-  confirmDelete(`删除合同 #${s.id} — ${s.customer}？此操作不可撤销！`, function() {
+  confirmDelete(`${tl("删除合同","Delete contract","លុប​កិច្ចសន្យា")} #${s.id} — ${s.customer}？${tl("此操作不可撤销！","This cannot be undone!","សកម្ម​នេះ​មិន​អាច​ត្រឡប់​វិញ!")}`, function() {
     DB_set('sales', (DB_get('sales')||[]).filter(x => String(x.id) !== String(id)));
     DB_set('earlyPayments', (DB_get('earlyPayments')||[]).filter(r => String(r.contractId) !== String(id)));
     nav('sale-list');
@@ -2482,19 +2498,19 @@ function renderPaymentAdd() {
   <!-- 今日快览 -->
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
     <div style="background:#fff;border-radius:10px;padding:14px 16px;border-left:4px solid var(--green);box-shadow:0 1px 4px rgba(0,0,0,.07)">
-      <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">今日收款</div>
+      <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">${tl('今日收款','Today','ថ្ងៃ​នេះ')}</div>
       <div style="font-size:20px;font-weight:800;color:var(--green)">${fmt(todayAmt)}</div>
-      <div style="font-size:11px;color:#90a4ae;margin-top:2px">${todayPays.length} 笔</div>
+      <div style="font-size:11px;color:#90a4ae;margin-top:2px">${todayPays.length} ${tl('笔','records','ករណី')}</div>
     </div>
     <div style="background:#fff;border-radius:10px;padding:14px 16px;border-left:4px solid var(--blue);box-shadow:0 1px 4px rgba(0,0,0,.07)">
-      <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">本月收款</div>
+      <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">${tl('本月收款','This Month','ខែ​នេះ')}</div>
       <div style="font-size:20px;font-weight:800;color:var(--blue)">${fmt(monthAmt)}</div>
-      <div style="font-size:11px;color:#90a4ae;margin-top:2px">${monthPays.length} 笔</div>
+      <div style="font-size:11px;color:#90a4ae;margin-top:2px">${monthPays.length} ${tl('笔','records','ករណី')}</div>
     </div>
     <div style="background:#fff;border-radius:10px;padding:14px 16px;border-left:4px solid var(--amber);box-shadow:0 1px 4px rgba(0,0,0,.07)">
-      <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">总记录</div>
+      <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">${tl('总记录','Total Records','កំណត់​ត្រា​សរុប')}</div>
       <div style="font-size:20px;font-weight:800;color:var(--amber)">${pays.length}</div>
-      <div style="font-size:11px;color:#90a4ae;margin-top:2px">全部收款记录</div>
+      <div style="font-size:11px;color:#90a4ae;margin-top:2px">${tl('全部收款记录','All Records','កំណត់​ត្រា​ទាំង​អស់')}</div>
     </div>
   </div>
 
@@ -2503,38 +2519,38 @@ function renderPaymentAdd() {
     <div class="form-grid">
       <div class="form-group span3"><label>${t('selectContract')}</label>
         <datalist id="pContractList">${opts}</datalist>
-        <input id="pContract" list="pContractList" placeholder="输入客户名或合同号搜索..." value="${pendingText}" oninput="resolveContract()" style="width:100%">
+        <input id="pContract" list="pContractList" placeholder="${tl('输入客户名或合同号搜索...','Search customer or contract...','ស្វែង​រក​អ្នក​ប្រើ ឬ​លេខ​កិច្ចសន្យា...')}" value="${pendingText}" oninput="resolveContract()" style="width:100%">
       </div>
       <div class="form-group"><label>${t("paymentDate")}</label><input type="date" id="pDate" value="${td}"></div>
       <div class="form-group"><label>${t("payPeriod")}</label><select id="pPeriod" onchange="autoFillPayment()"></select></div>
       ${isCollector ? `
       <div class="form-group">
-        <label>应还总额</label>
+        <label>${tl('应还总额','Amount Due','ចំនួន​ត្រូវ​បង់')}</label>
         <input id="pExpected" readonly style="background:#f5f5f5;color:#546e7a;font-size:14px;font-weight:600">
       </div>
       <div class="form-group">
-        <label style="color:var(--green);font-weight:700">实收总额 ($) <span style="font-size:11px;font-weight:400;color:#90a4ae">本金+利息</span></label>
+        <label style="color:var(--green);font-weight:700">${tl('实收总额','Amount Received','ចំនួន​ទទួល​បាន')} ($) <span style="font-size:11px;font-weight:400;color:#90a4ae">${tl('本金+利息','Principal+Interest','ដើម+ការ​ប្រាក់')}</span></label>
         <input type="number" id="pTotalReceived" placeholder="0.00" step="0.01" oninput="calcCollectorTotal()"
           style="border:2px solid var(--green);font-size:15px;font-weight:700">
       </div>
-      <div class="form-group"><label>实收滞纳金 ($)</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcCollectorTotal()"></div>
-      <div class="form-group"><label>实收合计</label><input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px"></div>
+      <div class="form-group"><label>${tl('实收滞纳金','Late Fee','ប្រាក់​ពិន័យ')} ($)</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcCollectorTotal()"></div>
+      <div class="form-group"><label>${tl('实收合计','Total Received','សរុប​ទទួល​បាន')}</label><input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px"></div>
       <input type="hidden" id="pPrincipal"><input type="hidden" id="pInterest">
       ` : `
       <div class="form-group">
-        <label>应还总额</label>
+        <label>${tl('应还总额','Amount Due','ចំនួន​ត្រូវ​បង់')}</label>
         <input id="pExpected" readonly style="background:#f5f5f5;color:#546e7a;font-size:14px;font-weight:600">
       </div>
       <div class="form-group">
-        <label style="color:var(--green);font-weight:700">实收总额 ($) <span style="font-size:11px;font-weight:400;color:#90a4ae">本金+利息</span></label>
+        <label style="color:var(--green);font-weight:700">${tl('实收总额','Amount Received','ចំនួន​ទទួល​បាន')} ($) <span style="font-size:11px;font-weight:400;color:#90a4ae">${tl('本金+利息','Principal+Interest','ដើម+ការ​ប្រាក់')}</span></label>
         <input type="number" id="pTotalReceived" placeholder="0.00" step="0.01" oninput="calcCollectorTotal()"
           style="border:2px solid var(--green);font-size:15px;font-weight:700">
       </div>
-      <div class="form-group"><label>实收滞纳金 ($)</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcCollectorTotal()"></div>
-      <div class="form-group"><label>实收合计</label><input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px"></div>
+      <div class="form-group"><label>${tl('实收滞纳金','Late Fee','ប្រាក់​ពិន័យ')} ($)</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcCollectorTotal()"></div>
+      <div class="form-group"><label>${tl('实收合计','Total Received','សរុប​ទទួល​បាន')}</label><input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px"></div>
       <input type="hidden" id="pPrincipal"><input type="hidden" id="pInterest">
       `}
-      <div class="form-group"><label>备注</label><input id="pNote" placeholder="可选"></div>
+      <div class="form-group"><label>${t('remarks')}</label><input id="pNote" placeholder="${tl('可选','Optional','ស្រេច​ចិត្ត')}"></div>
     </div>
     <div class="btn-row">
       <button class="btn btn-success" onclick="submitPayment()">${t("confirmPayment")}</button>
@@ -2546,24 +2562,24 @@ function renderPaymentAdd() {
   <!-- 收款记录-->
   <div class="card">
     <div class="card-header" style="flex-wrap:wrap;gap:10px">
-      <div class="card-title" style="margin:0">📋 收款记录（${pays.length}笔）</div>
+      <div class="card-title" style="margin:0">📋 ${tl('收款记录','Payment Records','កំណត់​ត្រា​ការ​បង់')}（${pays.length}${tl('笔','','')}）</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <div style="display:flex;border:1.5px solid var(--border);border-radius:8px;overflow:hidden;font-size:12px">
           <button id="payViewDate" onclick="setPayView('date')"
-            style="padding:6px 12px;border:none;background:var(--navy);color:#fff;cursor:pointer;font-family:inherit;font-size:12px">📅 按日期</button>
+            style="padding:6px 12px;border:none;background:var(--navy);color:#fff;cursor:pointer;font-family:inherit;font-size:12px">📅 ${tl('按日期','By Date','តាម​កាលបរិច្ឆេទ')}</button>
           <button id="payViewContract" onclick="setPayView('contract')"
-            style="padding:6px 12px;border:none;background:#fff;color:#546e7a;cursor:pointer;font-family:inherit;font-size:12px">📋 按合同</button>
+            style="padding:6px 12px;border:none;background:#fff;color:#546e7a;cursor:pointer;font-family:inherit;font-size:12px">📋 ${tl('按合同','By Contract','តាម​កិច្ចសន្យា')}</button>
           <button id="payViewEarly" onclick="setPayView('early')"
-            style="padding:6px 12px;border:none;background:#fff;color:#546e7a;cursor:pointer;font-family:inherit;font-size:12px">⚡ 提前还款</button>
+            style="padding:6px 12px;border:none;background:#fff;color:#546e7a;cursor:pointer;font-family:inherit;font-size:12px">⚡ ${t('earlyPayment')}</button>
         </div>
-        <input id="paySearch" placeholder="搜索姓名/合同号..." oninput="filterPays()"
+        <input id="paySearch" placeholder="${tl('搜索姓名/合同号...','Search name/contract...','ស្វែង​រក​ឈ្មោះ/លេខ...')}" oninput="filterPays()"
           style="padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit;min-width:160px">
         <select id="payDateFilter" onchange="filterPays()"
           style="padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit">
-          <option value="">全部日期</option>
-          <option value="today">今天</option>
-          <option value="week">本周</option>
-          <option value="month">本月</option>
+          <option value="">${tl('全部日期','All Dates','ថ្ងៃ​ទាំង​អស់')}</option>
+          <option value="today">${tl('今天','Today','ថ្ងៃ​នេះ')}</option>
+          <option value="week">${tl('本周','This Week','អាទិត្យ​នេះ')}</option>
+          <option value="month">${tl('本月','This Month','ខែ​នេះ')}</option>
         </select>
       </div>
     </div>
@@ -2609,7 +2625,7 @@ window.filterPays = function() {
 
 // ── 按合同+期次排列 ──
 function buildPayTableByContract(pays, isCollector) {
-  if (!pays.length) return `<div class="empty-state"><div class="ei">📝</div><p>暂无记录</p></div>`;
+  if (!pays.length) return `<div class="empty-state"><div class="ei">📝</div><p>${tl("暂无记录","No records","គ្មាន​កំណត់​ត្រា")}</p></div>`;
   const sales = DB_get('sales') || [];
   // 按合同分组
   const groups = {};
@@ -2626,7 +2642,7 @@ function buildPayTableByContract(pays, isCollector) {
     <div style="margin-bottom:8px">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--navy);color:#fff;border-radius:8px 8px 0 0;font-size:12px">
         <span style="font-weight:700">${esc(s?.customer || cid)} <span style="opacity:.7;font-size:11px">#${cid}</span></span>
-        <span>${cPays.length}期 · <b style="color:#81d4fa">${fmt(total)}</b></span>
+        <span>${cPays.length}${tl('期','Periods','ខែ')} · <b style="color:#81d4fa">${fmt(total)}</b></span>
       </div>
       <div style="border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
         ${cPays.map((p,i) => {
@@ -2636,14 +2652,14 @@ function buildPayTableByContract(pays, isCollector) {
           const borderLeft = isEarly ? 'border-left:3px solid #4caf50;' : '';
           return `<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:${bg};${borderLeft}border-bottom:1px solid #f0f0f0;flex-wrap:wrap">
             <div style="flex:1;min-width:100px">
-              <span style="font-weight:700;color:var(--blue)">第${p.period}期</span>
-              ${isEarly ? '<span style="background:#e8f5e9;color:#2e7d32;font-size:10px;padding:1px 7px;border-radius:8px;margin-left:6px;font-weight:700">⚡提前</span>' : ''}
+              <span style="font-weight:700;color:var(--blue)">${tl('第','#','ខែ')}${p.period}${tl('期','','')}</span>
+              ${isEarly ? '<span style="background:#e8f5e9;color:#2e7d32;font-size:10px;padding:1px 7px;border-radius:8px;margin-left:6px;font-weight:700">${tl("⚡提前","⚡Early","⚡មុន")}</span>' : ''}
               <span style="font-size:11px;color:#90a4ae;margin-left:6px">${p.date}</span>
             </div>
             ${isCollector ? `<b style="color:var(--green)">${fmt(tot)}</b>` : `
             <div style="font-size:12px;color:#546e7a">
-              本金 <b>${fmt(p.principal)}</b> · 利息 <b>${fmt((+p.interest||0))}</b>
-              ${(+p.penalty||0)>0?` · 滞纳 <b style="color:var(--red)">${fmt(p.penalty)}</b>`:''}
+              ${tl('本金','Principal','ដើម')} <b>${fmt(p.principal)}</b> · ${tl('利息','Interest','ការ​ប្រាក់')} <b>${fmt((+p.interest||0))}</b>
+              ${(+p.penalty||0)>0?` · ${tl('滞纳','Late','ពិន័យ')} <b style="color:var(--red)">${fmt(p.penalty)}</b>`:''}
               <b style="color:var(--green);margin-left:6px">${fmt(tot)}</b>
             </div>`}
             <div style="display:flex;gap:4px">
@@ -2662,7 +2678,7 @@ function buildPayTableEarly(pays, isCollector) {
   const sales = DB_get('sales') || [];
   const earlyList = sales.filter(s => s.status === '提前结清');
 
-  if (!earlyList.length) return `<div class="empty-state"><div class="ei">⚡</div><p>暂无提前还款记录</p></div>`;
+  if (!earlyList.length) return `<div class="empty-state"><div class="ei">⚡</div><p>tl('暂无提前还款记录','No early settlements','គ្មាន​ការ​ទូ​ទាត់​មុន')</p></div>`;
 
   const totalAll = earlyList.reduce((a,s) =>
     a + s.schedule.reduce((b,p) => b + (+p.paidPrincipal||0) + (+p.paidInterest||0) + (+p.penalty||0), 0), 0);
@@ -2671,7 +2687,7 @@ function buildPayTableEarly(pays, isCollector) {
 
   return `
   <div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:13px">
-    ⚡ 共 <b>${earlyList.length}</b> 笔提前结清 · 客户实收合计 <b style="color:var(--green)">${fmt(totalAll)}</b>
+    ⚡ ${tl('共','Total','សរុប')} <b>${earlyList.length}</b> ${tl('笔提前结清','early settlements','ការ​ទូ​ទាត់​មុន')} · ${tl('客户实收合计','Total Received','សរុប​ទទួល')} <b style="color:var(--green)">${fmt(totalAll)}</b>
   </div>
   <div style="border:1px solid #c8e6c9;border-radius:10px;overflow:hidden">
     ${sorted.map((s,i) => {
@@ -2682,15 +2698,15 @@ function buildPayTableEarly(pays, isCollector) {
       return `<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:${bg};border-left:3px solid #4caf50;border-bottom:1px solid #c8e6c9;flex-wrap:wrap">
         <div style="flex:1;min-width:140px">
           <div style="font-weight:700;font-size:13px">${esc(s.customer)}
-            <span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 7px;border-radius:8px;margin-left:5px;font-weight:700">⚡提前结清</span>
+            <span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 7px;border-radius:8px;margin-left:5px;font-weight:700">${tl("⚡提前结清","⚡Early Settled","⚡សង​មុន")}</span>
           </div>
           <div style="font-size:11px;color:#546e7a;margin-top:2px">
-            #${s.id} · 签约 ${s.date} · ${s.modelName||'-'} · 已还 ${paidPeriods}/${totalPeriods} 期
+            #${s.id} · ${tl('签约','Signed','ចុះ​ថ្ងៃ')} ${s.date} · ${s.modelName||'-'} · ${tl('已还','Paid','បាន​បង')} ${paidPeriods}/${totalPeriods} ${tl('期','periods','ខែ')}
           </div>
           <div style="font-size:11px;color:#90a4ae">${esc(s.customerPhone||'')}</div>
         </div>
         <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:11px;color:#546e7a">实收合计</div>
+          <div style="font-size:11px;color:#546e7a">${tl('实收合计','Total Received','សរុប​ទទួល')}</div>
           <div style="font-weight:800;font-size:16px;color:#2e7d32">${fmt(paidTotal)}</div>
         </div>
       </div>`;
@@ -2746,7 +2762,7 @@ function buildPayTableGrouped(pays, isCollector) {
     <div style="margin-bottom:4px">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--navy);color:#fff;border-radius:8px 8px 0 0;font-size:12px">
         <span style="font-weight:700">📅 ${date}</span>
-        <span>${dayPays.length} 笔 · <b style="color:#81d4fa">${fmt(dayTotal)}</b></span>
+        <span>${dayPays.length} ${tl('笔','records','ករណី')} · <b style="color:#81d4fa">${fmt(dayTotal)}</b></span>
       </div>
       <div style="border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
         ${dayPays.map((p,i) => {
@@ -2757,20 +2773,20 @@ function buildPayTableGrouped(pays, isCollector) {
           return `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:${bg};${borderLeft}border-bottom:1px solid #f0f0f0;flex-wrap:wrap">
             <div style="flex:1;min-width:120px">
               <div style="font-weight:700;font-size:13px">${esc(p.customer)}
-                ${p.isPartial ? '<span style="background:#fff3e0;color:#e65100;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">部分收款</span>' : ''}
-                ${isEarly ? '<span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">⚡提前还款</span>' : ''}
+                ${p.isPartial ? '<span style="background:#fff3e0;color:#e65100;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">${tl("部分收款","Partial","ផ្នែក")}</span>' : ''}
+                ${isEarly ? '<span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">${tl("⚡提前还款","⚡Early","⚡សង​មុន")}</span>' : ''}
               </div>
-              <div style="font-size:11px;color:#90a4ae">#${p.contractId} · 第${p.period}期${p.shortfall>0?` · 差额 <b style="color:var(--red)">${fmt(p.shortfall)}</b>`:''}</div>
+              <div style="font-size:11px;color:#90a4ae">#${p.contractId} · ${tl('第','Period ','ខែ')}${p.period}${tl('期','','')}${p.shortfall>0?` · ${tl('差额','Shortfall','ខ្វះ')} <b style="color:var(--red)">${fmt(p.shortfall)}</b>`:''}</div>
             </div>
             ${isCollector ? `
             <div style="text-align:right">
               <div style="font-weight:800;font-size:15px;color:var(--green)">${fmt(total)}</div>
-              ${(+p.penalty||0)>0?`<div style="font-size:11px;color:var(--red)">含滞纳金 ${fmt(p.penalty)}</div>`:''}
+              ${(+p.penalty||0)>0?`<div style="font-size:11px;color:var(--red)">${tl('含滞纳金','Incl. Late Fee','រួម​ពិន័យ')} ${fmt(p.penalty)}</div>`:''}
             </div>` : `
             <div style="font-size:12px;color:#546e7a;text-align:right">
-              <div>本金 <b>${fmt(p.principal)}</b> · 利息 <b>${fmt((+p.interest||0)+(+p.serviceFee||0))}</b></div>
-              ${(+p.penalty||0)>0?`<div style="color:var(--red)">滞纳金 ${fmt(p.penalty)}</div>`:''}
-              <div style="font-weight:800;font-size:14px;color:var(--green)">合计 ${fmt(total)}</div>
+              <div>${tl('本金','Principal','ដើម')} <b>${fmt(p.principal)}</b> · ${tl('利息','Interest','ការ​ប្រាក់')} <b>${fmt((+p.interest||0)+(+p.serviceFee||0))}</b></div>
+              ${(+p.penalty||0)>0?`<div style="color:var(--red)">${tl('滞纳金','Late Fee','ប្រាក់​ពិន័យ')} ${fmt(p.penalty)}</div>`:''}
+              <div style="font-weight:800;font-size:14px;color:var(--green)">${tl('合计','Total','សរុប')} ${fmt(total)}</div>
             </div>`}
             <div style="display:flex;gap:4px;flex-shrink:0">
               <button onclick="editPayment(${p.id})" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px">✏️</button>
@@ -2788,7 +2804,7 @@ window.deletePayment = function(id) {
   const pays = DB_get('payments')||[];
   const pay = pays.find(p => p.id === id);
   if (!pay) return;
-  confirmDelete(`删除收款记录：${pay.customer} — ${t('period')} ${pay.period} — ${fmt((+pay.principal)+(+pay.interest))}`, function() {
+  confirmDelete(`${tl('删除收款记录：','Delete payment: ','លុប​ការ​ទូ​ទាត់:')} ${pay.customer} — ${t('period')} ${pay.period} — ${fmt((+pay.principal)+(+pay.interest))}`, function() {
 
   // Remove payment record
   const newPays = pays.filter(p => p.id !== id);
@@ -3492,14 +3508,14 @@ function renderStatsProfit() {
       <div class="card-title" style="margin:0">📋 ${t("contractDetails")}</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="profitMonthFilter" onchange="filterProfitTable()" style="min-width:130px;font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:7px">
-          <option value="">${_lang==='zh'?'全部月份':_lang==='en'?'All Months':'ខែទាំងអស់'}</option>
+          <option value="">${tl('全部月份','All Months','ខែ​ទាំង​អស់')}</option>
           ${[...new Set(sales.map(s=>s.date.replace(/\//g,'-').slice(0,7)))].sort().reverse().map(m=>`<option value="${m}">${m}</option>`).join('')}
         </select>
         <select id="profitStatusFilter" onchange="filterProfitTable()" style="min-width:110px;font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:7px">
           <option value="">${t('allStatus')}</option>
           <option value="进行中">${t('active')}</option>
           <option value="已结清">${t('settled')}</option>
-          <option value="提前结清">${_lang==='zh'?'提前结清':'Early Settled'}</option>
+          <option value="提前结清">${tl('提前结清','Early Settled','សងមុន')}</option>
         </select>
         <span id="profitFilterCount" style="font-size:12px;color:var(--muted)"></span>
       </div>
@@ -3565,7 +3581,7 @@ function buildProfitTable(filteredSales, earlyPays, groupByMonth) {
   });
 
   const grandTotal = `<tr style="background:#e8f5e9;font-weight:700;border-top:2px solid var(--green)">
-    <td colspan="4" style="text-align:right;color:var(--muted);font-size:12px">📊 ${_lang==='zh'?'总计（'+filteredSales.length+'笔）':'Total ('+filteredSales.length+')'}</td>
+    <td colspan="4" style="text-align:right;color:var(--muted);font-size:12px">📊 ${tl('总计（'+filteredSales.length+'笔）','Total ('+filteredSales.length+')','សរុប ('+filteredSales.length+')')}</td>
     <td class="text-green">${fmt(grandInt)}</td>
     <td class="text-red">−${fmt(grandRebate)}</td>
     <td style="color:var(--green);font-size:15px">${fmt(grandNet)}</td>
@@ -3581,7 +3597,7 @@ function buildProfitTable(filteredSales, earlyPays, groupByMonth) {
       mInt+=r.interestVal; mRebate+=r.rebateVal; mNet+=r.net;
     });
     const mSubTotal = `<tr style="background:#f0f7ff;font-weight:700;border-top:1px solid var(--border)">
-      <td colspan="4" style="text-align:right;color:var(--muted);font-size:12px">${m} ${_lang==='zh'?'小计（'+mSales.length+'笔）':'Subtotal ('+mSales.length+')'}</td>
+      <td colspan="4" style="text-align:right;color:var(--muted);font-size:12px">${m} ${tl('小计（'+mSales.length+'笔）','Subtotal ('+mSales.length+')','សរុបផ្នែក ('+mSales.length+')')}</td>
       <td class="text-green">${fmt(mInt)}</td>
       <td class="text-red">−${fmt(mRebate)}</td>
       <td style="color:var(--navy)">${fmt(mNet)}</td>
@@ -3807,7 +3823,7 @@ function renderPaymentQuery() {
   const totalAmt = items.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
   return `
   <div class="page-header"><div class="page-title">📋 ${t('queryTitle')}</div><div class="page-sub">${td} → ${nd} · ${t('next30days')}</div></div>
-  ${items.length ? `<div class="alert alert-amber">📅 ${_lang==='zh'?'未来30天共':_lang==='en'?'Next 30 days:':'30ថ្ងៃខាងមុខ:'} <b>${items.length}</b> ${_lang==='zh'?'笔':_lang==='en'?'payments':'ការទូទាត់'} · ${_lang==='zh'?'应收合计':_lang==='en'?'Total due':'សរុប'} <b>${fmt(totalAmt)}</b></div>` : ''}
+  ${items.length ? `<div class="alert alert-amber">📅 ${tl('未来30天共','Next 30 days:','30​ថ្ងៃ​ខាង​មុខ:')} <b>${items.length}</b> ${tl('笔','payments','ការ​ទូ​ទាត់')} · ${tl('应收合计','Total due','សរុប')} <b>${fmt(totalAmt)}</b></div>` : ''}
   <div class="card">
     ${items.map(({s,p,dd})=>{
       const dl = Math.floor((new Date(dd)-new Date(td))/86400000);
@@ -3819,7 +3835,7 @@ function renderPaymentQuery() {
           <span style="font-weight:400;font-size:12px;color:#90a4ae;margin-left:6px">${esc(s.customerPhone||'')}</span>
         </div>
         <div style="font-size:12px;color:var(--muted);margin-top:2px">#${s.id} · ${t("period")} ${p.period}/${s.periods} · ${s.modelName||'-'}</div>
-        <div style="font-size:12px;color:var(--muted)">${_lang==='zh'?'到期':_lang==='en'?'Due':'ផុតកំណត់'}：<b style="color:${urgent?'var(--red)':'var(--amber)'}">${p.dueDate}</b></div>
+        <div style="font-size:12px;color:var(--muted)">${tl('到期','Due','ផុត​កំណត់')}：<b style="color:${urgent?'var(--red)':'var(--amber)'}">${p.dueDate}</b></div>
       </div>
       <div style="text-align:right;flex-shrink:0">
         <div class="fw700" style="font-size:15px">${fmt((+p.principalDue||0)+(+p.interestDue||0))}</div>
@@ -4462,15 +4478,15 @@ function renderFinanceReport() {
     </div>
     <div class="stat-card" style="background:linear-gradient(135deg,#667eea,#764ba2);color:#fff">
       <span class="stat-icon">📦</span>
-      <div class="stat-label" style="color:rgba(255,255,255,0.85)">${_lang==='zh'?'本月总单量':_lang==='en'?'Monthly Orders':'ចំនួនបញ្ជាទិញ'}</div>
+      <div class="stat-label" style="color:rgba(255,255,255,0.85)">${tl('本月总单量','Monthly Orders','ចំនួន​ការ​បញ្ជា​ទិញ')}</div>
       <div class="stat-value" style="color:#fff">${sel.orderCount||0}</div>
-      <div class="stat-sub" style="color:rgba(255,255,255,0.75)">${_lang==='zh'?'笔新合同':_lang==='en'?'new contracts':'កិច្ចសន្យាថ្មី'}</div>
+      <div class="stat-sub" style="color:rgba(255,255,255,0.75)">${tl('笔新合同','new contracts','កិច្ចសន្យា​ថ្មី')}</div>
     </div>
     <div class="stat-card" style="background:linear-gradient(135deg,#f093fb,#f5576c);color:#fff">
       <span class="stat-icon">⚡</span>
-      <div class="stat-label" style="color:rgba(255,255,255,0.85)">${_lang==='zh'?'提前还款利润':_lang==='en'?'Early Repay Profit':'ប្រាក់ចំណេញសងមុន'}</div>
+      <div class="stat-label" style="color:rgba(255,255,255,0.85)">${tl('提前还款利润','Early Repay Profit','ប្រាក់​ចំណេញ​សង​មុន')}</div>
       <div class="stat-value" style="color:#fff">${fmt(sel.mEarlyProfit||0)}</div>
-      <div class="stat-sub" style="color:rgba(255,255,255,0.75)">${(sel.mEarlyCount||0)} ${_lang==='zh'?'笔':_lang==='en'?'orders':'ករណី'}</div>
+      <div class="stat-sub" style="color:rgba(255,255,255,0.75)">${(sel.mEarlyCount||0)} ${tl('笔','orders','ករណី')}</div>
     </div>
   </div>
 
@@ -4537,10 +4553,10 @@ function renderFinanceReport() {
 
     <!-- 公式说明 -->
     <div style="font-size:11px;color:var(--muted);background:#f8faff;padding:10px 14px;border-radius:8px;line-height:2">
-      📐 <b>${_lang==='en'?'Formulas':'计算公式'}</b> &nbsp;|&nbsp;
-      ${_lang==='en'?'Bad Debt Rate':'坏账率'} = (${_lang==='en'?'Receivable − Actual':'应收款 − 实际回款'}) ÷ ${_lang==='en'?'Receivable':'应收款'} × 100 &nbsp;|&nbsp;
-      ${_lang==='en'?'Repayment Rate':'回款率'} = ${_lang==='en'?'Actual':'实际回款'} ÷ ${_lang==='en'?'Receivable':'应收款'} × 100 &nbsp;|&nbsp;
-      ${_lang==='en'?'Incl. Late Fee Rate':'含滞纳金回款率'} = (${_lang==='en'?'Actual + Late Fee':'实际回款 + 滞纳金'}) ÷ ${_lang==='en'?'Receivable':'应收款'} × 100
+      📐 <b>${tl('计算公式','Formulas','រូប​មន្ត')}</b> &nbsp;|&nbsp;
+      ${tl('坏账率','Bad Debt Rate','អត្រា​បំណុល​អាក្រក់')} = (${_lang==='en'?'Receivable − Actual':'应收款 − 实际回款'}) ÷ ${_lang==='en'?'Receivable':'应收款'} × 100 &nbsp;|&nbsp;
+      ${tl('回款率','Repayment Rate','អត្រា​ប្រមូល')} = ${_lang==='en'?'Actual':'实际回款'} ÷ ${_lang==='en'?'Receivable':'应收款'} × 100 &nbsp;|&nbsp;
+      ${tl('含滞纳金回款率','Incl. Late Fee Rate','រួម​ពិន័យ')} = (${_lang==='en'?'Actual + Late Fee':'实际回款 + 滞纳金'}) ÷ ${_lang==='en'?'Receivable':'应收款'} × 100
     </div>
   </div>
 
@@ -4554,7 +4570,7 @@ function renderFinanceReport() {
         [t('totalExpense'), fmt(totExpenses)],
         [t('totalNetProfit'), fmt(totProfit)],
         [t('totalOrders'), totOrders+(` ${_lang==='km'?'ករណី':_lang==='en'?'':' 笔'}`)],
-        [_lang==='zh'?'提前还款利润':_lang==='en'?'Early Repay Profit':'ប្រាក់ចំណេញសងមុន', fmt(totEarlyProfit)],
+        [tl('提前还款利润','Early Repay Profit','ប្រាក់​ចំណេញ​សង​មុន'), fmt(totEarlyProfit)],
         [t('avgOverdueRate'), avgOverdueRate+'%'],
       ].map(([l,v])=>`
         <div style="text-align:center">
@@ -4566,7 +4582,7 @@ function renderFinanceReport() {
 
   <!-- 逾期单量统计 -->
   <div class="card">
-    <div class="card-title" style="margin-bottom:14px">⚠️ ${_lang==='zh'?'逾期单量统计':_lang==='en'?'Overdue Orders':'ស្ថិតិការបញ្ជាទិញហួសសំណត់'}</div>
+    <div class="card-title" style="margin-bottom:14px">⚠️ ${tl('逾期单量统计','Overdue Orders','ស្ថិតិ​ការ​ហួស​កំណត់')}</div>
     ${(() => {
       const td = today();
       const allSales = DB_get('sales')||[];
@@ -4598,16 +4614,16 @@ function renderFinanceReport() {
       const o30 = overdueContracts.filter(x => x.maxDays >= 30);
 
       function renderTable(list) {
-        if (!list.length) return `<div style="text-align:center;color:var(--green);padding:16px;font-size:13px">✅ ${_lang==='zh'?'暂无逾期单':_lang==='en'?'No overdue orders':'មិនមានការបញ្ជាទិញហួសសំណត់'}</div>`;
+        if (!list.length) return `<div style="text-align:center;color:var(--green);padding:16px;font-size:13px">✅ ${tl('暂无逾期单','No overdue orders','គ្មាន​ការ​ហួស​កំណត់')}</div>`;
         return `<div class="table-wrap" style="margin-top:8px"><table>
           <tr>
             <th>#</th>
-            <th>${_lang==='zh'?'客户':_lang==='en'?'Customer':'អតិថិជន'}</th>
-            <th>${_lang==='zh'?'手机号':_lang==='en'?'Phone':'ទូរស័ព្ទ'}</th>
-            <th>${_lang==='zh'?'型号':_lang==='en'?'Model':'ម៉ូដែល'}</th>
-            <th>${_lang==='zh'?'期数':_lang==='en'?'Periods':'រយៈ'}</th>
-            <th>${_lang==='zh'?'逾期天数':_lang==='en'?'Overdue Days':'ថ្ងៃហួសសំណត់'}</th>
-            <th>${_lang==='zh'?'未还金额':_lang==='en'?'Amount Due':'ចំនួនដែលត្រូវបង់'}</th>
+            <th>${tl('客户','Customer','អ្នក​ប្រើ')}</th>
+            <th>${tl('手机号','Phone','ទូរ​សព្ទ')}</th>
+            <th>${tl('型号','Model','ម៉ូ​ដែល')}</th>
+            <th>${tl('期数','Periods','ខែ')}</th>
+            <th>${tl('逾期天数','Overdue Days','ថ្ងៃ​ហួស​កំណត់')}</th>
+            <th>${tl('未还金额','Amount Due','ចំនួន​ត្រូវ​បង់')}</th>
           </tr>
           ${list.map(({sale, maxDays, periods}) => {
             const unpaid = sale.schedule.filter(p => !p.paid);
@@ -4618,7 +4634,7 @@ function renderFinanceReport() {
               <td>${esc(sale.customerPhone||'')}</td>
               <td style="font-size:12px">${esc(sale.modelName||'-')}</td>
               <td>${sale.periods}${t('period')}</td>
-              <td><span style="background:${maxDays>=30?'#ffebee':maxDays>=15?'#fff3e0':'#fff8e1'};color:${maxDays>=30?'var(--red)':maxDays>=15?'var(--amber)':'#f57f17'};padding:2px 10px;border-radius:12px;font-weight:700;font-size:12px">${maxDays} ${_lang==='zh'?'天':_lang==='en'?'days':'ថ្ងៃ'}</span></td>
+              <td><span style="background:${maxDays>=30?'#ffebee':maxDays>=15?'#fff3e0':'#fff8e1'};color:${maxDays>=30?'var(--red)':maxDays>=15?'var(--amber)':'#f57f17'};padding:2px 10px;border-radius:12px;font-weight:700;font-size:12px">${maxDays} ${tl('天','days','ថ្ងៃ')}</span></td>
               <td class="fw700" style="color:var(--red)">${fmt(unpaidAmt)}</td>
             </tr>`;
           }).join('')}
@@ -4630,14 +4646,14 @@ function renderFinanceReport() {
       return `
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
           ${[
-            {label: _lang==='zh'?'逾期7天+':_lang==='en'?'7+ Days':'ហួស 7 ថ្ងៃ+', count: o7.length, color: '#f57f17', bg: '#fff8e1'},
-            {label: _lang==='zh'?'逾期15天+':_lang==='en'?'15+ Days':'ហួស 15 ថ្ងៃ+', count: o15.length, color: 'var(--amber)', bg: '#fff3e0'},
-            {label: _lang==='zh'?'逾期30天+':_lang==='en'?'30+ Days':'ហួស 30 ថ្ងៃ+', count: o30.length, color: 'var(--red)', bg: '#ffebee'},
+            {label: tl('逾期7天+','7+ Days','ហួស 7 ថ្ងៃ+'), count: o7.length, color: '#f57f17', bg: '#fff8e1'},
+            {label: tl('逾期15天+','15+ Days','ហួស 15 ថ្ងៃ+'), count: o15.length, color: 'var(--amber)', bg: '#fff3e0'},
+            {label: tl('逾期30天+','30+ Days','ហួស 30 ថ្ងៃ+'), count: o30.length, color: 'var(--red)', bg: '#ffebee'},
           ].map((item,i) => `
             <div style="background:${item.bg};border-radius:10px;padding:16px;text-align:center;cursor:pointer;border:2px solid ${item.color}" onclick="document.querySelectorAll('.overdue-panel').forEach((el,j)=>{el.style.display=j===${i}?'':'none'});this.parentElement.querySelectorAll('div[style*=cursor]').forEach((el,j)=>{el.style.opacity=j===${i}?'1':'0.6'})">
               <div style="font-size:13px;color:${item.color};font-weight:600">${item.label}</div>
               <div style="font-size:32px;font-weight:700;color:${item.color}">${item.count}</div>
-              <div style="font-size:12px;color:var(--muted)">${_lang==='zh'?'笔':_lang==='en'?'orders':'ករណី'}</div>
+              <div style="font-size:12px;color:var(--muted)">${tl('笔','orders','ករណី')}</div>
             </div>`).join('')}
         </div>
         <div class="overdue-panel">${renderTable(o7)}</div>
@@ -4919,10 +4935,10 @@ function renderStoreStats() {
   <!-- 顶部汇总 KPI -->
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
     ${[
-      ['🏪', _lang==='zh'?'店家总数':_lang==='en'?'Total Stores':'ចំនួនហាង', totalStores, 'var(--sky)'],
-      ['📋', _lang==='zh'?'总合同数':_lang==='en'?'Total Contracts':'ម្ចាស់បំណុល', totalContracts, 'var(--navy)'],
-      ['🔄', _lang==='zh'?'进行中':_lang==='en'?'Active':'កំពុងដំណើរ', totalActive, 'var(--green)'],
-      ['⚠️', _lang==='zh'?'高风险店家':_lang==='en'?'High Risk':'ហាងហានិភ័យ', highRiskStores, 'var(--red)'],
+      ['🏪', tl('店家总数','Total Stores','ចំនួន​ហាង'), totalStores, 'var(--sky)'],
+      ['📋', tl('总合同数','Total Contracts','ចំនួន​កិច្ចសន្យា'), totalContracts, 'var(--navy)'],
+      ['🔄', tl('进行中','Active','កំពុង​ដំណើរ​ការ'), totalActive, 'var(--green)'],
+      ['⚠️', tl('高风险店家','High Risk','ហាង​ហានិ​ភ័យ'), highRiskStores, 'var(--red)'],
     ].map(([icon,label,val,color])=>`
       <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.06)">
         <div style="font-size:20px">${icon}</div>
@@ -4952,20 +4968,20 @@ function renderStoreStats() {
   <!-- 搜索+筛选栏 -->
   <div class="card" style="margin-bottom:14px">
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <input id="storeSearch" placeholder="🔍 ${_lang==='zh'?'搜索店家名称...':_lang==='en'?'Search store...':'ស្វែងរកហាង...'}" oninput="filterStoreTable()" style="flex:1;min-width:200px">
+      <input id="storeSearch" placeholder="🔍 ${tl('搜索店家名称...','Search store...','ស្វែង​រក​ហាង...')}" oninput="filterStoreTable()" style="flex:1;min-width:200px">
       <select id="storeRiskFilter" onchange="filterStoreTable()" style="min-width:130px">
-        <option value="">${_lang==='zh'?'全部风险':_lang==='en'?'All Risk':'ហានិភ័យទាំងអស់'}</option>
-        <option value="high">${_lang==='zh'?'⚠️ 高风险(>10%)':_lang==='en'?'⚠️ High Risk(>10%)':'⚠️ ហានិភ័យខ្ពស់'}</option>
-        <option value="mid">${_lang==='zh'?'🟡 中风险(5-10%)':_lang==='en'?'🟡 Mid Risk(5-10%)':'🟡 ហានិភ័យកណ្ដាល'}</option>
-        <option value="low">${_lang==='zh'?'🟢 低风险(<5%)':_lang==='en'?'🟢 Low Risk(<5%)':'🟢 ហានិភ័យទាប'}</option>
-        <option value="active">${_lang==='zh'?'有进行中合同':_lang==='en'?'Has Active Contracts':'មានកិច្ចសន្យា'}</option>
+        <option value="">${tl('全部风险','All Risk','ហានិ​ភ័យ​ទាំង​អស់')}</option>
+        <option value="high">${tl('⚠️ 高风险(>10%)','⚠️ High Risk(>10%)','⚠️ ហានិ​ភ័យ​ខ្ពស់')}</option>
+        <option value="mid">${tl('🟡 中风险(5-10%)','🟡 Mid Risk(5-10%)','🟡 ហានិ​ភ័យ​កណ្ដាល')}</option>
+        <option value="low">${tl('🟢 低风险(<5%)','🟢 Low Risk(<5%)','🟢 ហានិ​ភ័យ​ទាប')}</option>
+        <option value="active">${tl('有进行中合同','Has Active Contracts','មាន​កិច្ចសន្យា')}</option>
       </select>
       <select id="storeSort" onchange="filterStoreTable()" style="min-width:130px">
-        <option value="name">${_lang==='zh'?'按名称排序':_lang==='en'?'Sort by Name':'តាមឈ្មោះ'}</option>
-        <option value="total">${_lang==='zh'?'按总单量':_lang==='en'?'Sort by Total':'តាមចំនួន'}</option>
-        <option value="active">${_lang==='zh'?'按进行中':_lang==='en'?'Sort by Active':'តាមដំណើរការ'}</option>
-        <option value="bd">${_lang==='zh'?'按坏账率':_lang==='en'?'Sort by Bad Debt':'តាមអន្តរការ'}</option>
-        <option value="thisMonth">${_lang==='zh'?'按本月单量':_lang==='en'?'Sort by This Month':'តាមខែនេះ'}</option>
+        <option value="name">${tl('按名称排序','Sort by Name','តាម​ឈ្មោះ')}</option>
+        <option value="total">${tl('按总单量','Sort by Total','តាម​ចំនួន')}</option>
+        <option value="active">${tl('按进行中','Sort by Active','តាម​ដំណើរ​ការ')}</option>
+        <option value="bd">${tl('按坏账率','Sort by Bad Debt','តាម​អន្តរ​ការ')}</option>
+        <option value="thisMonth">${tl('按本月单量','Sort by This Month','តាម​ខែ​នេះ')}</option>
       </select>
       <span style="font-size:12px;color:var(--muted)" id="storeCount">${totalStores} ${_lang==='zh'?'家店':'stores'}</span>
     </div>
@@ -4977,15 +4993,15 @@ function renderStoreStats() {
     <div class="table-wrap" id="storeTableWrap">
       <table id="storeTable">
         <tr style="position:sticky;top:0;z-index:2">
-          <th style="min-width:160px">${_lang==='zh'?'店家名称':_lang==='en'?'Store':'ឈ្មោះហាង'}</th>
-          <th style="text-align:center">${_lang==='zh'?'总单量':_lang==='en'?'Total':'សរុប'}</th>
-          <th style="text-align:center">${_lang==='zh'?'本月':_lang==='en'?'This Mo.':'ខែនេះ'}</th>
-          <th style="text-align:center">${_lang==='zh'?'上月':_lang==='en'?'Last Mo.':'ខែមុន'}</th>
-          <th style="text-align:center">${_lang==='zh'?'进行中':_lang==='en'?'Active':'ដំណើរការ'}</th>
-          <th style="text-align:center">${_lang==='zh'?'已结清':_lang==='en'?'Settled':'រួចរាល់'}</th>
-          <th style="text-align:center;min-width:120px">${_lang==='zh'?'坏账率(30天)':_lang==='en'?'Bad Debt 30d':'អន្តរការ30ថ្ងៃ'}</th>
-          <th style="text-align:center">${_lang==='zh'?'坏账金额':_lang==='en'?'Bad Debt Amt':'ចំនួនអន្តរការ'}</th>
-          <th>${_lang==='zh'?'操作':_lang==='en'?'Action':'សកម្មភាព'}</th>
+          <th style="min-width:160px">${tl('店家名称','Store','ឈ្មោះ​ហាង')}</th>
+          <th style="text-align:center">${tl('总单量','Total','សរុប')}</th>
+          <th style="text-align:center">${tl('本月','This Mo.','ខែ​នេះ')}</th>
+          <th style="text-align:center">${tl('上月','Last Mo.','ខែ​មុន')}</th>
+          <th style="text-align:center">${tl('进行中','Active','ដំណើរ​ការ')}</th>
+          <th style="text-align:center">${tl('已结清','Settled','រួច​រាល់')}</th>
+          <th style="text-align:center;min-width:120px">${tl('坏账率(30天)','Bad Debt 30d','អន្តរ​ការ​30​ថ្ងៃ')}</th>
+          <th style="text-align:center">${tl('坏账金额','Bad Debt Amt','ចំនួន​អន្តរ​ការ')}</th>
+          <th>${tl('操作','Action','សកម្ម​ភាព')}</th>
         </tr>
         ${storeData.map((d,i) => {
           const riskClass = d.bd30Rate>10?'text-red':d.bd30Rate>5?'text-amber':'text-green';
@@ -5125,7 +5141,7 @@ window.addStore = function() {
   const name = document.getElementById('stName')?.value?.trim();
   if (!name) { showMsg('storeMsg', t('msgFillName').replace('品牌和型号','店铺名称').replace('brand and model','store name'), 'red'); return; }
   const stores = DB_get('stores') || [];
-  if (stores.find(s => s.name === name)) { showMsg('storeMsg', _lang==='zh'?'店铺名称已存在':_lang==='en'?'Store already exists':'ហាងនេះមានស្រាប់', 'amber'); return; }
+  if (stores.find(s => s.name === name)) { showMsg('storeMsg', tl('店铺名称已存在','Store already exists','ហាង​នេះ​មាន​រួច​ហើយ'),'ហាងនេះមានស្រាប់', 'amber'); return; }
   const fileInput = document.getElementById('stQR');
   const file = fileInput?.files?.[0];
   if (file) {
@@ -5540,8 +5556,8 @@ window.saveCompany = function() {
 // ══════════════════════════════════════════════════════
 // 显示登录页
 function showLoginOverlay() {
-  const o = document.getElementById('loginOverlay');
-  if (o) { o.style.display='flex'; document.getElementById('loadingOverlay')?.classList.remove('show'); }
+  document.getElementById('loadingOverlay')?.classList.remove('show');
+  renderLoginOverlay();
 }
 
 (async function() {
