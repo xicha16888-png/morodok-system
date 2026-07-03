@@ -887,16 +887,34 @@ function getLangLabel(lang) {
 window.toggleLang = function() {
   _lang = _lang === 'zh' ? 'en' : _lang === 'en' ? 'km' : 'zh';
   localStorage.setItem('pms_lang', _lang);
+
+  // 更新顶部按钮和标题
   const btn = document.getElementById('langToggle');
   if (btn) btn.textContent = getLangLabel(_lang);
   const ht = document.getElementById('headerTitle');
   if (ht) ht.textContent = t('systemTitle');
-  // 只有登录页正在显示时才更新它，不能无条件调用
+
+  // 如果登录页正在显示，只更新登录页语言，直接返回
   const _loginEl = document.getElementById('loginOverlay');
-  if (_loginEl && _loginEl.style.display !== 'none') renderLoginOverlay();
+  if (_loginEl && _loginEl.style.display !== 'none') {
+    renderLoginOverlay();
+    return;
+  }
+
+  // 已登录：直接原地重渲染，不经过 nav() 的登录检查
   buildSidebar();
-  const page = document.querySelector('.nav-item.active')?.dataset?.page || 'home';
-  nav(page);
+  buildMobileNav(window._currentPage || 'home');
+  const page = window._currentPage || 'home';
+  const fn = PAGES[page];
+  const mc = document.getElementById('mainContent');
+  if (fn && mc) {
+    mc.innerHTML = fn();
+    mc.scrollTop = 0;
+    initPage(page);
+  }
+  document.querySelectorAll('.nav-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.page === page)
+  );
 };
 
 function renderLoginOverlay() {
