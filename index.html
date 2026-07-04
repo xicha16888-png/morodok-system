@@ -3793,6 +3793,10 @@ function renderReminderOverdue() {
   // 少到多排序
   const allContracts = Object.values(contractMap).sort((a,b)=>a.maxDays-b.maxDays);
   const totalOwedAll = items.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
+  // 总欠款(含未到期)：这些逾期客户名下，所有还没还完的期数(不管到没到期)全部加起来
+  const totalRemainingAll = allContracts.reduce((sum, {s}) => {
+    return sum + s.schedule.reduce((a,p) => a + (p.paid ? 0 : (+p.principalDue||0)+(+p.interestDue||0)), 0);
+  }, 0);
 
   // 紧急联系人卡片（多语言）
   function emgCards(s) {
@@ -3812,7 +3816,7 @@ function renderReminderOverdue() {
   return `
   <div class="page-header"><div class="page-title">🚨 ${t('overdueTitle')}</div></div>
   ${items.length
-    ? `<div class="alert alert-red">⚠️ <b>${allContracts.length}</b> ${t('overdueClients')} · <b>${items.length}</b> ${t('overdueCount')} · ${t('totalOwed')} <b>${fmt(totalOwedAll)}</b></div>`
+    ? `<div class="alert alert-red">⚠️ <b>${allContracts.length}</b> ${t('overdueClients')} · <b>${items.length}</b> ${t('overdueCount')} · ${tl('逾期欠款','Overdue Owed','ជំពាក់​ហួស​កំណត់')} <b>${fmt(totalOwedAll)}</b> · ${tl('总欠款(含未到期)','Total Owed (incl. not-yet-due)','សរុប​ជំពាក់​(រួម​មិន​ទាន់​ដល់​កំណត់)')} <b>${fmt(totalRemainingAll)}</b></div>`
     : `<div class="alert alert-green">✅ ${t('noOverdue')}</div>`}
 
   <!-- 搜索 + 筛选 -->
