@@ -5161,6 +5161,29 @@ function renderStoreStats() {
                   </table>`:`<div style="color:var(--muted);font-size:12px">${t('noData')}</div>`}
                 </div>
               </div>
+              <!-- 合同列表 -->
+              <div style="margin-top:16px;border-top:1px solid #e0e8f0;padding-top:14px">
+                <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="const el=document.getElementById('contracts-${i}');const ic=this.querySelector('.cl-arrow');el.style.display=el.style.display==='none'?'block':'none';ic.textContent=el.style.display==='none'?'▶':'▼'">
+                  <div style="font-size:12px;font-weight:700;color:var(--navy)">📄 ${tl('合同列表','Contract List','បញ្ជី​កិច្ចសន្យា')} (${d.total})</div>
+                  <span class="cl-arrow" style="color:var(--muted);font-size:12px">▶</span>
+                </div>
+                <div id="contracts-${i}" style="display:none;margin-top:10px;max-height:320px;overflow-y:auto">
+                  ${d.storeSales.length ? `<table style="width:100%;font-size:12px">
+                    <tr style="position:sticky;top:0;background:#f8fbff">
+                      <th>#</th><th>${tl('客户','Customer','អ្នក​ប្រើ')}</th><th>${tl('型号','Model','ម៉ូ​ដែល')}</th>
+                      <th>${tl('状态','Status','ស្ថានភាព')}</th><th>${tl('日期','Date','កាល​បរិច្ឆេទ')}</th>
+                    </tr>
+                    ${[...d.storeSales].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(s=>`
+                    <tr style="cursor:pointer" onclick="viewSchedule('${s.id}')">
+                      <td class="fw700 text-blue">#${s.id}</td>
+                      <td>${esc(s.customer)}</td>
+                      <td style="font-size:11px">${esc(s.modelName||'-')}</td>
+                      <td><span class="badge ${s.status==='已结清'||s.status==='提前结清'?'badge-green':'badge-blue'}" style="font-size:10px">${esc(s.status||'-')}</span></td>
+                      <td style="color:var(--muted)">${esc(s.date||'-')}</td>
+                    </tr>`).join('')}
+                  </table>` : `<div style="color:var(--muted);font-size:12px">${t('noData')}</div>`}
+                </div>
+              </div>
             </td>
           </tr>`;
         }).join('')}
