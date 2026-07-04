@@ -5839,7 +5839,13 @@ window.importExcel = function(input) {
       const existingSales = DB_get('sales') || [];
       const existingIds   = new Set(existingSales.map(s => String(s.id)));
       const allPeriodPayments = [];
-      const imported = [], updated = [];
+      const imported = [], updated = [], conflicted = [];
+
+      // 判断两个客户名是否算"同一个人"（忽略大小写和多余空格）
+      function sameCustomer(a, b) {
+        const norm = s => String(s||'').toUpperCase().replace(/\s+/g,'');
+        return norm(a) === norm(b);
+      }
 
       if (isNewFormat) {
         // ══ 新格式：三张表 ══
@@ -5922,8 +5928,15 @@ window.importExcel = function(input) {
           };
 
           if (existingIds.has(contractId)) {
-            existingSales[existingSales.findIndex(s=>String(s.id)===contractId)] = contract;
-            updated.push(contractId);
+            const existingIdx = existingSales.findIndex(s=>String(s.id)===contractId);
+            const existingRecord = existingSales[existingIdx];
+            if (existingRecord && !sameCustomer(existingRecord.customer, customer)) {
+              // 合同号相同，但客户不是同一个人 —— 疑似撞号，跳过，不覆盖
+              conflicted.push({ contractId, 系统里的客户: existingRecord.customer, Excel里的客户: customer });
+            } else {
+              existingSales[existingIdx] = contract;
+              updated.push(contractId);
+            }
           } else {
             existingSales.push(contract);
             imported.push(contractId);
@@ -6031,8 +6044,15 @@ window.importExcel = function(input) {
           };
 
           if (existingIds.has(contractId)) {
-            existingSales[existingSales.findIndex(s=>String(s.id)===contractId)] = contract;
-            updated.push(contractId);
+            const existingIdx = existingSales.findIndex(s=>String(s.id)===contractId);
+            const existingRecord = existingSales[existingIdx];
+            const newCustomerName = custEn || custKh;
+            if (existingRecord && !sameCustomer(existingRecord.customer, newCustomerName)) {
+              conflicted.push({ contractId, 系统里的客户: existingRecord.customer, Excel里的客户: newCustomerName });
+            } else {
+              existingSales[existingIdx] = contract;
+              updated.push(contractId);
+            }
           } else {
             existingSales.push(contract);
             imported.push(contractId);
@@ -6057,12 +6077,20 @@ window.importExcel = function(input) {
         imported.length ? `✅ 新增 ${imported.length} 笔合同` : '',
         updated.length  ? `🔄 更新 ${updated.length} 笔合同` : '',
         newPays.length  ? `💳 同步 ${newPays.length} 条收款记录` : '',
+        conflicted.length ? `⚠️ 发现 ${conflicted.length} 笔合同号冲突，已跳过未导入` : '',
       ].filter(Boolean).join('<br>');
 
       showModal('📥 导入完成', `
         <div style="font-size:14px;line-height:2;margin-bottom:12px">${msg}</div>
         ${imported.length ? `<div style="font-size:12px;color:#546e7a;margin-bottom:6px">新增：${imported.slice(0,8).join(', ')}${imported.length>8?'...':''}</div>` : ''}
         ${updated.length  ? `<div style="font-size:12px;color:#1565c0;margin-bottom:6px">更新：${updated.slice(0,8).join(', ')}${updated.length>8?'...':''}</div>` : ''}
+        ${conflicted.length ? `
+        <div style="background:#fff3e0;border-left:4px solid var(--amber);border-radius:8px;padding:10px 12px;margin-top:10px">
+          <div style="font-size:12px;font-weight:700;color:#e65100;margin-bottom:6px">⚠️ 以下合同号在系统里已存在、但对应着不同的客户，为避免覆盖错客户数据，已跳过，没有导入这些：</div>
+          ${conflicted.slice(0,20).map(c => `<div style="font-size:12px;color:#795548;margin-bottom:3px">「${esc(c.contractId)}」系统里是 <b>${esc(c.系统里的客户)}</b>，Excel里是 <b>${esc(c.Excel里的客户)}</b></div>`).join('')}
+          ${conflicted.length>20 ? `<div style="font-size:12px;color:#795548">...还有${conflicted.length-20}条，未全部列出</div>` : ''}
+          <div style="font-size:11px;color:#a1887f;margin-top:6px">请检查Excel里这些合同号是否编错了（比如复制上月数据忘记改年月），改好合同号后重新导入这几条。</div>
+        </div>` : ''}
         <div style="margin-top:12px;font-size:12px;color:#90a4ae">数据已同步，刷新页面查看最新数据。</div>
         <button class="btn btn-primary" style="margin-top:12px" onclick="closeModal();nav('sale-list')">查看合同列表</button>
       `);
