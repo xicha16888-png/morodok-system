@@ -4710,8 +4710,8 @@ function renderFinanceReport() {
       });
       const overdueContracts = Object.values(overdueMap);
 
-      const o7  = overdueContracts.filter(x => x.maxDays >= 7);
-      const o15 = overdueContracts.filter(x => x.maxDays >= 15);
+      const o7  = overdueContracts.filter(x => x.maxDays >= 7  && x.maxDays < 15);
+      const o15 = overdueContracts.filter(x => x.maxDays >= 15 && x.maxDays < 30);
       const o30 = overdueContracts.filter(x => x.maxDays >= 30);
 
       function renderTable(list) {
@@ -4747,8 +4747,8 @@ function renderFinanceReport() {
       return `
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
           ${[
-            {label: tl('逾期7天+','7+ Days','ហួស 7 ថ្ងៃ+'), count: o7.length, color: '#f57f17', bg: '#fff8e1'},
-            {label: tl('逾期15天+','15+ Days','ហួស 15 ថ្ងៃ+'), count: o15.length, color: 'var(--amber)', bg: '#fff3e0'},
+            {label: tl('逾期7-14天','7-14 Days','ហួស 7-14 ថ្ងៃ'), count: o7.length, color: '#f57f17', bg: '#fff8e1'},
+            {label: tl('逾期15-29天','15-29 Days','ហួស 15-29 ថ្ងៃ'), count: o15.length, color: 'var(--amber)', bg: '#fff3e0'},
             {label: tl('逾期30天+','30+ Days','ហួស 30 ថ្ងៃ+'), count: o30.length, color: 'var(--red)', bg: '#ffebee'},
           ].map((item,i) => `
             <div style="background:${item.bg};border-radius:10px;padding:16px;text-align:center;cursor:pointer;border:2px solid ${item.color}" onclick="document.querySelectorAll('.overdue-panel').forEach((el,j)=>{el.style.display=j===${i}?'':'none'});this.parentElement.querySelectorAll('div[style*=cursor]').forEach((el,j)=>{el.style.opacity=j===${i}?'1':'0.6'})">
