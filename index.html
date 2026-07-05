@@ -1213,18 +1213,26 @@ function hideLoading() { document.getElementById('loadingOverlay').classList.rem
 // ══════════════════════════════════════════════════════
 function newId() { const id = DB_get('nextId') || 1001; DB_set('nextId', id + 1); return id; }
 
-function newContractId(date) {
-  // 格式：60601-001（年个位+月+日+三位序号）
-  const d = date ? new Date(date) : new Date();
-  const y = String(d.getFullYear()).slice(-1);   // 年最后一位：6
-  const m = String(d.getMonth() + 1);            // 月不补零：6
-  const day = String(d.getDate());               // 日不补零：1
-  const prefix = y + m.padStart(1,'0') + day.padStart(2,'0'); // 60601
-  // 当天已有合同数量
+function newContractId(periods) {
+  // 格式：MSJ + 期数 + Q + 6位连续流水号（不含年月，不会因为日期填错而撞号）
+  // 例如 6期合同 -> MSJ6Q-000087
   const sales = DB_get('sales') || [];
-  const todayCount = sales.filter(s => String(s.id).startsWith(prefix)).length;
-  const seq = String(todayCount + 1).padStart(3, '0');
-  return prefix + '-' + seq;
+  const prefix = `MSJ${periods}Q-`;
+  // 找出当前该期数分类下，已用过的最大流水号
+  let maxSeq = 0;
+  sales.forEach(s => {
+    const m = String(s.id).match(new RegExp(`^MSJ${periods}Q-(\\d+)$`));
+    if (m) maxSeq = Math.max(maxSeq, parseInt(m[1], 10));
+  });
+  let seq = maxSeq + 1;
+  let candidate = prefix + String(seq).padStart(6, '0');
+  // 保险起见，二次检查确实不重复（极端并发情况下再往后加）
+  const existingIds = new Set(sales.map(s => String(s.id)));
+  while (existingIds.has(candidate)) {
+    seq++;
+    candidate = prefix + String(seq).padStart(6, '0');
+  }
+  return candidate;
 }
 function today() { return new Date().toISOString().slice(0, 10); }
 function addDays(d, n) { const dt = new Date(d); dt.setDate(dt.getDate() + n); return dt.toISOString().slice(0, 10); }
@@ -2127,7 +2135,7 @@ window.submitSale = function() {
   }
 
   const sale = {
-    id: newContractId(sDate), date: sDate, customer: cust, customerPhone: custPhone,
+    id: newContractId(periods), date: sDate, customer: cust, customerPhone: custPhone,
     shopName, salesperson,
     emergencyContacts,
     modelId, modelName: ph ? `${ph.brand} ${ph.model} ${ph.storage||''}`.trim() : '',
