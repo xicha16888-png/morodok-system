@@ -2869,8 +2869,8 @@ function buildPayTableGrouped(pays, isCollector) {
           return `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:${bg};${borderLeft}border-bottom:1px solid #f0f0f0;flex-wrap:wrap">
             <div style="flex:1;min-width:120px">
               <div style="font-weight:700;font-size:13px">${esc(p.customer)}
-                ${p.isPartial ? '<span style="background:#fff3e0;color:#e65100;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">${tl("部分收款","Partial","ផ្នែក")}</span>' : ''}
-                ${isEarly ? '<span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">${tl("⚡提前还款","⚡Early","⚡សង​មុន")}</span>' : ''}
+                ${p.isPartial ? `<span style="background:#fff3e0;color:#e65100;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">${tl("部分收款","Partial","ផ្នែក")}</span>` : ''}
+                ${isEarly ? `<span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">${tl("⚡提前还款","⚡Early","⚡សង​មុន")}</span>` : ''}
               </div>
               <div style="font-size:11px;color:#90a4ae">#${p.contractId} · ${tl('第','Period ','ខែ')}${p.period}${tl('期','','')}${p.shortfall>0?` · ${tl('差额','Shortfall','ខ្វះ')} <b style="color:var(--red)">${fmt(p.shortfall)}</b>`:''}</div>
             </div>
@@ -3219,6 +3219,9 @@ window.calcPayTotal = function() {
   if (tot) tot.value = fmt(p + i + pe);
 };
 window.submitPayment = function() {
+  if (window._submittingPayment) return; // 防止重复点击导致提交两次
+  window._submittingPayment = true;
+  try {
   const contractId = window._resolvedContractId || '';
   const periodNo   = +(document.getElementById('pPeriod')?.value||0);
   const pDate      = document.getElementById('pDate')?.value || today();
@@ -3254,7 +3257,7 @@ window.submitPayment = function() {
   const total = actualReceived + penalty;
 
   // ── 判断足额/不足额 ──
-  const TOLERANCE = 0.05; // 5分容差
+  const TOLERANCE = 2.00; // 差额2美元以内按已结清处理
   const isFullPaid = actualReceived >= dueTotalAmt - TOLERANCE;
   const shortfall  = Math.max(0, dueTotalAmt - actualReceived);
 
@@ -3321,6 +3324,9 @@ window.submitPayment = function() {
   const isC = getCurrentUser()?.role === 'collector';
   const wrap = document.getElementById('payTableWrap');
   if (wrap) wrap.innerHTML = buildPayTableGrouped(allPays, isC);
+  } finally {
+    setTimeout(() => { window._submittingPayment = false; }, 800);
+  }
 };
 // ══════════════════════════════════════════════════════
 // STATS
