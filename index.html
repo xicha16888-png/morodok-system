@@ -4324,19 +4324,13 @@ window.calcEarlyProfit = function() {
 
   const neg = +(document.getElementById('epNegotiated')?.value || 0);
   if (neg > 0) {
-    const sel2 = document.getElementById('epContract');
-    const opt2 = sel2?.selectedOptions[0];
-    const contractId2 = sel2?.value || '';
-    const sales2 = DB_get('sales')||[];
-    const s2 = sales2.find(s=>String(s.id)===String(contractId2));
-    const deposit = +(s2?.deposit||0);
+    // 净利润 = 已还利息 + (协商金额 − 剩余本金) − 返点   ← 本金不算利润，只有利息和协商溢价才算
     const paidPays = DB_get('payments')||[];
+    const sel2 = document.getElementById('epContract');
+    const contractId2 = sel2?.value || '';
     const contractPays = paidPays.filter(p=>String(p.contractId)===String(contractId2));
-    const paidPrincipal = contractPays.reduce((a,p)=>a+(+p.principal||0),0);
     const paidInterest  = contractPays.reduce((a,p)=>a+(+p.interest||0)+(+p.serviceFee||0),0);
-    // 净利润 = 首付 + 已还本金 + 已还利息 + 协商金额 - 合同总本金 - 返点
-    const totalPrincipal = +(s2?.installmentAmount||0);
-    const autoP = (deposit + paidPrincipal + paidInterest + neg - totalPrincipal - rebate).toFixed(2);
+    const autoP = (paidInterest + (neg - remainP) - rebate).toFixed(2);
     const apEl = document.getElementById('epAutoProfit');
     const mpEl = document.getElementById('epManualProfit');
     if (apEl) apEl.value = autoP;
@@ -4368,7 +4362,7 @@ function updateProfitTip(remainP, remainI, remainSvc, rebate, neg, actualProfit)
   tip.innerHTML = `
     <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px">
       <span>💰 协商收回：<b>${fmt(neg)}</b></span>
-      <span style="color:var(--muted)">净利润 = 首付 + 已还本金 + 已还利息 + 协商金额 − 合同总本金 − 返点</span>
+      <span style="color:var(--muted)">净利润 = 已还利息 + (协商金额 − 剩余本金) − 返点</span>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px;margin-top:6px">
       <span>📉 原剩余利息：<b>${fmt(origIncome)}</b></span>
@@ -4403,8 +4397,8 @@ window.submitEarlyPayment = function() {
   const cPays2 = allPays2.filter(p=>String(p.contractId)===String(contractId));
   const paidP2 = cPays2.reduce((a,p)=>a+(+p.principal||0),0);
   const paidI2 = cPays2.reduce((a,p)=>a+(+p.interest||0)+(+p.serviceFee||0),0);
-  const totalPrincipal2 = +(s?.installmentAmount||0);
-  const autoProfit = +(deposit2 + paidP2 + paidI2 + neg - totalPrincipal2 - rebate).toFixed(2);
+  // 净利润 = 已还利息 + (协商金额 − 剩余本金) − 返点  ← 本金不算利润
+  const autoProfit = +(paidI2 + (neg - remainP) - rebate).toFixed(2);
   const actualProfit = mpEl?.value !== '' ? +(mpEl.value) : autoProfit;
   const date = document.getElementById('epDate')?.value || today();
   const note = document.getElementById('epNote')?.value || '';
