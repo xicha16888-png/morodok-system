@@ -2871,6 +2871,7 @@ function buildPayTableGrouped(pays, isCollector) {
               <div style="font-weight:700;font-size:13px">${esc(p.customer)}
                 ${p.isPartial ? `<span style="background:#fff3e0;color:#e65100;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">${tl("部分收款","Partial","ផ្នែក")}</span>` : ''}
                 ${isEarly ? `<span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">${tl("⚡提前还款","⚡Early","⚡សង​មុន")}</span>` : ''}
+                ${(+p.advanceDays||0)>30 ? `<span style="background:#ffebee;color:#c62828;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700" title="${tl('提前','Advance','មុន')}${p.advanceDays}${tl('天，超过1个月，建议核对','days, over 1 month, please verify','ថ្ងៃ')}">🔔${tl('提前','Advance','មុន')}${p.advanceDays}${tl('天','d','ថ្ងៃ')}</span>` : ''}
               </div>
               <div style="font-size:11px;color:#90a4ae">#${p.contractId} · ${tl('第','Period ','ខែ')}${p.period}${tl('期','','')}${p.shortfall>0?` · ${tl('差额','Shortfall','ខ្វះ')} <b style="color:var(--red)">${fmt(p.shortfall)}</b>`:''}</div>
             </div>
@@ -3260,6 +3261,25 @@ window.submitPayment = async function() {
   const dueInterest  = (+sched.interestDue||0) + (+sched.serviceFeeDue||0);
   const dueTotalAmt  = duePrincipal + dueInterest;
 
+  // 🔔 提前还款超过1个月(30天)提醒 —— 不阻止提交，但需要人工确认核实
+  let advanceDays = 0;
+  if (sched.dueDate) {
+    const dueMs = new Date(sched.dueDate).getTime();
+    const payMs = new Date(pDate).getTime();
+    if (!isNaN(dueMs) && !isNaN(payMs)) {
+      advanceDays = Math.round((dueMs - payMs) / 86400000);
+    }
+  }
+  if (advanceDays > 30) {
+    const ok = confirm(
+      `⚠️ ${s.customer} 第${periodNo}期到期日是 ${sched.dueDate}，` +
+      `你填的还款日 ${pDate} 比到期日提前了 ${advanceDays} 天（超过1个月）。\n\n` +
+      `确认这是真实的提前还款吗？\n\n` +
+      `点"确定"继续登记，点"取消"返回核实。`
+    );
+    if (!ok) { return; }
+  }
+
   let principal, interest, serviceFee = 0, actualReceived;
 
   // 所有角色统一填实收总额，系统自动拆分本金/利息
@@ -3288,7 +3308,8 @@ window.submitPayment = async function() {
       paidServiceFee: serviceFee,
       penalty,
       paidStatus: 'paid',
-      shortfall: 0
+      shortfall: 0,
+      advanceDays: advanceDays > 0 ? advanceDays : 0
     };
     if (sales[si].schedule.every(p => p.paid)) sales[si].status = '已结清';
     showMsg('payMsg', `✅ ${s.customer} 第${periodNo}期 — 实收 ${fmt(total)}，已结清`, 'green');
@@ -3318,7 +3339,8 @@ window.submitPayment = async function() {
     date: pDate, principal: parseFloat(principal.toFixed(2)),
     interest: parseFloat(interest.toFixed(2)), serviceFee, penalty,
     isPartial: !isFullPaid,
-    shortfall: isFullPaid ? 0 : parseFloat(shortfall.toFixed(2))
+    shortfall: isFullPaid ? 0 : parseFloat(shortfall.toFixed(2)),
+    advanceDays: advanceDays > 0 ? advanceDays : 0
   });
   DB_set('payments', pays);
 
