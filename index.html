@@ -3218,7 +3218,7 @@ window.calcPayTotal = function() {
   const tot = document.getElementById('pTotal');
   if (tot) tot.value = fmt(p + i + pe);
 };
-window.submitPayment = function() {
+window.submitPayment = async function() {
   if (window._submittingPayment) return; // 防止重复点击导致提交两次
   window._submittingPayment = true;
   try {
@@ -3231,13 +3231,29 @@ window.submitPayment = function() {
 
   if (!contractId) { showMsg('payMsg', t('msgFillContract'), 'red'); return; }
 
-  const sales = DB_get('sales')||[];
+  // 🔒 提交前先向服务器重新核实最新数据，不信任本地可能过期的缓存
+  showMsg('payMsg', tl('正在核对最新数据...','Checking latest data...','កំពុង​ត្រួតពិនិត្យ'), 'blue');
+  let freshData;
+  try {
+    const freshRes = await fetch('/api/data', {cache:'no-store'});
+    freshData = await freshRes.json();
+  } catch(e) {
+    showMsg('payMsg', tl('网络异常，请重试','Network error, please retry','បញ្ហា​បណ្តាញ'), 'red');
+    return;
+  }
+  // 用最新数据覆盖本地缓存，确保后续所有读写都基于服务器最新状态，不使用可能过期的旧缓存
+  _db = freshData; _dbReady = true;
+  const sales = DB_get('sales') || [];
   const si = sales.findIndex(s => String(s.id) === String(contractId));
   if (si < 0) return;
   const s = sales[si];
   const pi = s.schedule.findIndex(p => p.period === periodNo);
   if (pi < 0) return;
-  if (s.schedule[pi].paid) { showMsg('payMsg', t('msgPeriodPaid'), 'amber'); return; }
+  if (s.schedule[pi].paid) {
+    showMsg('payMsg', `⚠️ ${tl('该期已被登记为已还（可能是其他人刚操作过），请刷新页面查看最新状态','This period was already marked paid (possibly by someone else). Please refresh the page.','ខែនេះ​បាន​បង់​រួច​ហើយ')}`, 'amber');
+    loadContractPeriods();
+    return;
+  }
 
   const sched       = s.schedule[pi];
   const duePrincipal = +sched.principalDue || 0;
