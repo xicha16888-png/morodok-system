@@ -191,6 +191,15 @@ async function deletePayment(id) {
   if (error) throw error;
 }
 
+// ── 删除单条提前还款记录 ──
+async function deleteEarlyPayment(id) {
+  const { error } = await supabase
+    .from('appdata')
+    .delete()
+    .eq('key', `ep_${id}`);
+  if (error) throw error;
+}
+
 // ── API 路由 ──
 app.get('/api/data', async (req, res) => {
   try {
@@ -230,6 +239,16 @@ app.delete('/api/sale/:id', async (req, res) => {
 app.delete('/api/payment/:id', async (req, res) => {
   try {
     await deletePayment(req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// 删除提前还款记录
+app.delete('/api/earlyPayment/:id', async (req, res) => {
+  try {
+    await deleteEarlyPayment(req.params.id);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
