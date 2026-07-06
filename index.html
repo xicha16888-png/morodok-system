@@ -2933,10 +2933,20 @@ window.deletePayment = function(id) {
 };
 
 // ── 修改收款记录 ──
+window.updateEpSplit = function(duePrincipal) {
+  const total = +(document.getElementById('epTotalReceived')?.value||0);
+  const principal = Math.min(total, duePrincipal);
+  const interest = Math.max(0, total - principal);
+  const el = document.getElementById('epSplitPreview');
+  if (el) el.textContent = `${tl('本金','Principal','ដើម')} ${fmt(principal)} + ${tl('利息','Interest','ការប្រាក់')} ${fmt(interest)}`;
+};
 window.editPayment = function(id) {
   const pays = DB_get('payments')||[];
   const pay = pays.find(p => p.id === id);
   if (!pay) return;
+  const sale = (DB_get('sales')||[]).find(s => s.id === pay.contractId);
+  const sched = sale?.schedule?.find(p => p.period === pay.period);
+  const duePrincipal = +sched?.principalDue || 0;
   showModal(`✏️ ${tl('修改收款记录','Edit Payment','កែ​ការ​ទូ​ទាត់')} — ${pay.customer} ${tl('第','#','ខែ')}${pay.period}${tl('期','','')}`,`
     <div class="form-grid" style="gap:12px">
       <div class="form-group">
@@ -2945,14 +2955,14 @@ window.editPayment = function(id) {
           style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
       </div>
       <div class="form-group">
-        <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('实收本金','Principal','ដើម')} ($)</label>
-        <input id="epPrincipal" type="number" step="0.01" value="${pay.principal||0}"
+        <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('实收总额','Total Received','ចំនួន​ទទួល​សរុប')} ($)</label>
+        <input id="epTotalReceived" type="number" step="0.01" value="${(+pay.principal||0)+(+pay.interest||0)}" oninput="updateEpSplit(${duePrincipal})"
           style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">${tl('系统会自动按"本金优先，剩余算利息"重新拆分','System will re-split by "principal first, remainder as interest"','ប្រព័ន្ធនឹងបែងចែកឡើងវិញ')}</div>
       </div>
-      <div class="form-group">
-        <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('实收利息','Interest','ការ​ប្រាក់')} ($)</label>
-        <input id="epInterest" type="number" step="0.01" value="${pay.interest||0}"
-          style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+      <div class="form-group" style="grid-column:1/-1;background:#f5f7fa;border-radius:8px;padding:10px 12px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${tl('拆分预览','Split Preview','មើលជាមុន')}</div>
+        <div style="font-size:13px"><b id="epSplitPreview">${tl('本金','Principal','ដើម')} ${fmt(pay.principal||0)} + ${tl('利息','Interest','ការប្រាក់')} ${fmt(pay.interest||0)}</b></div>
       </div>
       <div class="form-group">
         <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('滞纳金','Late Fee','ប្រាក់​ពិន័យ')} ($)</label>
@@ -2981,12 +2991,17 @@ window.saveEditPayment = function(id) {
   if (idx < 0) return;
   const pay = pays[idx];
 
-  const newDate      = document.getElementById('epDate')?.value || pay.date;
-  const newPrincipal = parseFloat(document.getElementById('epPrincipal')?.value||0);
-  const newInterest  = parseFloat(document.getElementById('epInterest')?.value||0);
-  const newPenalty   = parseFloat(document.getElementById('epPenalty')?.value||0);
-  const newNote      = document.getElementById('epNote')?.value || '';
-  const msgEl        = document.getElementById('epMsg');
+  const sale  = (DB_get('sales')||[]).find(s => s.id === pay.contractId);
+  const sched = sale?.schedule?.find(p => p.period === pay.period);
+  const duePrincipal = +sched?.principalDue || 0;
+
+  const newDate          = document.getElementById('epDate')?.value || pay.date;
+  const totalReceived    = parseFloat(document.getElementById('epTotalReceived')?.value||0);
+  const newPrincipal     = Math.min(totalReceived, duePrincipal);
+  const newInterest      = Math.max(0, totalReceived - newPrincipal);
+  const newPenalty       = parseFloat(document.getElementById('epPenalty')?.value||0);
+  const newNote          = document.getElementById('epNote')?.value || '';
+  const msgEl            = document.getElementById('epMsg');
 
   if (!newDate) { if(msgEl){msgEl.textContent='❌ '+tl('请填写收款日期','Please enter payment date','សូម​បញ្ចូល​ថ្ងៃ');msgEl.style.color='red';} return; }
 
@@ -3232,9 +3247,9 @@ window.submitPayment = function() {
   actualReceived = +(document.getElementById('pTotalReceived')?.value||0);
   if (!actualReceived) { showMsg('payMsg', '请输入实收金额', 'red'); return; }
 
-  // 按应还比例拆分：利息优先，剩余算本金
-  interest  = Math.min(actualReceived, dueInterest);
-  principal = Math.max(0, actualReceived - interest);
+  // 按应还比例拆分：本金优先，剩余算利息
+  principal = Math.min(actualReceived, duePrincipal);
+  interest  = Math.max(0, actualReceived - principal);
 
   const total = actualReceived + penalty;
 
