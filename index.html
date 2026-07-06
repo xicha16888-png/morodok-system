@@ -2497,7 +2497,20 @@ window.saveEditSale = function(id) {
 window.deleteSale = function(id) {
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
   if (!s) return;
-  confirmDelete(`${tl("删除合同","Delete contract","លុប​កិច្ចសន្យា")} #${s.id} — ${s.customer}？${tl("此操作不可撤销！","This cannot be undone!","សកម្ម​នេះ​មិន​អាច​ត្រឡប់​វិញ!")}`, function() {
+  confirmDelete(`${tl("删除合同","Delete contract","លុប​កិច្ចសន្យា")} #${s.id} — ${s.customer}？${tl("此操作不可撤销！","This cannot be undone!","សកម្ម​នេះ​មិន​អាច​ត្រឡប់​វិញ!")}`, async function() {
+    // 🔒 先调用后端专用删除接口，真正删除合同（整体重新保存数组不会真的删除）
+    try {
+      const res = await fetch(`/api/sale/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('状态码 ' + res.status);
+    } catch (e) {
+      alert(`${tl('删除失败','Delete failed','បរាជ័យ')}: ${e.message}`);
+      return;
+    }
+    // 一并删除关联的提前还款记录（如果有）
+    const relatedEp = (DB_get('earlyPayments')||[]).find(r => String(r.contractId) === String(id));
+    if (relatedEp && relatedEp.id) {
+      try { await fetch(`/api/earlyPayment/${relatedEp.id}`, { method: 'DELETE' }); } catch(e) {}
+    }
     DB_set('sales', (DB_get('sales')||[]).filter(x => String(x.id) !== String(id)));
     DB_set('earlyPayments', (DB_get('earlyPayments')||[]).filter(r => String(r.contractId) !== String(id)));
     nav('sale-list');
@@ -2901,9 +2914,18 @@ window.deletePayment = function(id) {
   const pays = DB_get('payments')||[];
   const pay = pays.find(p => p.id === id);
   if (!pay) return;
-  confirmDelete(`${tl('删除收款记录：','Delete payment: ','លុប​ការ​ទូ​ទាត់:')} ${pay.customer} — ${t('period')} ${pay.period} — ${fmt((+pay.principal)+(+pay.interest))}`, function() {
+  confirmDelete(`${tl('删除收款记录：','Delete payment: ','លុប​ការ​ទូ​ទាត់:')} ${pay.customer} — ${t('period')} ${pay.period} — ${fmt((+pay.principal)+(+pay.interest))}`, async function() {
 
-  // Remove payment record
+  // 🔒 先调用后端专用删除接口，真正从数据库删除这条记录（不能只改本地数组再整体保存，那样删不掉）
+  try {
+    const res = await fetch(`/api/payment/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('状态码 ' + res.status);
+  } catch (e) {
+    showMsg('payMsg', `❌ ${tl('删除失败','Delete failed','បរាជ័យ')}: ${e.message}`, 'red');
+    return;
+  }
+
+  // Remove payment record (本地状态同步，用于界面即时刷新)
   const newPays = pays.filter(p => p.id !== id);
   DB_set('payments', newPays);
 
@@ -4273,7 +4295,7 @@ function buildEarlyTable(list) {
       <th>${t("remainPrincipal")}</th><th>${t("origRemainInterest")}</th>
       <th>${_lang==='km'?'កាំចំណែក':_lang==='en'?'Rebate':'返点'}</th>
       <th>${t("negotiatedAmount").replace(" *","")}</th>
-      <th>${t("netProfit")}</th><th>${t("profitChange")}</th><th>${t("remarks")}</th>
+      <th>${t("netProfit")}</th><th>${t("profitChange")}</th><th>${t("remarks")}</th><th></th>
     </tr>
     ${list.map(r => {
       const origIncome = (+r.origRemainInterest||0) + (+r.remainServiceFee||0);
@@ -4299,10 +4321,42 @@ function buildEarlyTable(list) {
         <td class="fw700 text-green">${fmt(r.actualProfit)}</td>
         <td class="${diff >= 0 ? 'text-green' : 'text-red'}">${diff >= 0 ? '+' : ''}${fmt(diff)}</td>
         <td style="color:var(--muted);font-size:12px">${esc(r.note||'-')}</td>
+        <td><button onclick="deleteEarlyPayment(${r.id})" class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 8px">🗑️</button></td>
       </tr>`;
     }).join('')}
   </table></div>`;
 }
+
+window.deleteEarlyPayment = function(id) {
+  const list = DB_get('earlyPayments')||[];
+  const r = list.find(x => x.id === id);
+  if (!r) return;
+  confirmDelete(`${tl('删除提前还款记录：','Delete early settlement: ','លុប​ការ​ទូ​ទាត់​មុន​កំណត់:')} ${r.customer} — #${r.contractId}`, async function() {
+    // 🔒 先调用后端专用删除接口，真正删除记录
+    try {
+      const res = await fetch(`/api/earlyPayment/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('状态码 ' + res.status);
+    } catch (e) {
+      alert(`${tl('删除失败','Delete failed','បរាជ័យ')}: ${e.message}`);
+      return;
+    }
+    // 恢复合同排期表为未还，恢复状态为进行中
+    const sales = DB_get('sales')||[];
+    const si = sales.findIndex(s => String(s.id) === String(r.contractId));
+    if (si >= 0) {
+      sales[si].schedule = sales[si].schedule.map(p => {
+        if (p.earlySettled) {
+          return { ...p, paid: false, paidDate: null, paidPrincipal: 0, paidInterest: 0, earlySettled: false };
+        }
+        return p;
+      });
+      sales[si].status = '进行中';
+      DB_set('sales', sales);
+    }
+    DB_set('earlyPayments', list.filter(x => x.id !== id));
+    nav('early-payment');
+  });
+};
 
 window.calcEarlyProfit = function() {
   const sel = document.getElementById('epContract');
