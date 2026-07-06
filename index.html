@@ -4326,15 +4326,16 @@ window.calcEarlyProfit = function() {
   if (neg > 0) {
     const sel2 = document.getElementById('epContract');
     const opt2 = sel2?.selectedOptions[0];
+    const contractId2 = sel2?.value || '';
     const sales2 = DB_get('sales')||[];
-    const s2 = sales2.find(s=>s.id===+(sel2?.value||0));
+    const s2 = sales2.find(s=>String(s.id)===String(contractId2));
     const deposit = +(s2?.deposit||0);
     const paidPays = DB_get('payments')||[];
-    const contractPays = paidPays.filter(p=>p.contractId===+(sel2?.value||0));
+    const contractPays = paidPays.filter(p=>String(p.contractId)===String(contractId2));
     const paidPrincipal = contractPays.reduce((a,p)=>a+(+p.principal||0),0);
     const paidInterest  = contractPays.reduce((a,p)=>a+(+p.interest||0)+(+p.serviceFee||0),0);
     // 净利润 = 首付 + 已还本金 + 已还利息 + 协商金额 - 合同总本金 - 返点
-    const totalPrincipal = +(s2?.principal||0);
+    const totalPrincipal = +(s2?.installmentAmount||0);
     const autoP = (deposit + paidPrincipal + paidInterest + neg - totalPrincipal - rebate).toFixed(2);
     const apEl = document.getElementById('epAutoProfit');
     const mpEl = document.getElementById('epManualProfit');
@@ -4380,7 +4381,7 @@ function updateProfitTip(remainP, remainI, remainSvc, rebate, neg, actualProfit)
 
 window.submitEarlyPayment = function() {
   const sel = document.getElementById('epContract');
-  const contractId = +(sel?.value || 0);
+  const contractId = sel?.value || '';
   const opt = sel?.selectedOptions[0];
   if (!contractId) { showMsg('epMsg', t('msgFillContract'), 'red'); return; }
   const neg = +(document.getElementById('epNegotiated')?.value || 0);
@@ -4390,12 +4391,19 @@ window.submitEarlyPayment = function() {
   const remainSvc = +(opt?.dataset?.remainSvc || 0);
   const rebate    = +(opt?.dataset?.rebate    || 0);
   const mpEl = document.getElementById('epManualProfit');
+
+  // 先取出合同记录，再用它计算，避免"变量提前使用"报错
+  const sales = DB_get('sales') || [];
+  const si = sales.findIndex(s => String(s.id) === String(contractId));
+  if (si < 0) { showMsg('epMsg', t('msgFillContract'), 'red'); return; }
+  const s = sales[si];
+
   const deposit2 = +(s?.deposit||0);
   const allPays2 = DB_get('payments')||[];
-  const cPays2 = allPays2.filter(p=>p.contractId===contractId);
+  const cPays2 = allPays2.filter(p=>String(p.contractId)===String(contractId));
   const paidP2 = cPays2.reduce((a,p)=>a+(+p.principal||0),0);
   const paidI2 = cPays2.reduce((a,p)=>a+(+p.interest||0)+(+p.serviceFee||0),0);
-  const totalPrincipal2 = +(s?.principal||0);
+  const totalPrincipal2 = +(s?.installmentAmount||0);
   const autoProfit = +(deposit2 + paidP2 + paidI2 + neg - totalPrincipal2 - rebate).toFixed(2);
   const actualProfit = mpEl?.value !== '' ? +(mpEl.value) : autoProfit;
   const date = document.getElementById('epDate')?.value || today();
@@ -4403,10 +4411,6 @@ window.submitEarlyPayment = function() {
   const customer = opt?.dataset?.customer || '';
 
   // Mark all remaining schedule items as paid (early)
-  const sales = DB_get('sales') || [];
-  const si = sales.findIndex(s => s.id === contractId);
-  if (si < 0) return;
-  const s = sales[si];
   // Distribute negotiated amount across remaining periods proportionally
   const unpaidPeriods = s.schedule.filter(p => !p.paid);
   const totalUnpaidPrincipal = unpaidPeriods.reduce((a, p) => a + (+p.principalDue), 0);
