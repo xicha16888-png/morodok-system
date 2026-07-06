@@ -2851,16 +2851,16 @@ function buildPayTableGrouped(pays, isCollector) {
     groups[d].push(p);
   });
 
-  return Object.keys(groups).sort().reverse().map(date => {
+  return Object.keys(groups).sort().reverse().map((date, gi) => {
     const dayPays = groups[date];
     const dayTotal = dayPays.reduce((a,p)=>a+(+p.principal||0)+(+p.interest||0)+(+p.penalty||0),0);
     return `
     <div style="margin-bottom:4px">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--navy);color:#fff;border-radius:8px 8px 0 0;font-size:12px">
-        <span style="font-weight:700">📅 ${date}</span>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--navy);color:#fff;border-radius:8px 8px 0 0;font-size:12px;cursor:pointer" onclick="const el=document.getElementById('payGroup-${gi}');const ic=document.getElementById('payArrow-${gi}');const open=el.style.display!=='none';el.style.display=open?'none':'block';ic.textContent=open?'▶':'▼'">
+        <span style="font-weight:700"><span id="payArrow-${gi}">▼</span> 📅 ${date}</span>
         <span>${dayPays.length} ${tl('笔','records','ករណី')} · <b style="color:#81d4fa">${fmt(dayTotal)}</b></span>
       </div>
-      <div style="border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
+      <div id="payGroup-${gi}" style="border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
         ${dayPays.map((p,i) => {
           const total = (+p.principal||0)+(+p.interest||0)+(+p.serviceFee||0)+(+p.penalty||0);
           const isEarly = false; // 提前结清在单独的⚡视图显示
