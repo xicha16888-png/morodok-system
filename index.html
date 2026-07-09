@@ -1967,8 +1967,8 @@ function renderSaleAdd() {
           <div id="sMonthly" style="font-size:22px;font-weight:800;color:var(--green)">—</div>
         </div>
         <div style="background:#fff;border-radius:8px;padding:12px;text-align:center">
-          <div style="font-size:11px;color:#888;margin-bottom:4px">${t('actualPeriods')}</div>
-          <div id="sActualPeriods" style="font-size:22px;font-weight:800;color:#9c27b0">—</div>
+          <div style="font-size:11px;color:#888;margin-bottom:4px">${tl('每期本金','Monthly Principal','ដើមទុនប្រចាំខែ')}</div>
+          <div id="sMonthlyPrincipal" style="font-size:22px;font-weight:800;color:#9c27b0">—</div>
         </div>
         <div style="background:#fff;border-radius:8px;padding:12px;text-align:center">
           <div style="font-size:11px;color:#888;margin-bottom:4px">${t('monthlyIntLbl')}</div>
@@ -1982,11 +1982,9 @@ function renderSaleAdd() {
           <div style="font-size:11px;color:#888;margin-bottom:4px">${t('penaltyLbl')}</div>
           <div id="sDailyFee" style="font-size:22px;font-weight:800;color:var(--red)">—</div>
         </div>
-        <div style="background:#e8f5e9;border-radius:8px;padding:12px;text-align:center;grid-column:span 2">
-          <div style="font-size:11px;color:#888;margin-bottom:4px">${t('netProfitLbl')}</div>
-          <div id="sNetProfit" style="font-size:26px;font-weight:800;color:var(--green)">—</div>
-        </div>
       </div>
+      <input type="hidden" id="sActualPeriods">
+      <input type="hidden" id="sNetProfit">
       <input type="hidden" id="sTotalInt">
       <input type="hidden" id="sInterestRate">
       <input type="hidden" id="sTotalService">
@@ -2079,21 +2077,17 @@ window.calcInstall = function() {
 
   // 更新显示
   const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = '$' + v; };
-  setText('sInstAmt',       principal);
-  setText('sMonthly',       monthly);
-  setText('sMonthlyInt',    monthlyInt);
-  setText('sRebate',        rebate);
-  setText('sDailyFee',      penaltyPerDay);
-  setText('sActualPeriods', actualPeriods + ' 期');
+  setText('sInstAmt',          principal);
+  setText('sMonthly',          monthly);
+  setText('sMonthlyPrincipal', monthlyPrincipal);
+  setText('sMonthlyInt',       monthlyInt);
+  setText('sRebate',           rebate);
+  setText('sDailyFee',         penaltyPerDay);
 
-  const npEl = document.getElementById('sNetProfit');
-  if (npEl) {
-    npEl.textContent = '$' + netProfit;
-    npEl.style.color = netProfit >= 0 ? 'var(--green)' : 'var(--red)';
-  }
-
-  // 隐藏字段供保存用
+  // 隐藏字段供保存用（实际期数、预计净利润不在页面上展示，但仍保留计算结果供后续使用）
   const setHidden = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  setHidden('sActualPeriods', actualPeriods);
+  setHidden('sNetProfit',     netProfit.toFixed(2));
   setHidden('sTotalInt',      totalInt.toFixed(2));
   setHidden('sInterestRate',  intRate.toFixed(4));
   setHidden('sTotalService',  '0');
@@ -2335,7 +2329,7 @@ window.submitSale = function() {
   ['sCust','sCustPhone','sSalePrice','sRetailPrice','sNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const rc = document.getElementById('calcResultCard');
   if (rc) rc.style.display = 'none';
-  ['sInstAmt','sMonthly','sMonthlyInt','sRebate','sDailyFee','sNetProfit','sActualPeriods'].forEach(id => {
+  ['sInstAmt','sMonthly','sMonthlyPrincipal','sMonthlyInt','sRebate','sDailyFee'].forEach(id => {
     const el = document.getElementById(id); if (el) el.textContent = '—';
   });
   // 上传图片
