@@ -1526,7 +1526,7 @@ function renderHome() {
 // ══════════════════════════════════════════════════════
 // SALE ADD
 // ══════════════════════════════════════════════════════
-const PERIOD_OPTS = [3,5,8,11];
+const PERIOD_OPTS = [3,6,9,12];
 
 function periodSelect(id, defaultVal, onchange) {
   return `<select id="${id}" onchange="${onchange}">
@@ -2583,8 +2583,8 @@ window.editSale = function(id) {
   if (!s) return;
   const phones = DB_get('phones') || [];
   const phoneOpts = phones.map(p => `<option value="${p.id}" ${p.id===s.modelId?'selected':''}>${p.brand} ${p.model} ${p.storage||''}</option>`).join('');
-  const periodOpts = [3,5,8,11].map(n=>`<option value="${n}" ${n===s.periods?'selected':''}>${n}期</option>`).join('');
-  const svcPeriodOpts = [3,5,8,11].map(n=>`<option value="${n}" ${n===(s.svcPeriods||s.periods)?'selected':''}>${n}期</option>`).join('');
+  const periodOpts = [3,6,9,12].map(n=>`<option value="${n}" ${n===s.periods?'selected':''}>${n}期</option>`).join('');
+  const svcPeriodOpts = [3,6,9,12].map(n=>`<option value="${n}" ${n===(s.svcPeriods||s.periods)?'selected':''}>${n}期</option>`).join('');
 
   showModal(`✏️ 编辑合同 #${s.id} — ${s.customer}`,
     `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:13px">
