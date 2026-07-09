@@ -2458,15 +2458,53 @@ window.saveEditSale = function(id) {
   const rebate      = +(document.getElementById('eRebate')?.value || 0);
   const modelId     = +(document.getElementById('eModel')?.value || s.modelId);
   const ph          = phones.find(p => p.id === modelId);
-  const principal   = salePrice - deposit;
+  const principal   = Math.max(0, salePrice - deposit);
+  // 🔧 实际应还期数(3→3,6→5,9→8,12→11)，跟新建合同时用同一套规则
+  const actualPeriods = periods === 3 ? 3 : periods - 1;
 
-  const totalInt    = monthlyInt * periods;
+  const totalInt    = monthlyInt * actualPeriods;
   const totalSvc    = monthlySvc * svcPeriods;
-  const autoMonthly = principal > 0 ? (principal / periods) + monthlyInt + monthlySvc : 0;
+  const autoMonthly = actualPeriods > 0 ? (principal / actualPeriods) + monthlyInt + monthlySvc : 0;
   const monthly     = manualMonthly > 0 ? manualMonthly : autoMonthly;
   const intRate     = principal > 0 ? (monthlyInt / principal) * 100 : 0;
   const svcRate     = principal > 0 ? (monthlySvc / principal) * 100 : 0;
-  const contractNetProfit = (monthly * periods) - principal - rebate;
+  const contractNetProfit = (monthly * actualPeriods) - principal - rebate;
+  const firstDue = document.getElementById('eFirstDue')?.value || s.firstDue;
+
+  // 🔒 联动重算排期表：已还的期数一律保留原样(历史数据不可因编辑而改变)，
+  //    未还的期数按新的售价/首付/期数重新生成到期日、应收本金、应收利息
+  const oldSchedule = s.schedule || [];
+  const paidPeriods = oldSchedule.filter(p => p.paid);
+  const maxPaidPeriodNum = paidPeriods.length ? Math.max(...paidPeriods.map(p => p.period)) : 0;
+  if (maxPaidPeriodNum > actualPeriods) {
+    const proceed = confirm(
+      `⚠️ 已还款到第${maxPaidPeriodNum}期，但新设置的期数只有${actualPeriods}期（少于已还期数）。\n` +
+      `系统会保留已还的${maxPaidPeriodNum}期不变，实际排期表期数会自动调整为${maxPaidPeriodNum}期。\n\n继续保存吗？`
+    );
+    if (!proceed) return;
+  }
+  const finalScheduleLen = Math.max(actualPeriods, maxPaidPeriodNum);
+
+  const newSchedule = [];
+  for (let i = 0; i < finalScheduleLen; i++) {
+    const periodNum = i + 1;
+    const existingPaid = oldSchedule.find(p => p.period === periodNum && p.paid);
+    if (existingPaid) {
+      newSchedule.push(existingPaid); // 已还期数：完全保留，不受本次编辑影响
+    } else {
+      const d = new Date(firstDue); d.setMonth(d.getMonth() + i);
+      newSchedule.push({
+        period: periodNum,
+        dueDate: d.toISOString().slice(0, 10),
+        principalDue: actualPeriods > 0 ? Math.ceil(principal / actualPeriods) : 0,
+        interestDue: monthlyInt,
+        serviceFeeDue: 0,
+        totalDue: +((actualPeriods > 0 ? principal / actualPeriods : 0) + monthlyInt).toFixed(2),
+        paid: false, paidDate: null,
+        paidPrincipal: 0, paidInterest: 0, paidServiceFee: 0, penalty: 0
+      });
+    }
+  }
 
   sales[idx] = {
     ...s,
@@ -2475,7 +2513,7 @@ window.saveEditSale = function(id) {
     customerPhone:document.getElementById('eCustPhone')?.value?.trim() || s.customerPhone,
     shopName:     document.getElementById('eShop')?.value?.trim() || s.shopName,
     salesperson:  document.getElementById('eSalesperson')?.value?.trim() || s.salesperson,
-    firstDue:     document.getElementById('eFirstDue')?.value || s.firstDue,
+    firstDue,
     note:         document.getElementById('eNote')?.value || '',
     modelId, modelName: ph ? `${ph.brand} ${ph.model} ${ph.storage||''}`.trim() : s.modelName,
     salePrice, deposit, installmentAmount: principal,
@@ -2486,6 +2524,7 @@ window.saveEditSale = function(id) {
     contractNetProfit,
     dailyLateFee: +(document.getElementById('eDailyFee')?.value || 0),
     storeRebate: rebate,
+    schedule: newSchedule,
   };
 
   DB_set('sales', sales);
