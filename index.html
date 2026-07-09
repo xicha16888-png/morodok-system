@@ -1968,7 +1968,8 @@ function renderSaleAdd() {
       <input id="sNote" placeholder="${t('remarkPlaceholder')}" style="width:100%;padding:12px;border-radius:8px;border:1px solid #ddd;font-size:14px">
     </div>
 
-    <!-- 客户材料上传 -->
+    <!-- 客户材料上传 (暂时隐藏，后期需要时把 SHOW_CUSTOMER_DOCS 改回 true 即可恢复) -->
+    ${(() => { const SHOW_CUSTOMER_DOCS = false; if (!SHOW_CUSTOMER_DOCS) return ''; return `
     <div style="margin-top:18px">
       <div class="card-title" style="margin-bottom:12px">${t('uploadTitle')} <span style="font-size:12px;font-weight:400;color:var(--muted)">${t('uploadSub')}</span></div>
       ${[
@@ -1995,6 +1996,7 @@ function renderSaleAdd() {
         </div>
       `).join('')}
     </div>
+    `; })()}
 
     <div class="btn-row">
       <button class="btn btn-primary" onclick="submitSale()">${t('saveContract')}</button>
