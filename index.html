@@ -499,7 +499,7 @@ const I18N = {
     filter7: '7天以内', filter15: '15-30天', filter30: '30天以上',
     daysOverdue: '逾期', period: '期',
     // Messages
-    msgFillCustomer: '请填写客户姓名', msgFillPrice: '请填写销售价格',
+    msgFillCustomer: '请填写客户姓名', msgFillPrice: '请填写贷款金额',
     msgDepositOver: '首付不能超过售价', msgFillDue: '请选择首次还款日',
     msgFillName: '请填写品牌和型号', msgFillSupplier: '请填写供商名称',
     msgFillAmount: '请填写有效金额', msgFillAmounts: '请填写金额',
@@ -679,7 +679,7 @@ const I18N = {
     filter7: 'Within 7d', filter15: '15-30d', filter30: '30d+',
     daysOverdue: 'days overdue', period: 'Period',
     // Messages
-    msgFillCustomer: 'Please enter customer name', msgFillPrice: 'Please enter sale price',
+    msgFillCustomer: 'Please enter customer name', msgFillPrice: 'Please enter loan amount',
     msgDepositOver: 'Deposit cannot exceed sale price', msgFillDue: 'Please select first due date',
     msgFillName: 'Please enter brand and model', msgFillSupplier: 'Please enter supplier name',
     msgFillAmount: 'Please enter a valid amount', msgFillAmounts: 'Please enter amount',
@@ -860,7 +860,7 @@ const I18N = {
     filter7: 'ក្នុង 7ថ្ងៃ', filter15: '15-30ថ្ងៃ', filter30: '30ថ្ងៃ+',
     daysOverdue: 'ថ្ងៃហួសកំណត់', period: 'ខែ',
     // Messages
-    msgFillCustomer: 'សូមបញ្ចូលឈ្មោះអតិថិជន', msgFillPrice: 'សូមបញ្ចូលតម្លៃលក់',
+    msgFillCustomer: 'សូមបញ្ចូលឈ្មោះអតិថិជន', msgFillPrice: 'សូមបញ្ចូលចំនួនកម្ចី',
     msgDepositOver: 'ប្រាក់កក់មិនអាចលើសតម្លៃលក់', msgFillDue: 'សូមជ្រើសរើសថ្ងៃបង់ប្រាក់ទី១',
     msgFillName: 'សូមបញ្ចូលម៉ាក និងគំរូ', msgFillSupplier: 'សូមបញ្ចូលឈ្មោះអ្នកផ្គត់ផ្គង់',
     msgFillAmount: 'សូមបញ្ចូលចំនួនត្រឹមត្រូវ', msgFillAmounts: 'សូមបញ្ចូលចំនួន',
@@ -1411,6 +1411,7 @@ function initPage(page) {
       fd.min = minD.toISOString().slice(0,10);
       fd.value = nd.toISOString().slice(0, 10);
     }
+    if (typeof initSaleModelUI === 'function') initSaleModelUI();
     calcInstall();
   }
   if (page === 'payment-add') {
@@ -1901,25 +1902,57 @@ function renderSaleAdd() {
         </div>
       </div>
 
-    <!-- 第二步：手机信息 -->
+    <!-- 第二步：手机与放款 -->
     <div style="background:#f3e5f5;border-radius:10px;padding:16px;margin-bottom:14px;border-left:4px solid #9c27b0">
       <div style="font-size:13px;font-weight:700;color:#9c27b0;margin-bottom:14px">${t('step2Title')}</div>
+
+      <div class="form-group" style="margin-bottom:12px">
+        <label>${tl('品牌','Brand','ម៉ាក')}</label>
+        <div id="brandToggle" style="display:flex;gap:8px;margin-top:4px">
+          <button type="button" class="btn-toggle brand-btn-el active" data-brand="Apple" onclick="selectBrand('Apple')" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid #9c27b0;background:#9c27b0;color:#fff;font-weight:700;cursor:pointer">iPhone</button>
+          <button type="button" class="btn-toggle brand-btn-el" data-brand="OPPO" onclick="selectBrand('OPPO')" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid #ddd;background:#fff;color:#666;font-weight:700;cursor:pointer">OPPO</button>
+        </div>
+      </div>
+
       <div class="form-grid">
-        <div class="form-group" style="grid-column:span 2"><label>${t('phoneModel')}</label>
-          <select id="sModel" onchange="calcInstall()">${opts || '<option>${t("phoneModel")}</option>'}</select>
+        <div class="form-group" style="grid-column:span 2">
+          <label>${t('phoneModel')}</label>
+          <select id="sModelName" onchange="onModelNameChange()"></select>
         </div>
-        <div class="form-group"><label>${t('salePrice')} ($) *</label>
-          <input type="number" id="sSalePrice" placeholder="0.00" step="0.01" oninput="calcInstall()" style="font-size:18px;font-weight:700">
-        </div>
-        <div class="form-group"><label>${t('deposit')} ($)</label>
-          <input type="number" id="sDeposit" value="0" step="0.01" oninput="calcInstall()" style="font-size:18px;font-weight:700">
-        </div>
-        <div class="form-group"><label>${t('installPeriods')}</label>${periodSelect('sPeriods', 3, 'calcInstall()')}</div>
+      </div>
+
+      <div class="form-group" style="margin:12px 0">
+        <label>${tl('容量','Storage','ទំហំ')}</label>
+        <div id="storageToggle" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px"></div>
+        <input type="hidden" id="sStorage">
+      </div>
+
+      <div class="form-group" style="margin-bottom:12px">
+        <label>${tl('成色（仅记录，不影响计算）','Condition (reference only)','ស្ថានភាព (កត់ត្រាតែប៉ុណ្ណោះ)')}</label>
+        <div id="conditionToggle" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px"></div>
+        <input type="hidden" id="sCondition" value="全新">
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group"><label>${t('installPeriods')}</label>${periodSelect('sPeriods', 3, 'onPeriodChangeCalc()')}</div>
         <div class="form-group"><label>${t('firstDueDate')}</label>
           <input type="date" id="sFirstDue" onchange="validateFirstDue()">
         </div>
       </div>
+
+      <div class="form-group" style="margin-top:12px">
+        <label>${tl('贷款金额（本金）($) *','Loan Amount ($) *','ចំនួនកម្ចី ($) *')} <span id="loanRangeHint" style="font-weight:400;color:#888;font-size:12px"></span></label>
+        <input type="range" id="sLoanSlider" min="0" max="0" value="0" step="1" oninput="onLoanSliderChange()" style="width:100%;margin:6px 0">
+        <input type="number" id="sSalePrice" placeholder="0.00" step="0.01" oninput="onLoanInputChange()" style="font-size:18px;font-weight:700;width:100%">
+      </div>
+
+      <div class="form-group" style="margin-top:12px">
+        <label>${tl('售价 ($，仅记录，不参与计算)','Retail Price ($, reference only)','តម្លៃលក់ ($, កត់ត្រាតែប៉ុណ្ណោះ)')}</label>
+        <input type="number" id="sRetailPrice" placeholder="0.00" step="0.01">
+      </div>
     </div>
+
+
 
     <!-- 自动计算结果 -->
     <div id="calcResultCard" style="display:none;background:#e8f5e9;border-radius:10px;padding:16px;margin-bottom:14px;border-left:4px solid var(--green)">
@@ -2022,20 +2055,18 @@ window.checkPhoneDup = function() {
 };
 
 window.calcInstall = function() {
-  const price   = +(document.getElementById('sSalePrice')?.value || 0);
-  const dep     = +(document.getElementById('sDeposit')?.value || 0);
+  const principal = +(document.getElementById('sSalePrice')?.value || 0); // sSalePrice 现在直接代表"贷款金额(本金)"
   const periods = +(document.getElementById('sPeriods')?.value || 3);
-  const principal = Math.max(0, price - dep);
 
   const resultCard = document.getElementById('calcResultCard');
 
-  if (!principal || !price) {
+  if (!principal) {
     if (resultCard) resultCard.style.display = 'none';
     return;
   }
   if (resultCard) resultCard.style.display = 'block';
 
-  // MORODOK 公式
+  // MORODOK 公式（跟 phone888.netlify.app 计算器完全一致）
   const actualPeriods  = periods === 3 ? 3 : periods - 1;
   const monthlyInt     = Math.ceil(principal * 0.07);
   const monthlyPrincipal = Math.ceil(principal / actualPeriods);
@@ -2069,6 +2100,148 @@ window.calcInstall = function() {
   setHidden('sServiceRate',   '0');
 };
 
+// ══════ 手机型号/容量/成色/放款额度联动逻辑（对齐 phone888.netlify.app 计算器）══════
+window.PHONE_CATALOG = null; // 运行时由 initSaleModelUI 从 phones 表构建: { Apple: {model: {storage: maxLoanAmount}}, OPPO: {...} }
+window._saleUIState = { brand: 'Apple', modelName: '', storage: '' };
+const CONDITIONS = ['全新','99新','95新','90新','80新','70新'];
+
+function buildPhoneCatalog() {
+  const phones = DB_get('phones') || [];
+  const cat = { Apple: {}, OPPO: {} };
+  phones.forEach(p => {
+    if (!p.maxLoanAmount) return; // 只收录有额度上限配置的型号
+    const brand = p.brand === 'OPPO' ? 'OPPO' : 'Apple';
+    if (!cat[brand][p.model]) cat[brand][p.model] = {};
+    cat[brand][p.model][p.storage || '标准'] = p.maxLoanAmount;
+  });
+  return cat;
+}
+
+window.initSaleModelUI = function() {
+  window.PHONE_CATALOG = buildPhoneCatalog();
+  renderConditionToggle();
+  populateModelDropdown('Apple');
+};
+
+function renderConditionToggle() {
+  const wrap = document.getElementById('conditionToggle');
+  if (!wrap) return;
+  wrap.innerHTML = CONDITIONS.map((c,i) => `
+    <button type="button" onclick="selectCondition('${c}')" data-cond="${c}"
+      style="padding:6px 12px;border-radius:16px;border:1.5px solid ${i===0?'#9c27b0':'#ddd'};background:${i===0?'#9c27b0':'#fff'};color:${i===0?'#fff':'#666'};font-size:12px;font-weight:700;cursor:pointer">${c}</button>
+  `).join('');
+}
+
+window.selectCondition = function(c) {
+  document.getElementById('sCondition').value = c;
+  document.querySelectorAll('#conditionToggle button').forEach(b => {
+    const active = b.dataset.cond === c;
+    b.style.background = active ? '#9c27b0' : '#fff';
+    b.style.color = active ? '#fff' : '#666';
+    b.style.borderColor = active ? '#9c27b0' : '#ddd';
+  });
+};
+
+window.selectBrand = function(brand) {
+  window._saleUIState.brand = brand;
+  document.querySelectorAll('.brand-btn-el').forEach(b => {
+    const active = b.dataset.brand === brand;
+    b.style.background = active ? '#9c27b0' : '#fff';
+    b.style.color = active ? '#fff' : '#666';
+    b.style.borderColor = active ? '#9c27b0' : '#ddd';
+  });
+  populateModelDropdown(brand);
+};
+
+function populateModelDropdown(brand) {
+  const sel = document.getElementById('sModelName');
+  if (!sel || !window.PHONE_CATALOG) return;
+  const models = Object.keys(window.PHONE_CATALOG[brand] || {});
+  sel.innerHTML = models.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+  window._saleUIState.modelName = models[0] || '';
+  onModelNameChange();
+}
+
+window.onModelNameChange = function() {
+  const sel = document.getElementById('sModelName');
+  const modelName = sel ? sel.value : '';
+  window._saleUIState.modelName = modelName;
+  const brand = window._saleUIState.brand;
+  const storages = window.PHONE_CATALOG && window.PHONE_CATALOG[brand] && window.PHONE_CATALOG[brand][modelName]
+    ? Object.keys(window.PHONE_CATALOG[brand][modelName]) : [];
+  const wrap = document.getElementById('storageToggle');
+  if (wrap) {
+    wrap.innerHTML = storages.map((s,i) => `
+      <button type="button" onclick="selectStorage('${s}')" data-storage="${s}"
+        style="padding:8px 14px;border-radius:8px;border:1.5px solid ${i===0?'#9c27b0':'#ddd'};background:${i===0?'#9c27b0':'#fff'};color:${i===0?'#fff':'#666'};font-size:13px;font-weight:700;cursor:pointer">${s}</button>
+    `).join('');
+  }
+  window._saleUIState.storage = storages[0] || '';
+  document.getElementById('sStorage').value = window._saleUIState.storage;
+  updateLoanRange();
+};
+
+window.selectStorage = function(storage) {
+  window._saleUIState.storage = storage;
+  document.getElementById('sStorage').value = storage;
+  document.querySelectorAll('#storageToggle button').forEach(b => {
+    const active = b.dataset.storage === storage;
+    b.style.background = active ? '#9c27b0' : '#fff';
+    b.style.color = active ? '#fff' : '#666';
+    b.style.borderColor = active ? '#9c27b0' : '#ddd';
+  });
+  updateLoanRange();
+};
+
+window.onPeriodChangeCalc = function() {
+  calcInstall();
+};
+
+function getCurrentMaxLoan() {
+  const { brand, modelName, storage } = window._saleUIState;
+  if (!window.PHONE_CATALOG || !window.PHONE_CATALOG[brand] || !window.PHONE_CATALOG[brand][modelName]) return null;
+  return window.PHONE_CATALOG[brand][modelName][storage] ?? null;
+}
+
+function updateLoanRange() {
+  const max = getCurrentMaxLoan();
+  const slider = document.getElementById('sLoanSlider');
+  const hint = document.getElementById('loanRangeHint');
+  if (max == null) {
+    if (hint) hint.textContent = '';
+    return;
+  }
+  if (slider) { slider.min = 0; slider.max = max; }
+  if (hint) hint.textContent = `(${tl('该型号最高可放款','Max for this model','កម្រិតអតិបរមា')} $${max})`;
+  const priceInput = document.getElementById('sSalePrice');
+  let cur = +(priceInput?.value || 0);
+  if (cur > max) cur = max;
+  if (priceInput) priceInput.value = cur || '';
+  if (slider) slider.value = cur;
+  calcInstall();
+}
+
+window.onLoanSliderChange = function() {
+  const slider = document.getElementById('sLoanSlider');
+  const priceInput = document.getElementById('sSalePrice');
+  if (priceInput) priceInput.value = slider.value;
+  calcInstall();
+};
+
+window.onLoanInputChange = function() {
+  const max = getCurrentMaxLoan();
+  const priceInput = document.getElementById('sSalePrice');
+  let val = +(priceInput?.value || 0);
+  if (max != null && val > max) {
+    val = max;
+    priceInput.value = val;
+    showMsg && showMsg('saleMsg', `⚠️ ${tl('该型号最高可放款','Max loan for this model','កម្រិត')} $${max}`, 'orange');
+  }
+  const slider = document.getElementById('sLoanSlider');
+  if (slider) slider.value = val;
+  calcInstall();
+};
+
 window._calcInstall_old = function() {
 };
 
@@ -2077,8 +2250,12 @@ window.submitSale = function() {
   const custPhone   = document.getElementById('sCustPhone')?.value?.trim() || '';
   const shopName    = document.getElementById('sShopName')?.value?.trim() || '';
   const salesperson = document.getElementById('sSalesperson')?.value?.trim() || '';
-  const price       = +(document.getElementById('sSalePrice')?.value || 0);
-  const dep         = +(document.getElementById('sDeposit')?.value || 0);
+  const principal   = +(document.getElementById('sSalePrice')?.value || 0); // 贷款金额=本金
+  const retailPrice = +(document.getElementById('sRetailPrice')?.value || 0); // 仅记录,不参与计算
+  const brand       = window._saleUIState?.brand || 'Apple';
+  const modelName   = window._saleUIState?.modelName || document.getElementById('sModelName')?.value || '';
+  const storage     = document.getElementById('sStorage')?.value || '';
+  const condition   = document.getElementById('sCondition')?.value || '全新';
   const periods     = +(document.getElementById('sPeriods')?.value || 3);
   const svcPeriods  = 3;
   const firstDue    = document.getElementById('sFirstDue')?.value || '';
@@ -2089,7 +2266,6 @@ window.submitSale = function() {
     return;
   }
   const note        = document.getElementById('sNote')?.value || '';
-  const modelId     = +(document.getElementById('sModel')?.value || 0);
   const sDate       = document.getElementById('sDate')?.value || today();
   const emergencyContacts = [1,2,3].map(n => ({
     name:  document.getElementById('sEmgName'+n)?.value?.trim()||'',
@@ -2097,8 +2273,17 @@ window.submitSale = function() {
     rel:   document.getElementById('sEmgRel'+n)?.value||'',
   })).filter(c => c.name || c.phone);
 
-  // 从自动计算结果取值
-  const principal   = Math.max(0, price - dep);
+  if (!cust)      { showMsg('saleMsg', t('msgFillCustomer'), 'red'); return; }
+  if (!principal) { showMsg('saleMsg', t('msgFillPrice'), 'red'); return; }
+  if (!firstDue)  { showMsg('saleMsg', t('msgFillDue'), 'red'); return; }
+
+  // 🔒 按型号+容量的放款上限做最终校验(防止绕过UI直接改滑块/输入框超额)
+  const maxLoan = (typeof getCurrentMaxLoan === 'function') ? getCurrentMaxLoan() : null;
+  if (maxLoan != null && principal > maxLoan) {
+    showMsg('saleMsg', `⚠️ ${tl('该型号最高可放款','Max loan for this model','កម្រិត')} $${maxLoan}，${tl('请调整贷款金额','please adjust loan amount','សូមកែសម្រួល')}`, 'red');
+    return;
+  }
+
   const actualPeriods = periods === 3 ? 3 : periods - 1;
   const monthlyInt  = Math.ceil(principal * 0.07);
   const monthlySvc  = 0;
@@ -2106,31 +2291,22 @@ window.submitSale = function() {
   const dailyFee    = Math.ceil(principal * 0.02);
   const intRate     = principal > 0 ? monthlyInt / principal : 0;
   const svcRate     = 0;
-
-  if (!cust)    { showMsg('saleMsg', t('msgFillCustomer'), 'red'); return; }
-  if (!price)   { showMsg('saleMsg', t('msgFillPrice'), 'red'); return; }
-  if (dep >= price) { showMsg('saleMsg', t('msgDepositOver'), 'red'); return; }
-  if (!firstDue){ showMsg('saleMsg', t('msgFillDue'), 'red'); return; }
-
-  const phones    = DB_get('phones') || [];
-  const ph        = phones.find(p => p.id === modelId);
-  const totalInt  = monthlyInt * actualPeriods;
-  const totalSvc  = 0;
-  const monthly   = Math.ceil(principal / actualPeriods) + monthlyInt;
+  const totalInt    = monthlyInt * actualPeriods;
+  const totalSvc    = 0;
+  const monthly     = Math.ceil(principal / actualPeriods) + monthlyInt;
   const contractNetProfit = (monthly * actualPeriods) - principal - rebate;
 
   // Generate schedule
   const schedule = [];
   for (let i = 0; i < actualPeriods; i++) {
     const d = new Date(firstDue); d.setMonth(d.getMonth() + i);
-    const hasSvc = false;
     schedule.push({
       period: i + 1,
       dueDate: d.toISOString().slice(0, 10),
       principalDue: Math.ceil(principal / actualPeriods),
       interestDue:  monthlyInt,
-      serviceFeeDue: hasSvc ? +monthlySvc.toFixed(2) : 0,
-      totalDue: +((principal / periods) + monthlyInt + (hasSvc ? monthlySvc : 0)).toFixed(2),
+      serviceFeeDue: 0,
+      totalDue: +((principal / actualPeriods) + monthlyInt).toFixed(2),
       paid: false, paidDate: null,
       paidPrincipal: 0, paidInterest: 0, paidServiceFee: 0, penalty: 0
     });
@@ -2140,8 +2316,9 @@ window.submitSale = function() {
     id: newContractId(periods), date: sDate, customer: cust, customerPhone: custPhone,
     shopName, salesperson,
     emergencyContacts,
-    modelId, modelName: ph ? `${ph.brand} ${ph.model} ${ph.storage||''}`.trim() : '',
-    salePrice: price, deposit: dep, installmentAmount: principal,
+    modelName: `${brand === 'Apple' ? 'iPhone' : brand} ${modelName} ${storage}`.trim(),
+    brand, phoneModel: modelName, storage, condition,
+    salePrice: retailPrice, deposit: 0, installmentAmount: principal,
     periods, svcPeriods,
     interestRate: intRate * 100, serviceFeeRate: svcRate * 100,
     monthlyPayment: monthly,
@@ -2151,17 +2328,11 @@ window.submitSale = function() {
     firstDue, note, schedule, status: '进行中'
   };
 
-  if (ph) {
-    const idx = phones.findIndex(p => p.id === modelId);
-    phones[idx].stock = Math.max(0, ph.stock - 1);
-    DB_set('phones', phones);
-  }
   const sales = DB_get('sales') || [];
   sales.push(sale);
   DB_set('sales', sales);
   showMsg('saleMsg', `✅ ${t('saved')} #${sale.id} — ${cust}，${periods}${t('period')}，${fmt(monthly)}/${t('period')}`, 'green');
-  ['sCust','sCustPhone','sSalePrice','sNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  ['sDeposit'].forEach(id => { const el = document.getElementById(id); if (el) el.value = '0'; });
+  ['sCust','sCustPhone','sSalePrice','sRetailPrice','sNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const rc = document.getElementById('calcResultCard');
   if (rc) rc.style.display = 'none';
   ['sInstAmt','sMonthly','sMonthlyInt','sRebate','sDailyFee','sNetProfit','sActualPeriods'].forEach(id => {
