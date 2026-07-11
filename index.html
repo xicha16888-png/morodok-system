@@ -2638,6 +2638,11 @@ window.saveEditSale = function(id) {
   const contractNetProfit = (monthly * actualPeriods) - principal - rebate;
   const firstDue = document.getElementById('eFirstDue')?.value || s.firstDue;
 
+  if (!firstDue) {
+    showMsg('editMsg', `⚠️ ${tl('首次还款日不能为空，请先填写再保存','First due date cannot be empty','សូមបំពេញកាលបរិច្ឆេទ')}`, 'red');
+    return;
+  }
+
   // 🔒 联动重算排期表：已还的期数一律保留原样(历史数据不可因编辑而改变)，
   //    未还的期数按新的售价/首付/期数重新生成到期日、应收本金、应收利息
   const oldSchedule = s.schedule || [];
