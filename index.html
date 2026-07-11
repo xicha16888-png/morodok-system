@@ -5689,30 +5689,47 @@ function renderFundDetailTable(groupId, keyword) {
   if (kw) {
     list = list.filter(p =>
       (p.customer||'').toLowerCase().includes(kw) ||
-      String(p.contractId||'').toLowerCase().includes(kw) ||
-      (p.date||'').includes(kw)
+      String(p.contractId||'').toLowerCase().includes(kw)
     );
   }
   if (!list.length) {
     wrap.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted)">${tl('没有匹配的还款记录','No matching records','គ្មានទិន្នន័យ')}</div>`;
     return;
   }
+  // 按客户+合同号汇总(同一客户可能有多份合同,分开算;同一份合同多期还款合并成一行)
+  const byContract = {};
+  list.forEach(p => {
+    const key = String(p.contractId||'') + '|' + (p.customer||'');
+    if (!byContract[key]) {
+      byContract[key] = { customer: p.customer, contractId: p.contractId, principal: 0, interest: 0, penalty: 0, count: 0, lastDate: '' };
+    }
+    const g = byContract[key];
+    g.principal += (+p.principal||0);
+    g.interest  += (+p.interest||0) + (+p.serviceFee||0);
+    g.penalty   += (+p.penalty||0);
+    g.count += 1;
+    if (!g.lastDate || (p.date||'') > g.lastDate) g.lastDate = p.date||'';
+  });
+  const rows = Object.values(byContract).sort((a,b) => b.lastDate.localeCompare(a.lastDate));
+  const grandTotal = rows.reduce((a,r) => a + r.principal + r.interest + r.penalty, 0);
+
   wrap.innerHTML = `<div class="table-wrap" style="max-height:400px;overflow-y:auto"><table>
-    <tr><th>${t('colDate')}</th><th>${t('colCustomer')}</th><th>#</th><th>${tl('本金','Principal','ដើមទុន')}</th><th>${tl('利息','Interest','ការប្រាក់')}</th><th>${tl('滞纳金','Penalty','ពិន័យ')}</th><th>${tl('合计','Total','សរុប')}</th></tr>
-    ${list.map(p => {
-      const total = (+p.principal||0) + (+p.interest||0) + (+p.serviceFee||0) + (+p.penalty||0);
+    <tr><th>${t('colCustomer')}</th><th>#</th><th>${tl('还款次数','Payments','ចំនួនដង')}</th><th>${tl('最近还款日','Last Payment','ថ្ងៃចុងក្រោយ')}</th><th>${tl('本金合计','Principal','ដើមទុន')}</th><th>${tl('利息合计','Interest','ការប្រាក់')}</th><th>${tl('滞纳金合计','Penalty','ពិន័យ')}</th><th>${tl('总金额','Total','សរុប')}</th></tr>
+    ${rows.map(r => {
+      const total = r.principal + r.interest + r.penalty;
       return `<tr>
-        <td>${p.date||''}</td>
-        <td class="fw700">${esc(p.customer||'')}</td>
-        <td class="text-blue">#${esc(String(p.contractId||''))}</td>
-        <td>${fmt(p.principal||0)}</td>
-        <td>${fmt(p.interest||0)}</td>
-        <td>${fmt(p.penalty||0)}</td>
-        <td class="fw700">${fmt(total)}</td>
+        <td class="fw700">${esc(r.customer||'')}</td>
+        <td class="text-blue">#${esc(String(r.contractId||''))}</td>
+        <td>${r.count}</td>
+        <td>${r.lastDate}</td>
+        <td>${fmt(r.principal)}</td>
+        <td>${fmt(r.interest)}</td>
+        <td>${fmt(r.penalty)}</td>
+        <td class="fw700 text-green">${fmt(total)}</td>
       </tr>`;
     }).join('')}
   </table></div>
-  <div style="margin-top:6px;font-size:12px;color:var(--muted)">${tl('共','Total','សរុប')} ${list.length} ${tl('笔','records','កំណត់ត្រា')}</div>`;
+  <div style="margin-top:6px;font-size:13px;font-weight:700">${tl('共','Total','សរុប')} ${rows.length} ${tl('位客户还款，合计','customers, total','នាក់, សរុប')} <span class="text-green">${fmt(grandTotal)}</span></div>`;
 }
 
 function renderFundStats() {
