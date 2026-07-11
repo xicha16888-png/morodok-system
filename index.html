@@ -4432,6 +4432,23 @@ window.submitPurchase = function() {
 // ══════════════════════════════════════════════════════
 // EARLY PAYMENT 提前还款
 // ══════════════════════════════════════════════════════
+window.filterEpContracts = function() {
+  const kw = (document.getElementById('epSearch')?.value || '').trim().toLowerCase();
+  const sel = document.getElementById('epContract');
+  if (!sel || !window._epAllOptionsHtml) return;
+  if (!kw) { sel.innerHTML = window._epAllOptionsHtml; return; }
+  // 解析出全部<option>，按客户姓名或合同号(#后面的文字)过滤
+  const wrap = document.createElement('div');
+  wrap.innerHTML = window._epAllOptionsHtml;
+  const matched = [...wrap.querySelectorAll('option')].filter(opt => {
+    const text = opt.textContent.toLowerCase();
+    const customer = (opt.dataset.customer || '').toLowerCase();
+    return text.includes(kw) || customer.includes(kw);
+  });
+  sel.innerHTML = matched.length ? matched.map(o => o.outerHTML).join('') : '<option>—' + (tl('无匹配结果','No match','គ្មានលទ្ធផល')) + '—</option>';
+  if (matched.length) calcEarlyProfit();
+};
+
 function renderEarlyPayment() {
   const sales = (DB_get('sales')||[]).filter(s => s.status === '进行中' || s.status === 'Active');
   const earlyList = (DB_get('earlyPayments')||[]).slice().reverse();
@@ -4448,6 +4465,7 @@ function renderEarlyPayment() {
       data-rebate="${rebate.toFixed(2)}"
       data-customer="${esc(s.customer)}">#${s.id} — ${esc(s.customer)} (${t("remainPrincipal")} ${fmt(remainP)})</option>`;
   }).join('');
+  window._epAllOptionsHtml = opts; // 供搜索框过滤合同列表使用
   return `
   <div class="page-header">
     <div class="page-title">⚡ ${t('earlyTitle')}</div>
@@ -4460,6 +4478,7 @@ function renderEarlyPayment() {
     <div class="form-grid">
       <div class="form-group span3">
         <label>${t('selectContract')}</label>
+        <input type="text" id="epSearch" placeholder="${tl('输入客户姓名或合同号搜索…','Search by name or contract #…','ស្វែងរកតាមឈ្មោះ ឬលេខកិច្ចសន្យា…')}" oninput="filterEpContracts()" style="margin-bottom:6px">
         <select id="epContract" onchange="calcEarlyProfit()">${opts||'<option>—</option>'}</select>
       </div>
       <div class="form-group"><label>${t("paymentDate")}</label><input type="date" id="epDate" value="${today()}"></div>
