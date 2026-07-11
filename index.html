@@ -4452,6 +4452,7 @@ window.filterEpContracts = function() {
 function renderEarlyPayment() {
   const sales = (DB_get('sales')||[]).filter(s => s.status === '进行中' || s.status === 'Active');
   const earlyList = (DB_get('earlyPayments')||[]).slice().reverse();
+  window._earlyListAll = earlyList;
   const opts = sales.map(s => {
     const paidP = s.schedule.filter(p=>p.paid).reduce((a,p)=>a+(+p.paidPrincipal||0),0);
     const remainP = +s.installmentAmount - paidP;
@@ -4518,9 +4519,22 @@ function renderEarlyPayment() {
 
   <div class="card">
     <div class="card-title" style="margin-bottom:14px">${t("earlyRecords")}（${earlyList.length} 笔）</div>
-    ${buildEarlyTable(earlyList)}
+    <input type="text" id="earlyRecordSearch" placeholder="${tl('按客户姓名或合同号搜索…','Search by name or contract #…','ស្វែងរកតាមឈ្មោះ ឬលេខកិច្ចសន្យា…')}" oninput="filterEarlyRecords()" style="margin-bottom:12px">
+    <div id="earlyRecordTableWrap">${buildEarlyTable(earlyList)}</div>
   </div>`;
 }
+
+window._earlyListAll = null;
+window.filterEarlyRecords = function() {
+  const kw = (document.getElementById('earlyRecordSearch')?.value || '').trim().toLowerCase();
+  const all = window._earlyListAll || [];
+  const filtered = kw ? all.filter(r =>
+    (r.customer||'').toLowerCase().includes(kw) ||
+    String(r.contractId||'').toLowerCase().includes(kw)
+  ) : all;
+  const wrap = document.getElementById('earlyRecordTableWrap');
+  if (wrap) wrap.innerHTML = buildEarlyTable(filtered);
+};
 
 function buildEarlyTable(list) {
   if (!list.length) return `<div class="empty-state"><div class="ei">⚡</div><p>${t("noRecord")}</p></div>`;
@@ -5681,9 +5695,7 @@ window.filterFundDetail = function(groupId) {
   renderFundDetailTable(groupId, kw);
 };
 
-function renderFundDetailTable(groupId, keyword) {
-  const wrap = document.getElementById('fundDetailTable_' + groupId);
-  if (!wrap) return;
+function getFundDetailRows(groupId, keyword) {
   let list = (window._fundGroupPays && window._fundGroupPays[groupId]) || [];
   const kw = (keyword||'').trim().toLowerCase();
   if (kw) {
@@ -5692,11 +5704,6 @@ function renderFundDetailTable(groupId, keyword) {
       String(p.contractId||'').toLowerCase().includes(kw)
     );
   }
-  if (!list.length) {
-    wrap.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted)">${tl('没有匹配的还款记录','No matching records','គ្មានទិន្នន័យ')}</div>`;
-    return;
-  }
-  // 按客户+合同号汇总(同一客户可能有多份合同,分开算;同一份合同多期还款合并成一行)
   const byContract = {};
   list.forEach(p => {
     const key = String(p.contractId||'') + '|' + (p.customer||'');
@@ -5710,7 +5717,39 @@ function renderFundDetailTable(groupId, keyword) {
     g.count += 1;
     if (!g.lastDate || (p.date||'') > g.lastDate) g.lastDate = p.date||'';
   });
-  const rows = Object.values(byContract).sort((a,b) => b.lastDate.localeCompare(a.lastDate));
+  return Object.values(byContract).sort((a,b) => b.lastDate.localeCompare(a.lastDate));
+}
+
+window.exportFundDetail = function(groupId, groupLabel) {
+  const kw = document.getElementById('fundDetailSearch_' + groupId)?.value || '';
+  const rows = getFundDetailRows(groupId, kw);
+  if (!rows.length) { alert(tl('没有数据可导出','No data to export','គ្មានទិន្នន័យ')); return; }
+  const exportRows = rows.map(r => ({
+    '客户': r.customer || '',
+    '合同号': r.contractId || '',
+    '还款次数': r.count,
+    '最近还款日': r.lastDate,
+    '本金合计': r.principal,
+    '利息合计': r.interest,
+    '滞纳金合计': r.penalty,
+    '总金额': r.principal + r.interest + r.penalty,
+  }));
+  const grandTotal = rows.reduce((a,r) => a + r.principal + r.interest + r.penalty, 0);
+  exportRows.push({ '客户': '合计', '合同号': '', '还款次数': rows.length + '位客户', '最近还款日': '', '本金合计': '', '利息合计': '', '滞纳金合计': '', '总金额': grandTotal });
+  const ws = XLSX.utils.json_to_sheet(exportRows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '还款明细');
+  XLSX.writeFile(wb, `${groupLabel}_还款明细_${today()}.xlsx`);
+};
+
+function renderFundDetailTable(groupId, keyword) {
+  const wrap = document.getElementById('fundDetailTable_' + groupId);
+  if (!wrap) return;
+  const rows = getFundDetailRows(groupId, keyword);
+  if (!rows.length) {
+    wrap.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted)">${tl('没有匹配的还款记录','No matching records','គ្មានទិន្នន័យ')}</div>`;
+    return;
+  }
   const grandTotal = rows.reduce((a,r) => a + r.principal + r.interest + r.penalty, 0);
 
   wrap.innerHTML = `<div class="table-wrap" style="max-height:400px;overflow-y:auto"><table>
@@ -5853,7 +5892,10 @@ function renderFundStats() {
       <button class="btn btn-outline btn-sm" onclick="toggleFundDetail(${g.id})" style="margin-left:auto">📋 查看明细</button>
     </div>
     <div id="fundDetail_${g.id}" style="display:none;margin-top:12px">
-      <input type="text" id="fundDetailSearch_${g.id}" placeholder="按客户姓名或合同号搜索…" oninput="filterFundDetail(${g.id})" style="margin-bottom:8px;width:100%">
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input type="text" id="fundDetailSearch_${g.id}" placeholder="按客户姓名或合同号搜索…" oninput="filterFundDetail(${g.id})" style="flex:1">
+        <button class="btn btn-outline btn-sm" onclick="exportFundDetail(${g.id}, '${esc(g.label)}')">📥 导出Excel</button>
+      </div>
       <div id="fundDetailTable_${g.id}"></div>
     </div>
   </div>`).join('')}
