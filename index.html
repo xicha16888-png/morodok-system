@@ -2592,6 +2592,7 @@ window.editSale = function(id) {
       <div><label style="font-size:11px;color:var(--muted)">首付金额 ($)</label><input id="eDeposit" type="number" value="${s.deposit}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">分期期数</label><select id="ePeriods" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${periodOpts}</select></div>
       <div><label style="font-size:11px;color:var(--muted)">首次还款日</label><input id="eFirstDue" type="date" value="${s.firstDue||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl("每期本金","Monthly Principal","ដើមទុនប្រចាំខែ")} ($)</label><input id="eMonthlyPrincipal" type="number" value="${s.schedule&&s.schedule.length?(s.schedule[0].principalDue||0):(s.installmentAmount&&s.periods?(+s.installmentAmount/(s.periods===3?3:s.periods-1)).toFixed(2):0)}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl("每期利息","Monthly Interest","ការ​ប្រាក់​ប្រចាំ​ខែ")} ($)</label><input id="eMonthlyInt" type="number" value="${s.totalInterest&&s.periods?(+s.totalInterest/s.periods).toFixed(2):0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">手续费期数</label><select id="eSvcPeriods" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${svcPeriodOpts}</select></div>
       <div><label style="font-size:11px;color:var(--muted)">每期手续费 ($)</label><input id="eMonthlySvc" type="number" value="${s.totalServiceFee&&s.svcPeriods?(+s.totalServiceFee/(s.svcPeriods||s.periods)).toFixed(2):0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
@@ -2619,6 +2620,7 @@ window.saveEditSale = function(id) {
   const deposit     = +(document.getElementById('eDeposit')?.value || 0);
   const periods     = +(document.getElementById('ePeriods')?.value || s.periods);
   const svcPeriods  = +(document.getElementById('eSvcPeriods')?.value || s.svcPeriods);
+  const monthlyPrincipalManual = +(document.getElementById('eMonthlyPrincipal')?.value || 0);
   const monthlyInt  = +(document.getElementById('eMonthlyInt')?.value || 0);
   const monthlySvc  = +(document.getElementById('eMonthlySvc')?.value || 0);
   const manualMonthly = +(document.getElementById('eMonthly')?.value || 0);
@@ -2628,10 +2630,13 @@ window.saveEditSale = function(id) {
   const principal   = Math.max(0, salePrice - deposit);
   // 🔧 实际应还期数(3→3,6→5,9→8,12→11)，跟新建合同时用同一套规则
   const actualPeriods = periods === 3 ? 3 : periods - 1;
+  // 每期本金：优先用手动填写的值(老合同按表格原始数字来)，没填才按售价-首付平均分摊
+  const monthlyPrincipal = monthlyPrincipalManual > 0 ? monthlyPrincipalManual
+    : (actualPeriods > 0 ? Math.ceil(principal / actualPeriods) : 0);
 
   const totalInt    = monthlyInt * actualPeriods;
   const totalSvc    = monthlySvc * svcPeriods;
-  const autoMonthly = actualPeriods > 0 ? (principal / actualPeriods) + monthlyInt + monthlySvc : 0;
+  const autoMonthly = monthlyPrincipal + monthlyInt + monthlySvc;
   const monthly     = manualMonthly > 0 ? manualMonthly : autoMonthly;
   const intRate     = principal > 0 ? (monthlyInt / principal) * 100 : 0;
   const svcRate     = principal > 0 ? (monthlySvc / principal) * 100 : 0;
@@ -2668,10 +2673,10 @@ window.saveEditSale = function(id) {
       newSchedule.push({
         period: periodNum,
         dueDate: d.toISOString().slice(0, 10),
-        principalDue: actualPeriods > 0 ? Math.ceil(principal / actualPeriods) : 0,
+        principalDue: monthlyPrincipal,
         interestDue: monthlyInt,
         serviceFeeDue: 0,
-        totalDue: +((actualPeriods > 0 ? principal / actualPeriods : 0) + monthlyInt).toFixed(2),
+        totalDue: +(monthlyPrincipal + monthlyInt).toFixed(2),
         paid: false, paidDate: null,
         paidPrincipal: 0, paidInterest: 0, paidServiceFee: 0, penalty: 0
       });
