@@ -5668,6 +5668,53 @@ window.deleteStore = function(name) {
 // ══════════════════════════════════════════════════════
 // 资金统计
 // ══════════════════════════════════════════════════════
+window.toggleFundDetail = function(groupId) {
+  const panel = document.getElementById('fundDetail_' + groupId);
+  if (!panel) return;
+  const willShow = panel.style.display === 'none';
+  panel.style.display = willShow ? 'block' : 'none';
+  if (willShow) renderFundDetailTable(groupId, '');
+};
+
+window.filterFundDetail = function(groupId) {
+  const kw = document.getElementById('fundDetailSearch_' + groupId)?.value || '';
+  renderFundDetailTable(groupId, kw);
+};
+
+function renderFundDetailTable(groupId, keyword) {
+  const wrap = document.getElementById('fundDetailTable_' + groupId);
+  if (!wrap) return;
+  let list = (window._fundGroupPays && window._fundGroupPays[groupId]) || [];
+  const kw = (keyword||'').trim().toLowerCase();
+  if (kw) {
+    list = list.filter(p =>
+      (p.customer||'').toLowerCase().includes(kw) ||
+      String(p.contractId||'').toLowerCase().includes(kw) ||
+      (p.date||'').includes(kw)
+    );
+  }
+  if (!list.length) {
+    wrap.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted)">${tl('没有匹配的还款记录','No matching records','គ្មានទិន្នន័យ')}</div>`;
+    return;
+  }
+  wrap.innerHTML = `<div class="table-wrap" style="max-height:400px;overflow-y:auto"><table>
+    <tr><th>${t('colDate')}</th><th>${t('colCustomer')}</th><th>#</th><th>${tl('本金','Principal','ដើមទុន')}</th><th>${tl('利息','Interest','ការប្រាក់')}</th><th>${tl('滞纳金','Penalty','ពិន័យ')}</th><th>${tl('合计','Total','សរុប')}</th></tr>
+    ${list.map(p => {
+      const total = (+p.principal||0) + (+p.interest||0) + (+p.serviceFee||0) + (+p.penalty||0);
+      return `<tr>
+        <td>${p.date||''}</td>
+        <td class="fw700">${esc(p.customer||'')}</td>
+        <td class="text-blue">#${esc(String(p.contractId||''))}</td>
+        <td>${fmt(p.principal||0)}</td>
+        <td>${fmt(p.interest||0)}</td>
+        <td>${fmt(p.penalty||0)}</td>
+        <td class="fw700">${fmt(total)}</td>
+      </tr>`;
+    }).join('')}
+  </table></div>
+  <div style="margin-top:6px;font-size:12px;color:var(--muted)">${tl('共','Total','សរុប')} ${list.length} ${tl('笔','records','កំណត់ត្រា')}</div>`;
+}
+
 function renderFundStats() {
   const sales    = DB_get('sales')||[];
   const pays     = DB_get('payments')||[];
@@ -5709,7 +5756,14 @@ function renderFundStats() {
     const earlyProfit = earlyPays.filter(r=>gIds.has(String(r.contractId))).reduce((a,r)=>a+(+r.actualProfit||0),0);
     // 店家返点
     const rebate = gSales.reduce((a,s)=>a+(+s.storeRebate||0),0);
-    return { g, gSales, totalIn, recovered, remaining, interest, penalty, earlyProfit, rebate };
+    return { g, gSales, gPays, totalIn, recovered, remaining, interest, penalty, earlyProfit, rebate };
+  });
+
+  // 供"查看明细"表格使用：把每组的还款流水（含客户姓名）存到全局变量
+  window._fundGroupPays = {};
+  stats.forEach(({g, gPays}) => {
+    window._fundGroupPays[g.id] = (gPays||[]).slice()
+      .sort((a,b) => (b.date||'').localeCompare(a.date||''));
   });
 
   const tSalary  = expenses.filter(e=>e.cat==='员工工资').reduce((a,e)=>a+(+e.amount||0),0);
@@ -5776,9 +5830,14 @@ function renderFundStats() {
         <div class="stat-value" style="color:var(--amber)">-${fmt(rebate)}</div>
       </div>
     </div>
-    <div style="margin-top:12px;padding:10px 14px;background:#f0f7ff;border-radius:8px;display:flex;gap:30px;flex-wrap:wrap">
+    <div style="margin-top:12px;padding:10px 14px;background:#f0f7ff;border-radius:8px;display:flex;gap:30px;flex-wrap:wrap;align-items:center">
       <span style="font-size:13px">💰 净收益 = <b style="color:var(--green)">${fmt(interest+penalty+earlyProfit-rebate)}</b></span>
       <span style="font-size:13px">📊 综合收益率 = <b style="color:var(--blue)">${totalIn>0?((interest+penalty+earlyProfit-rebate)/totalIn*100).toFixed(2):0}%</b></span>
+      <button class="btn btn-outline btn-sm" onclick="toggleFundDetail(${g.id})" style="margin-left:auto">📋 查看明细</button>
+    </div>
+    <div id="fundDetail_${g.id}" style="display:none;margin-top:12px">
+      <input type="text" id="fundDetailSearch_${g.id}" placeholder="按客户姓名或合同号搜索…" oninput="filterFundDetail(${g.id})" style="margin-bottom:8px;width:100%">
+      <div id="fundDetailTable_${g.id}"></div>
     </div>
   </div>`).join('')}
 
