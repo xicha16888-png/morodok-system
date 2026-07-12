@@ -2515,11 +2515,11 @@ window.viewSchedule = function(id) {
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id)); if (!s) return;
   const contacts = (s.emergencyContacts||[]).filter(c=>c.name||c.phone);
   const emgHtml = contacts.length ? `
-    <div style="margin-bottom:14px">
-      <div style="font-size:12px;font-weight:700;color:#546e7a;margin-bottom:8px">${t('emergencyTitle')}</div>
+    <div style="background:#fff9f0;border-radius:12px;padding:14px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;color:#e65100;margin-bottom:10px">🚨 ${t('emergencyTitle')}</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         ${contacts.map((c,i)=>`
-        <div style="background:#fff9f0;border:1px solid #ffe082;border-radius:10px;padding:10px 14px;min-width:140px;flex:1">
+        <div style="background:#fff;border:1px solid #ffe082;border-radius:10px;padding:10px 14px;min-width:140px;flex:1">
           <div style="font-size:10px;color:#90a4ae;margin-bottom:3px">${t('contactLabel')} ${i+1}</div>
           <div style="font-weight:700;font-size:14px;color:#263238">${esc(c.name||'—')}</div>
           ${c.rel?`<div style="font-size:11px;color:#78909c;margin-bottom:4px">${esc(c.rel)}</div>`:''}
@@ -2527,13 +2527,54 @@ window.viewSchedule = function(id) {
         </div>`).join('')}
       </div>
     </div>` : '';
-  showModal(`${t('repaySchedule')} — ${esc(s.customer)} (#${s.id})`,
-    `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">
-      ${tl('月利率','Monthly Rate','អត្រា​ប្រចាំ​ខែ')}：${(+s.interestRate||0).toFixed(2)}% &nbsp;|&nbsp;
+
+  const isOverdueContract = (s.schedule||[]).some(p => !p.paid && p.dueDate && p.dueDate < today());
+
+  showModal(`📄 #${esc(String(s.id))} — ${esc(s.customer)}`,
+    `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      <!-- 手机品牌/型号卡片 -->
+      <div style="background:#f5f5f5;border-radius:12px;padding:14px">
+        <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">${tl('手机品牌/型号','Brand/Model','ម៉ាក/ម៉ូដែល')}</div>
+        <div style="font-weight:800;font-size:15px;color:#263238;margin-bottom:8px">${esc(s.modelName||'—')}</div>
+        ${s.condition?`<div style="display:inline-block;background:#fff3e0;color:#e65100;font-size:12px;font-weight:700;padding:3px 10px;border-radius:14px;margin-bottom:6px">⭐ ${esc(s.condition)}</div>`:''}
+      </div>
+      <!-- 贷款金额卡片 -->
+      <div style="background:#e8f5e9;border-radius:12px;padding:14px">
+        <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">${tl('贷款金额','Loan Amount','ចំនួនកម្ចី')} ($) / ${tl('月利率','Monthly Rate','អត្រា')} (%)</div>
+        <div style="font-weight:800;font-size:20px;color:var(--amber);margin-bottom:6px">${fmt(s.installmentAmount||0)}</div>
+        <div style="font-size:12px;color:#455a64;line-height:1.7">
+          ${tl('每月利息','Monthly Interest','ការប្រាក់ប្រចាំខែ')} ($): <b>${fmt((s.schedule&&s.schedule[0]?.interestDue) || 0)}</b> / ${tl('期','per period','')}<br>
+          ${tl('利息总额','Total Interest','ការប្រាក់សរុប')} ($): <b>${fmt(s.totalInterest||0)}</b><br>
+          ${(+s.interestRate||0).toFixed(2)}% ${tl('月利率','monthly rate','')}
+        </div>
+        <div style="margin-top:8px">
+          <span class="badge ${isOverdueContract?'badge-red':'badge-green'}">${isOverdueContract?'⚠️ '+tl('有逾期','Overdue','ហួសកំណត់'):'✅ '+tl('正常还款','On Track','ធម្មតា')}</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#f3e5f5;border-radius:12px;padding:14px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;color:#9c27b0;margin-bottom:10px">👤 ${tl('客户信息','Customer Info','ព័ត៌មានអតិថិជន')}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">
+        ${[
+          [tl('客户姓名','Customer','ឈ្មោះ'), esc(s.customer||'—')],
+          [tl('联系电话','Phone','ទូរស័ព្ទ'), s.customerPhone ? `<a href="tel:${s.customerPhone}" style="color:#1565c0;text-decoration:none;font-weight:700">📞 ${s.customerPhone}</a>` : '—'],
+          [tl('店铺','Store','ហាង'), esc(s.shopName||'—')],
+          [tl('业务员','Salesperson','ភ្នាក់ងារ'), esc(s.salesperson||'—')],
+          [tl('合同日期','Contract Date','ថ្ងៃកិច្ចសន្យា'), s.date||'—'],
+          [tl('分期期数','Periods','ដំណាក់'), (s.periods||'—')+' '+tl('期','','')],
+        ].map(([k,v])=>`
+        <div>
+          <div style="font-size:10px;color:#90a4ae;margin-bottom:2px">${k}</div>
+          <div style="font-weight:600;font-size:13px;color:#263238">${v}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+    ${emgHtml}
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
       ${tl('每日滞纳金','Daily Late Fee','ពិន័យ​ប្រចាំ​ថ្ងៃ')}：${fmt(s.dailyLateFee||0)} &nbsp;|&nbsp;
       ${tl('店家返点','Store Rebate','កម្រៃ​ហាង')}：${fmt(s.storeRebate||0)}
     </div>
-    ${emgHtml}
     <div class="table-wrap"><table>
       <tr><th>${t('period')}</th><th>${t('colDate')}</th><th>${t('colPrincipalPaid')}</th><th>${t('colInterestPaid')}</th><th>${t('colTotal')}</th><th>${t('colStatus')}</th></tr>
       ${s.schedule.map(p => `<tr>
