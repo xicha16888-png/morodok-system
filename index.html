@@ -1044,6 +1044,7 @@ function buildSidebar() {
     <div style="padding:4px 0">
       <div class="sb-label">系统管理</div>
       <div class="nav-item" data-page="user-mgmt"><span class="nav-icon">👥</span>账号管理</div>
+      <div class="nav-item" data-page="activity-log"><span class="nav-icon">📜</span>操作日志</div>
     </div>`:''}
     <div style="height:16px"></div>`;
 
@@ -1258,6 +1259,7 @@ window.closeModal = () => document.getElementById('modalBg').classList.remove('o
 const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','expenses','store-stats','fund-stats'];
 const REPORT_PWD = 'morodok888';
 const DELETE_PWD = 'cao';
+const EDIT_PWD = 'edit888';
 let _reportUnlocked = false; // 会话内解锁状态
 
 function requirePassword(page, onSuccess) {
@@ -1328,7 +1330,7 @@ const PAGES = {
   'reminder-overdue': renderReminderOverdue, 'payment-query': renderPaymentQuery,
   'phones': renderPhones, 'suppliers': renderSuppliers,
   'purchase-add': renderPurchaseAdd, 'inventory': renderInventory, 'company': renderCompany,
-  'audit': renderAudit, 'user-mgmt': renderUserMgmt
+  'audit': renderAudit, 'user-mgmt': renderUserMgmt, 'activity-log': renderActivityLog
 };
 
 // Track last sync time
@@ -1402,6 +1404,9 @@ function nav(page) {
 document.querySelectorAll('.nav-item[data-page]').forEach(el => el.addEventListener('click', () => nav(el.dataset.page)));
 
 function initPage(page) {
+  if (page === 'activity-log') {
+    filterActivityLog();
+  }
   if (page === 'sale-add') {
     const nd = new Date(); nd.setMonth(nd.getMonth() + 1);
     const fd = document.getElementById('sFirstDue');
@@ -1709,6 +1714,36 @@ async function refreshAuditBadge() {
 
 // 临时存储待上传的图片
 window._pendingImages = {};
+
+// 收款登记的凭证截图（独立于合同材料上传）
+window._pendingPayReceipt = null;
+window.previewPayReceipt = function(input) {
+  const file = input.files[0];
+  if (!file) return;
+  window._pendingPayReceipt = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const preview = document.getElementById('pReceiptPreview');
+    if (preview) preview.innerHTML = `<img src="${e.target.result}" style="max-width:160px;max-height:120px;border-radius:6px;object-fit:cover;border:1px solid var(--border)">`;
+  };
+  reader.readAsDataURL(file);
+};
+
+window.uploadPayReceipt = async function(paymentId) {
+  const file = window._pendingPayReceipt;
+  if (!file) return null;
+  const ext = file.name.split('.').pop();
+  const path = `payments/${paymentId}.${ext}`;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${path}`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': file.type, 'x-upsert': 'true' },
+    body: file,
+  });
+  window._pendingPayReceipt = null;
+  if (res.ok) return `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${path}`;
+  console.error('收款截图上传失败:', await res.text());
+  return null;
+};
 
 window.previewImg = function(input, catKey, slotKey) {
   const file = input.files[0];
@@ -2325,6 +2360,7 @@ window.submitSale = function() {
   const sales = DB_get('sales') || [];
   sales.push(sale);
   DB_set('sales', sales);
+  logActivity('新建合同', `#${sale.id} ${cust}`, `贷款金额$${principal}，${periods}期，型号${sale.modelName||''}`);
   showMsg('saleMsg', `✅ ${t('saved')} #${sale.id} — ${cust}，${periods}${t('period')}，${fmt(monthly)}/${t('period')}`, 'green');
   ['sCust','sCustPhone','sSalePrice','sRetailPrice','sNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const rc = document.getElementById('calcResultCard');
@@ -2724,7 +2760,7 @@ window.saveEditSale = function(id) {
     }
   }
 
-  sales[idx] = {
+  const newSale = {
     ...s,
     date:         document.getElementById('eDate')?.value || s.date,
     customer:     document.getElementById('eCust')?.value?.trim() || s.customer,
@@ -2745,10 +2781,20 @@ window.saveEditSale = function(id) {
     schedule: newSchedule,
   };
 
-  DB_set('sales', sales);
-  closeModal();
-  nav('sale-list');
-  setTimeout(() => showMsg && showMsg('', '', ''), 100);
+  // 🔐 保存前需要输入修改密码，并记录操作日志（谁、什么时候、改了什么）
+  confirmEdit(`确认修改合同 #${s.id} — ${s.customer} 吗？`, function() {
+    const changedFields = [];
+    ['date','customer','customerPhone','shopName','salesperson','salePrice','deposit','periods','installmentAmount','monthlyPayment','storeRebate','dailyLateFee','note'].forEach(k => {
+      if (String(s[k]??'') !== String(newSale[k]??'')) changedFields.push(`${k}: ${s[k]??'—'} → ${newSale[k]??'—'}`);
+    });
+    logActivity('编辑合同', `#${s.id} ${s.customer}`, changedFields.join('; ') || '（未改动关键字段，可能只调整了排期）');
+
+    sales[idx] = newSale;
+    DB_set('sales', sales);
+    closeModal();
+    nav('sale-list');
+    setTimeout(() => showMsg && showMsg('', '', ''), 100);
+  });
 };
 
 window.deleteSale = function(id) {
@@ -2770,6 +2816,7 @@ window.deleteSale = function(id) {
     }
     DB_set('sales', (DB_get('sales')||[]).filter(x => String(x.id) !== String(id)));
     DB_set('earlyPayments', (DB_get('earlyPayments')||[]).filter(r => String(r.contractId) !== String(id)));
+    logActivity('删除合同', `#${s.id} ${s.customer}`, `贷款金额$${s.installmentAmount||0}`);
     nav('sale-list');
   });
 };
@@ -2849,6 +2896,11 @@ function renderPaymentAdd() {
       <input type="hidden" id="pPrincipal"><input type="hidden" id="pInterest">
       `}
       <div class="form-group"><label>${t('remarks')}</label><input id="pNote" placeholder="${tl('可选','Optional','ស្រេច​ចិត្ត')}"></div>
+      <div class="form-group span3">
+        <label>${tl('收款凭证截图（可选，方便日后核实）','Payment Screenshot (optional)','រូបភាព​បញ្ជាក់​ការ​បង់​ប្រាក់')}</label>
+        <div id="pReceiptPreview" style="margin-bottom:6px"></div>
+        <input type="file" accept="image/*" capture="environment" onchange="previewPayReceipt(this)">
+      </div>
     </div>
     <div class="btn-row">
       <button class="btn btn-success" onclick="submitPayment()">${t("confirmPayment")}</button>
@@ -3156,6 +3208,7 @@ function buildPayTableGrouped(pays, isCollector) {
               <div style="font-weight:800;font-size:14px;color:var(--green)">${tl('合计','Total','សរុប')} ${fmt(total)}</div>
             </div>`}
             <div style="display:flex;gap:4px;flex-shrink:0">
+              ${p.receiptUrl ? `<button onclick="window.open('${p.receiptUrl}','_blank')" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px" title="${tl('查看收款凭证','View receipt','មើលវិក័យប័ត្រ')}">📷</button>` : ''}
               <button onclick="editPayment(${p.id})" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px">✏️</button>
               <button onclick="deletePayment(${p.id})" class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 8px">🗑️</button>
             </div>
@@ -3185,6 +3238,7 @@ window.deletePayment = function(id) {
   // Remove payment record (本地状态同步，用于界面即时刷新)
   const newPays = pays.filter(p => p.id !== id);
   DB_set('payments', newPays);
+  logActivity('删除流水', `#${pay.contractId} ${pay.customer} 第${pay.period}期`, `本金$${pay.principal} 利息$${pay.interest}`);
 
   // Also revert the schedule item to unpaid
   const sales = DB_get('sales')||[];
@@ -3469,6 +3523,47 @@ window.quickPay = function(contractId, period) {
   window._pendingPayText     = s ? ('#' + s.id + ' — ' + s.customer + ' (' + s.periods + '期 每期' + fmt(s.monthlyPayment) + ')') : '';
   nav('payment-add');
 };
+window.confirmEdit = function(msg, onConfirm) {
+  window._pendingEditCallback = onConfirm;
+  showModal('🔐 确认修改', `
+    <p style="margin-bottom:12px;color:var(--amber)">${esc(msg)}</p>
+    <div class="form-group">
+      <label>请输入修改密码</label>
+      <input type="password" id="editPwdInput" placeholder="密码" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"
+        onkeydown="if(event.key==='Enter')document.getElementById('confirmEditBtn').click()">
+    </div>
+    <div id="editPwdMsg" style="color:var(--red);font-size:12px;margin-top:6px"></div>
+    <div style="margin-top:14px;display:flex;gap:10px">
+      <button id="confirmEditBtn" class="btn btn-primary" onclick="
+        const v = document.getElementById('editPwdInput').value;
+        if(v !== EDIT_PWD){ document.getElementById('editPwdMsg').textContent='密码错误'; return; }
+        closeModal();
+        if(window._pendingEditCallback) { window._pendingEditCallback(); window._pendingEditCallback=null; }
+      ">确认修改</button>
+      <button class="btn btn-outline" onclick="closeModal();window._pendingEditCallback=null;">取消</button>
+    </div>
+  `);
+  setTimeout(()=>document.getElementById('editPwdInput')?.focus(), 100);
+};
+
+// ══════════════════════════════════════════════════════
+// 📜 操作日志
+// ══════════════════════════════════════════════════════
+function logActivity(action, target, detail) {
+  const logs = DB_get('activityLogs') || [];
+  const u = (typeof getCurrentUser === 'function') ? getCurrentUser() : null;
+  logs.push({
+    id: (logs.length ? Math.max(...logs.map(l=>l.id||0)) : 0) + 1,
+    time: new Date().toISOString(),
+    userDisplay: u?.displayName || u?.username || '未登录',
+    userRole: u?.role || '',
+    action, target: target || '', detail: detail || ''
+  });
+  // 只保留最近5000条，避免无限增长
+  DB_set('activityLogs', logs.slice(-5000));
+}
+window.logActivity = logActivity;
+
 window.confirmDelete = function(msg, onConfirm) {
   window._pendingDeleteCallback = onConfirm;
   showModal('🔐 确认删除', `
@@ -3559,6 +3654,21 @@ window.submitPayment = async function() {
     if (!ok) { return; }
   }
 
+  // 🔔 防重复登记提醒：检查这个合同本月是否已经有其他还款记录（可能是另一个催收员刚登记过）
+  const monthPrefix = pDate.slice(0, 7);
+  const existingThisMonth = (DB_get('payments')||[]).filter(p =>
+    String(p.contractId) === String(contractId) && (p.date||'').slice(0,7) === monthPrefix
+  );
+  if (existingThisMonth.length > 0) {
+    const list = existingThisMonth.map(p => `第${p.period}期，${p.date}，${fmt((+p.principal||0)+(+p.interest||0))}（登记人未知，可在操作日志查询）`).join('\n');
+    const ok2 = confirm(
+      `⚠️ ${s.customer} 这个合同本月（${monthPrefix}）已经有还款记录了：\n\n${list}\n\n` +
+      `是不是已经有其他催收员登记过了？请先跟同事核实，避免同一笔钱被重复登记。\n\n` +
+      `确认这是另外一笔真实的还款，要继续登记吗？`
+    );
+    if (!ok2) { showMsg('payMsg', tl('已取消登记，请先核实','Cancelled, please verify first','')); return; }
+  }
+
   let principal, interest, serviceFee = 0, actualReceived;
 
   // 所有角色统一填实收总额，系统自动拆分本金/利息
@@ -3613,8 +3723,9 @@ window.submitPayment = async function() {
 
   // 保存收款记录（不足额也记录，备查）
   const pays = DB_get('payments')||[];
+  const newPayId = newId();
   pays.push({
-    id: newId(), contractId, customer: s.customer, period: periodNo,
+    id: newPayId, contractId, customer: s.customer, period: periodNo,
     date: pDate, principal: parseFloat(principal.toFixed(2)),
     interest: parseFloat(interest.toFixed(2)), serviceFee, penalty,
     isPartial: !isFullPaid,
@@ -3622,6 +3733,22 @@ window.submitPayment = async function() {
     advanceDays: advanceDays > 0 ? advanceDays : 0
   });
   DB_set('payments', pays);
+  logActivity('还款登记', `#${contractId} ${s.customer} 第${periodNo}期`, `本金$${principal.toFixed(2)} 利息$${interest.toFixed(2)}${penalty?` 滞纳金$${penalty}`:''}`);
+
+  // 📷 如果填了收款截图，异步上传并回填URL（不阻塞主流程）
+  if (window._pendingPayReceipt) {
+    uploadPayReceipt(newPayId).then(url => {
+      if (!url) return;
+      const latestPays = DB_get('payments') || [];
+      const idx = latestPays.findIndex(p => p.id === newPayId);
+      if (idx >= 0) {
+        latestPays[idx].receiptUrl = url;
+        DB_set('payments', latestPays);
+      }
+    });
+    const rp = document.getElementById('pReceiptPreview');
+    if (rp) rp.innerHTML = '';
+  }
 
   // 重置表单
   ['pPenalty','pNote','pTotalReceived'].forEach(id => {
@@ -4678,6 +4805,7 @@ window.deleteEarlyPayment = function(id) {
       DB_set('sales', sales);
     }
     DB_set('earlyPayments', list.filter(x => x.id !== id));
+    logActivity('删除提前还款', `#${r.contractId} ${r.customer}`, `协商金额$${r.negotiatedAmount||r.negotiated||0}`);
     nav('early-payment');
   });
 };
@@ -4806,6 +4934,7 @@ window.submitEarlyPayment = function() {
     profitDiff: actualProfit - (remainI + remainSvc), note
   });
   DB_set('earlyPayments', earlyPayments);
+  logActivity('提前还款', `#${contractId} ${customer}`, `协商金额$${neg} 利润$${actualProfit}`);
 
   showMsg('epMsg', `✅ ${_lang==='km'?'ការទូទាត់មុនបានទទួលជោគជ័យ':_lang==='en'?'Early settlement done':'提前结清成功！'} ${customer} — ${fmt(neg)} → ${_lang==='km'?'ចំណេញ':_lang==='en'?'Profit':'利润'} ${fmt(actualProfit)}`, 'green');
 
@@ -7521,6 +7650,82 @@ window.initPage = function(page) {
 // ══════════════════════════════════════════════════════
 // 👥 账号管理 USER MANAGEMENT (老板专用)
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// 📜 操作日志页面（老板专属）
+// ══════════════════════════════════════════════════════
+function renderActivityLog() {
+  const logs = (DB_get('activityLogs') || []).slice().reverse(); // 最新的在前
+  window._activityLogAll = logs;
+  const actionTypes = [...new Set(logs.map(l => l.action))];
+  return `
+  <div class="page-header">
+    <div class="page-title">📜 操作日志</div>
+    <div class="page-sub">记录谁、什么时候、对哪份合同/流水做了什么操作</div>
+  </div>
+  <div class="card">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+      <input id="logSearch" type="text" placeholder="搜索操作人 / 客户 / 合同号"
+        oninput="filterActivityLog()"
+        style="flex:1;min-width:180px;padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit">
+      <select id="logActionFilter" onchange="filterActivityLog()"
+        style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit">
+        <option value="">全部操作类型</option>
+        ${actionTypes.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('')}
+      </select>
+      <input type="date" id="logDateFrom" onchange="filterActivityLog()" style="padding:9px;border:1.5px solid var(--border);border-radius:9px;font-size:13px">
+      <span style="color:var(--muted)">~</span>
+      <input type="date" id="logDateTo" onchange="filterActivityLog()" style="padding:9px;border:1.5px solid var(--border);border-radius:9px;font-size:13px">
+    </div>
+    <div id="activityLogWrap"></div>
+  </div>`;
+}
+
+window.filterActivityLog = function() {
+  const kw = (document.getElementById('logSearch')?.value || '').trim().toLowerCase();
+  const actionFilter = document.getElementById('logActionFilter')?.value || '';
+  const dateFrom = document.getElementById('logDateFrom')?.value || '';
+  const dateTo = document.getElementById('logDateTo')?.value || '';
+  const all = window._activityLogAll || [];
+  const filtered = all.filter(l => {
+    const matchKw = !kw || (l.userDisplay||'').toLowerCase().includes(kw) || (l.target||'').toLowerCase().includes(kw) || (l.detail||'').toLowerCase().includes(kw);
+    const matchAction = !actionFilter || l.action === actionFilter;
+    const logDate = (l.time||'').slice(0,10);
+    const matchDate = (!dateFrom || logDate >= dateFrom) && (!dateTo || logDate <= dateTo);
+    return matchKw && matchAction && matchDate;
+  });
+  renderActivityLogTable(filtered);
+};
+
+function renderActivityLogTable(logs) {
+  const wrap = document.getElementById('activityLogWrap');
+  if (!wrap) return;
+  if (!logs.length) {
+    wrap.innerHTML = `<div style="padding:30px;text-align:center;color:var(--muted)">暂无符合条件的操作记录</div>`;
+    return;
+  }
+  const actionColor = {
+    '新建合同':'#1565c0','编辑合同':'#e65100','删除合同':'#c62828',
+    '还款登记':'#2e7d32','删除流水':'#c62828',
+    '提前还款':'#7b1fa2','删除提前还款':'#c62828'
+  };
+  wrap.innerHTML = `<div class="table-wrap" style="max-height:600px;overflow-y:auto"><table>
+    <tr><th>时间</th><th>操作人</th><th>操作类型</th><th>对象</th><th>详情</th></tr>
+    ${logs.map(l => {
+      const dt = new Date(l.time);
+      const timeStr = isNaN(dt) ? l.time : dt.toLocaleString('zh-CN', {year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+      const color = actionColor[l.action] || '#607d8b';
+      return `<tr>
+        <td style="font-size:12px;white-space:nowrap">${timeStr}</td>
+        <td class="fw700">${esc(l.userDisplay||'')}${l.userRole?` <span style="font-size:10px;color:var(--muted)">(${esc(ROLE_LABEL[l.userRole]||l.userRole)})</span>`:''}</td>
+        <td><span style="background:${color}18;color:${color};font-size:11px;font-weight:700;padding:2px 10px;border-radius:12px">${esc(l.action)}</span></td>
+        <td style="font-size:12px">${esc(l.target||'')}</td>
+        <td style="font-size:12px;color:var(--muted)">${esc(l.detail||'')}</td>
+      </tr>`;
+    }).join('')}
+  </table></div>
+  <div style="margin-top:8px;font-size:12px;color:var(--muted)">共 ${logs.length} 条记录</div>`;
+}
+
 function renderUserMgmt() {
   return `
   <div class="page-header">
