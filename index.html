@@ -5809,7 +5809,11 @@ function renderInvestorStatement(groupId, startDate, endDate) {
   window._investorCache = window._investorCache || {};
   window._investorCache[groupId] = { startDate, endDate, rows };
 
-  // 统计被剔除的问题客户金额（仅供陛下内部核对，不放进导出文件）
+  const groups = DB_get('fundGroups') || [];
+  const g = groups.find(x => x.id === groupId) || {};
+  const company = (DB_get('company')||{}).name || 'MORODOK';
+
+  // 统计被剔除的问题客户金额（仅供陛下内部核对，不放进导出文件/不放进打印版）
   const problemIds = new Set(getProblemContractIds());
   const allInRange = ((window._fundGroupPays && window._fundGroupPays[groupId]) || [])
     .filter(p => (p.date||'') >= startDate && (p.date||'') <= endDate);
@@ -5819,28 +5823,95 @@ function renderInvestorStatement(groupId, startDate, endDate) {
 
   const totalCount = rows.reduce((a,r) => a + r.count, 0);
   const totalAmt = rows.reduce((a,r) => a + r.total, 0);
+  const custCount = rows.length;
+
+  if (excludedCustomers) {
+    wrap.dataset.internalNote = `⚠️（仅供你自己核对，不会出现在打印/导出文件里）已剔除 ${excludedCustomers} 位问题客户，合计 ${fmt(excludedAmt)} 未计入此对账单`;
+  } else {
+    wrap.dataset.internalNote = '';
+  }
 
   wrap.innerHTML = `
-  <div style="padding:10px 14px;background:#e8f5e9;border-radius:8px;margin-bottom:10px;font-size:13px">
-    💼 ${startDate} ~ ${endDate}，${tl('本对账单已自动剔除标记问题的客户，是可以直接给投资人的干净版本','This statement excludes flagged customers, ready for investors','')}
-  </div>
   ${excludedCustomers ? `<div style="padding:8px 14px;background:#fff3e0;border-radius:8px;margin-bottom:10px;font-size:12px;color:#e65100">
-    ⚠️ ${tl('（仅供你自己核对，不会出现在导出文件里）已剔除','（Internal check only, not in export）Excluded','')} <b>${excludedCustomers}</b> ${tl('位问题客户，合计','flagged customers, total','')} <b>${fmt(excludedAmt)}</b> ${tl('未计入此对账单','not included in this statement','')}
+    ⚠️ ${tl('（仅供你自己核对，不会出现在打印/导出文件里）已剔除','（Internal check only, not in printout）Excluded','')} <b>${excludedCustomers}</b> ${tl('位问题客户，合计','flagged customers, total','')} <b>${fmt(excludedAmt)}</b> ${tl('未计入此对账单','not included in this statement','')}
   </div>` : ''}
-  ${rows.length ? `
-  <div class="table-wrap"><table>
-    <tr><th>${t('colCustomer')}</th><th>#</th><th>${tl('还款次数','Payments','ចំនួនដង')}</th><th>${tl('还款日期','Payment Dates','ថ្ងៃទូទាត់')}</th><th>${tl('金额','Amount','ចំនួន')}</th></tr>
-    ${rows.map(r => `<tr>
-      <td class="fw700">${esc(r.customer||'')}</td>
-      <td class="text-blue">#${esc(String(r.contractId||''))}</td>
-      <td>${r.count}</td>
-      <td style="font-size:12px">${r.dates.join(', ')}</td>
-      <td class="fw700 text-green">${fmt(r.total)}</td>
-    </tr>`).join('')}
-  </table></div>
-  <div style="margin-top:6px;font-size:13px;font-weight:700">${tl('合计','Total','សរុប')} ${totalCount} ${tl('笔，回款总额','payments, total','')} <span class="text-green">${fmt(totalAmt)}</span></div>
-  ` : `<div style="padding:20px;text-align:center;color:var(--muted)">${tl('该日期范围内没有还款记录','No payments in this range','')}</div>`}`;
+
+  <div id="investorStatementPrintable_${groupId}" style="background:#fff;border-radius:16px;padding:28px;box-shadow:0 2px 12px rgba(0,0,0,.06);border:1px solid #eee">
+    <!-- 抬头 -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0f2d5c;padding-bottom:16px;margin-bottom:20px">
+      <div>
+        <div style="font-size:20px;font-weight:800;color:#0f2d5c;letter-spacing:.5px">${esc(company)}</div>
+        <div style="font-size:13px;color:#78909c;margin-top:2px">${tl('投资回款对账单','Investor Repayment Statement','របាយការណ៍សងប្រាក់វិនិយោគិន')}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:13px;color:#455a64;font-weight:700">${esc(g.label||'')}</div>
+        <div style="font-size:12px;color:#90a4ae;margin-top:2px">${startDate} ~ ${endDate}</div>
+      </div>
+    </div>
+
+    <!-- 汇总卡片 -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px">
+      <div style="background:linear-gradient(135deg,#e8f5e9,#f1f8f2);border-radius:12px;padding:16px;text-align:center">
+        <div style="font-size:11px;color:#66bb6a;font-weight:700;margin-bottom:6px">${tl('回款总额','Total Collected','សរុបប្រមូលបាន')}</div>
+        <div style="font-size:26px;font-weight:800;color:#2e7d32">${fmt(totalAmt)}</div>
+      </div>
+      <div style="background:linear-gradient(135deg,#e3f2fd,#f0f7ff);border-radius:12px;padding:16px;text-align:center">
+        <div style="font-size:11px;color:#42a5f5;font-weight:700;margin-bottom:6px">${tl('还款客户数','Customers','អតិថិជន')}</div>
+        <div style="font-size:26px;font-weight:800;color:#1565c0">${custCount}</div>
+      </div>
+      <div style="background:linear-gradient(135deg,#f3e5f5,#faf3fb);border-radius:12px;padding:16px;text-align:center">
+        <div style="font-size:11px;color:#ab47bc;font-weight:700;margin-bottom:6px">${tl('还款笔数','Payments','ចំនួនដង')}</div>
+        <div style="font-size:26px;font-weight:800;color:#7b1fa2">${totalCount}</div>
+      </div>
+    </div>
+
+    ${rows.length ? `
+    <div style="border-radius:12px;overflow:hidden;border:1px solid #eceff1">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:#0f2d5c;color:#fff">
+            <th style="padding:10px 14px;text-align:left;font-weight:600">${t('colCustomer')}</th>
+            <th style="padding:10px 14px;text-align:left;font-weight:600">${tl('合同号','Contract #','លេខកិច្ចសន្យា')}</th>
+            <th style="padding:10px 14px;text-align:center;font-weight:600">${tl('还款次数','Times','ចំនួនដង')}</th>
+            <th style="padding:10px 14px;text-align:left;font-weight:600">${tl('还款日期','Dates','ថ្ងៃ')}</th>
+            <th style="padding:10px 14px;text-align:right;font-weight:600">${tl('金额','Amount','ចំនួន')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r,i) => `<tr style="background:${i%2===0?'#fff':'#fafbfc'};border-bottom:1px solid #f0f0f0">
+            <td style="padding:9px 14px;font-weight:700;color:#263238">${esc(r.customer||'')}</td>
+            <td style="padding:9px 14px;color:#1565c0">#${esc(String(r.contractId||''))}</td>
+            <td style="padding:9px 14px;text-align:center;color:#607d8b">${r.count}</td>
+            <td style="padding:9px 14px;font-size:12px;color:#78909c">${r.dates.join(', ')}</td>
+            <td style="padding:9px 14px;text-align:right;font-weight:800;color:#2e7d32">${fmt(r.total)}</td>
+          </tr>`).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="background:#f0f7ff;font-weight:800">
+            <td colspan="4" style="padding:12px 14px;color:#0f2d5c">${tl('合计','Total','សរុប')}</td>
+            <td style="padding:12px 14px;text-align:right;color:#2e7d32;font-size:16px">${fmt(totalAmt)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div style="text-align:right;margin-top:16px;font-size:11px;color:#b0bec5">${tl('生成时间','Generated','ពេលបង្កើត')}：${today()}</div>
+    ` : `<div style="padding:30px;text-align:center;color:var(--muted)">${tl('该日期范围内没有还款记录','No payments in this range','')}</div>`}
+  </div>
+  ${rows.length ? `<div style="margin-top:12px;text-align:center">
+    <button class="btn btn-outline btn-sm" onclick="printInvestorStatement(${groupId})">🖨️ ${tl('打印 / 导出PDF','Print / Export PDF','បោះពុម្ព')}</button>
+  </div>` : ''}`;
 }
+
+window.printInvestorStatement = function(groupId) {
+  const el = document.getElementById('investorStatementPrintable_' + groupId);
+  if (!el) return;
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>投资人对账单</title>
+    <style>body{font-family:'Noto Sans',Arial,sans-serif;margin:24px;background:#fff} table{width:100%}</style>
+  </head><body>${el.outerHTML}</body></html>`);
+  w.document.close();
+  setTimeout(() => w.print(), 300);
+};
 
 window.exportInvestorStatement = function(groupId, groupLabel) {
   const cache = window._investorCache?.[groupId];
