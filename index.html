@@ -5716,6 +5716,107 @@ window.deleteStore = function(name) {
 // ══════════════════════════════════════════════════════
 // 资金统计
 // ══════════════════════════════════════════════════════
+window.toggleInvestorStatement = function(groupId) {
+  const panel = document.getElementById('fundInvestor_' + groupId);
+  if (!panel) return;
+  const willShow = panel.style.display === 'none';
+  panel.style.display = willShow ? 'block' : 'none';
+  if (willShow && !document.getElementById('fundInvStart_'+groupId).value) {
+    // 默认展示最近7天
+    const end = today();
+    const start = new Date(Date.now() - 6*86400000).toISOString().slice(0,10);
+    document.getElementById('fundInvStart_'+groupId).value = start;
+    document.getElementById('fundInvEnd_'+groupId).value = end;
+    runInvestorStatement(groupId);
+  }
+};
+
+function getInvestorRangeRows(groupId, startDate, endDate) {
+  const problemIds = new Set(getProblemContractIds());
+  const list = ((window._fundGroupPays && window._fundGroupPays[groupId]) || [])
+    .filter(p => !problemIds.has(String(p.contractId))) // 🔒 剔除标记问题的客户
+    .filter(p => (p.date||'') >= startDate && (p.date||'') <= endDate);
+  const byContract = {};
+  list.forEach(p => {
+    const key = String(p.contractId||'') + '|' + (p.customer||'');
+    if (!byContract[key]) byContract[key] = { customer: p.customer, contractId: p.contractId, dates: [], total: 0, count: 0 };
+    const g = byContract[key];
+    g.dates.push(p.date);
+    g.total += (+p.total||0);
+    g.count += 1;
+  });
+  return Object.values(byContract).sort((a,b) => (a.customer||'').localeCompare(b.customer||''));
+}
+
+window.runInvestorStatement = function(groupId) {
+  const start = document.getElementById('fundInvStart_'+groupId)?.value;
+  const end = document.getElementById('fundInvEnd_'+groupId)?.value;
+  if (!start || !end) { alert(tl('请选择开始和结束日期','Please select both dates','')); return; }
+  renderInvestorStatement(groupId, start, end);
+};
+
+function renderInvestorStatement(groupId, startDate, endDate) {
+  const wrap = document.getElementById('fundInvestorTable_' + groupId);
+  if (!wrap) return;
+  if (!startDate || !endDate) {
+    startDate = document.getElementById('fundInvStart_'+groupId)?.value;
+    endDate = document.getElementById('fundInvEnd_'+groupId)?.value;
+  }
+  if (!startDate || !endDate) { wrap.innerHTML = ''; return; }
+
+  const rows = getInvestorRangeRows(groupId, startDate, endDate);
+  window._investorCache = window._investorCache || {};
+  window._investorCache[groupId] = { startDate, endDate, rows };
+
+  // 统计被剔除的问题客户金额（仅供陛下内部核对，不放进导出文件）
+  const problemIds = new Set(getProblemContractIds());
+  const allInRange = ((window._fundGroupPays && window._fundGroupPays[groupId]) || [])
+    .filter(p => (p.date||'') >= startDate && (p.date||'') <= endDate);
+  const excluded = allInRange.filter(p => problemIds.has(String(p.contractId)));
+  const excludedAmt = excluded.reduce((a,p) => a + (+p.total||0), 0);
+  const excludedCustomers = new Set(excluded.map(p=>String(p.contractId))).size;
+
+  const totalCount = rows.reduce((a,r) => a + r.count, 0);
+  const totalAmt = rows.reduce((a,r) => a + r.total, 0);
+
+  wrap.innerHTML = `
+  <div style="padding:10px 14px;background:#e8f5e9;border-radius:8px;margin-bottom:10px;font-size:13px">
+    💼 ${startDate} ~ ${endDate}，${tl('本对账单已自动剔除标记问题的客户，是可以直接给投资人的干净版本','This statement excludes flagged customers, ready for investors','')}
+  </div>
+  ${excludedCustomers ? `<div style="padding:8px 14px;background:#fff3e0;border-radius:8px;margin-bottom:10px;font-size:12px;color:#e65100">
+    ⚠️ ${tl('（仅供你自己核对，不会出现在导出文件里）已剔除','（Internal check only, not in export）Excluded','')} <b>${excludedCustomers}</b> ${tl('位问题客户，合计','flagged customers, total','')} <b>${fmt(excludedAmt)}</b> ${tl('未计入此对账单','not included in this statement','')}
+  </div>` : ''}
+  ${rows.length ? `
+  <div class="table-wrap"><table>
+    <tr><th>${t('colCustomer')}</th><th>#</th><th>${tl('还款次数','Payments','ចំនួនដង')}</th><th>${tl('还款日期','Payment Dates','ថ្ងៃទូទាត់')}</th><th>${tl('金额','Amount','ចំនួន')}</th></tr>
+    ${rows.map(r => `<tr>
+      <td class="fw700">${esc(r.customer||'')}</td>
+      <td class="text-blue">#${esc(String(r.contractId||''))}</td>
+      <td>${r.count}</td>
+      <td style="font-size:12px">${r.dates.join(', ')}</td>
+      <td class="fw700 text-green">${fmt(r.total)}</td>
+    </tr>`).join('')}
+  </table></div>
+  <div style="margin-top:6px;font-size:13px;font-weight:700">${tl('合计','Total','សរុប')} ${totalCount} ${tl('笔，回款总额','payments, total','')} <span class="text-green">${fmt(totalAmt)}</span></div>
+  ` : `<div style="padding:20px;text-align:center;color:var(--muted)">${tl('该日期范围内没有还款记录','No payments in this range','')}</div>`}`;
+}
+
+window.exportInvestorStatement = function(groupId, groupLabel) {
+  const cache = window._investorCache?.[groupId];
+  if (!cache || !cache.rows.length) { alert(tl('请先查询后再导出','Please query first','')); return; }
+  const { startDate, endDate, rows } = cache;
+  const exportRows = rows.map(r => ({
+    '客户': r.customer, '合同号': r.contractId, '还款次数': r.count, '还款日期': r.dates.join(', '), '金额': r.total
+  }));
+  const totalCount = rows.reduce((a,r) => a + r.count, 0);
+  const totalAmt = rows.reduce((a,r) => a + r.total, 0);
+  exportRows.push({ '客户': '合计', '合同号': '', '还款次数': totalCount, '还款日期': '', '金额': totalAmt });
+  const ws = XLSX.utils.json_to_sheet(exportRows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '投资人对账单');
+  XLSX.writeFile(wb, `${groupLabel}_投资人对账单_${startDate}~${endDate}.xlsx`);
+};
+
 window.toggleFundOverdue = function(groupId) {
   const panel = document.getElementById('fundOverdue_' + groupId);
   if (!panel) return;
@@ -6090,19 +6191,50 @@ function renderFundDetailTable(groupId, keyword) {
     wrap.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted)">${tl('没有匹配的还款记录','No matching records','គ្មានទិន្នន័យ')}</div>`;
     return;
   }
+  const problemIds = new Set(getProblemContractIds());
   const grandTotal = rows.reduce((a,r) => a + r.total, 0);
   wrap.innerHTML = `<div class="table-wrap" style="max-height:400px;overflow-y:auto"><table>
-    <tr><th>${t('colCustomer')}</th><th>#</th><th>${tl('还款次数','Payments','ចំនួនដង')}</th><th>${tl('最近还款日','Last Payment','ថ្ងៃចុងក្រោយ')}</th><th>${tl('总金额','Total','សរុប')}</th></tr>
-    ${rows.map(r => `<tr>
-        <td class="fw700">${esc(r.customer||'')}${r.hasEarly?` <span style="background:#f3e5f5;color:#9c27b0;font-size:10px;padding:1px 6px;border-radius:8px">⚡${tl('含提前结清','early','មុន')}</span>`:''}</td>
+    <tr><th>${t('colCustomer')}</th><th>#</th><th>${tl('还款次数','Payments','ចំនួនដង')}</th><th>${tl('最近还款日','Last Payment','ថ្ងៃចុងក្រោយ')}</th><th>${tl('总金额','Total','សរុប')}</th><th></th></tr>
+    ${rows.map(r => {
+      const isProblem = problemIds.has(String(r.contractId));
+      return `<tr style="${isProblem?'background:#fff3f3':''}">
+        <td class="fw700">${esc(r.customer||'')}${r.hasEarly?` <span style="background:#f3e5f5;color:#9c27b0;font-size:10px;padding:1px 6px;border-radius:8px">⚡${tl('含提前结清','early','មុន')}</span>`:''}${isProblem?` <span style="background:#ffebee;color:#c62828;font-size:10px;padding:1px 6px;border-radius:8px">🚩${tl('问题客户','flagged','បញ្ហា')}</span>`:''}</td>
         <td class="text-blue">#${esc(String(r.contractId||''))}</td>
         <td>${r.count}</td>
         <td>${r.lastDate}</td>
         <td class="fw700 text-green">${fmt(r.total)}</td>
-      </tr>`).join('')}
+        <td><button class="btn btn-sm ${isProblem?'btn-outline':'btn-outline'}" style="font-size:11px;color:${isProblem?'var(--green)':'var(--red)'}" onclick="toggleProblemFlag('${esc(String(r.contractId))}', ${groupId})">${isProblem?tl('取消标记','Unflag','ដកចេញ'):tl('🚩标记问题','Flag','សម្គាល់')}</button></td>
+      </tr>`;
+    }).join('')}
   </table></div>
   <div style="margin-top:6px;font-size:13px;font-weight:700">${tl('共','Total','សរុប')} ${rows.length} ${tl('位客户还款，合计','customers, total','នាក់, សរុប')} <span class="text-green">${fmt(grandTotal)}</span></div>`;
 }
+
+function getProblemContractIds() {
+  const sales = DB_get('sales') || [];
+  return sales.filter(s => s.flagProblem).map(s => String(s.id));
+}
+
+window.toggleProblemFlag = function(contractId, groupId) {
+  const sales = DB_get('sales') || [];
+  const idx = sales.findIndex(s => String(s.id) === String(contractId));
+  if (idx < 0) return;
+  const s = sales[idx];
+  if (s.flagProblem) {
+    if (!confirm(`${tl('确认取消标记','Confirm unflag','បញ្ជាក់')} ${s.customer} ${tl('为问题客户吗？','as a flagged customer?','')}`)) return;
+    s.flagProblem = false;
+    s.problemNote = '';
+  } else {
+    const note = prompt(`${tl('标记','Flag','សម្គាល់')} ${s.customer} ${tl('为问题客户，说明原因（比如：LOCK锁机/欠款未处理）','as flagged customer, reason (e.g. locked/unresolved debt)','')}：`);
+    if (note === null) return; // 取消
+    s.flagProblem = true;
+    s.problemNote = note || '未说明原因';
+    s.flaggedDate = today();
+  }
+  DB_set('sales', sales);
+  alert(`✅ ${s.customer} ${s.flagProblem ? tl('已标记为问题客户','flagged','')  : tl('已取消标记','unflagged','')}`);
+  nav('fund-stats');
+};
 
 function renderFundStats() {
   const sales    = DB_get('sales')||[];
@@ -6252,6 +6384,18 @@ function renderFundStats() {
       <button class="btn btn-outline btn-sm" onclick="toggleFundMonthly(${g.id})">📅 按月回款统计</button>
       <button class="btn btn-outline btn-sm" onclick="toggleFundDateQuery(${g.id})">🔍 自定义日期查询</button>
       <button class="btn btn-outline btn-sm" onclick="toggleFundOverdue(${g.id})" style="color:var(--red)">🔴 逾期客户总表</button>
+      <button class="btn btn-primary btn-sm" onclick="toggleInvestorStatement(${g.id})" style="background:#1e7e34">💼 投资人对账单</button>
+    </div>
+    <div id="fundInvestor_${g.id}" style="display:none;margin-top:12px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
+        <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">${tl('开始日期','Start Date','ថ្ងៃចាប់ផ្តើម')}</label>
+          <input type="date" id="fundInvStart_${g.id}" style="padding:8px"></div>
+        <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">${tl('结束日期','End Date','ថ្ងៃបញ្ចប់')}</label>
+          <input type="date" id="fundInvEnd_${g.id}" style="padding:8px"></div>
+        <button class="btn btn-primary btn-sm" onclick="runInvestorStatement(${g.id})">🔍 ${tl('查询','Query','ស្វែងរក')}</button>
+        <button class="btn btn-outline btn-sm" onclick="exportInvestorStatement(${g.id}, '${esc(g.label)}')" style="margin-left:auto">📥 导出Excel（给投资人）</button>
+      </div>
+      <div id="fundInvestorTable_${g.id}"></div>
     </div>
     <div id="fundOverdue_${g.id}" style="display:none;margin-top:12px">
       <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
