@@ -4133,11 +4133,24 @@ function renderReminderOverdue() {
     </div>`;
   }
 
+  // 供筛选时重新计算顶部汇总数字使用
+  window._overdueContracts = allContracts.map(({s, periods, maxDays}) => ({
+    id: s.id,
+    name: (s.customer||'').toLowerCase(),
+    phone: s.customerPhone||'',
+    days: maxDays,
+    periodCount: periods.length,
+    owed: periods.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0),
+    remaining: s.schedule.reduce((a,p) => a + (p.paid ? 0 : (+p.principalDue||0)+(+p.interestDue||0)), 0),
+  }));
+
   return `
   <div class="page-header"><div class="page-title">🚨 ${t('overdueTitle')}</div></div>
+  <div id="overdueSummaryBar">
   ${items.length
     ? `<div class="alert alert-red">⚠️ <b>${allContracts.length}</b> ${t('overdueClients')} · <b>${items.length}</b> ${t('overdueCount')} · ${tl('逾期欠款','Overdue Owed','ជំពាក់​ហួស​កំណត់')} <b>${fmt(totalOwedAll)}</b> · ${tl('总欠款(含未到期)','Total Owed (incl. not-yet-due)','សរុប​ជំពាក់​(រួម​មិន​ទាន់​ដល់​កំណត់)')} <b>${fmt(totalRemainingAll)}</b></div>`
     : `<div class="alert alert-green">✅ ${t('noOverdue')}</div>`}
+  </div>
 
   <!-- 搜索 + 筛选 -->
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
@@ -4222,6 +4235,27 @@ window.filterOverdue = function() {
     else if (dayFilter==='30') matchD = days > 30;
     el.style.display = (matchQ && matchD) ? '' : 'none';
   });
+
+  // 🔧 联动重算顶部汇总数字（客户数/逾期笔数/逾期欠款/总欠款），不再是打开页面时算一次就不变
+  const all = window._overdueContracts || [];
+  const visible = all.filter(c => {
+    const matchQ = !q || c.name.includes(q) || c.phone.includes(q) || String(c.id).toLowerCase().includes(q);
+    let matchD = true;
+    if (dayFilter==='7') matchD = c.days <= 7;
+    else if (dayFilter==='15') matchD = c.days > 7 && c.days <= 30;
+    else if (dayFilter==='30') matchD = c.days > 30;
+    return matchQ && matchD;
+  });
+  const bar = document.getElementById('overdueSummaryBar');
+  if (bar) {
+    const clientCount = visible.length;
+    const periodCount = visible.reduce((a,c) => a + c.periodCount, 0);
+    const owedTotal = visible.reduce((a,c) => a + c.owed, 0);
+    const remainingTotal = visible.reduce((a,c) => a + c.remaining, 0);
+    bar.innerHTML = clientCount
+      ? `<div class="alert alert-red">⚠️ <b>${clientCount}</b> ${t('overdueClients')} · <b>${periodCount}</b> ${t('overdueCount')} · ${tl('逾期欠款','Overdue Owed','ជំពាក់​ហួស​កំណត់')} <b>${fmt(owedTotal)}</b> · ${tl('总欠款(含未到期)','Total Owed (incl. not-yet-due)','សរុប​ជំពាក់​(រួម​មិន​ទាន់​ដល់​កំណត់)')} <b>${fmt(remainingTotal)}</b></div>`
+      : `<div class="alert alert-green">✅ ${tl('没有匹配的逾期客户','No matching overdue clients','គ្មានអតិថិជនហួសកំណត់ដែលត្រូវនឹង')}</div>`;
+  }
 };
 
 
