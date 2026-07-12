@@ -5716,6 +5716,84 @@ window.deleteStore = function(name) {
 // ══════════════════════════════════════════════════════
 // 资金统计
 // ══════════════════════════════════════════════════════
+window.toggleFundMonthly = function(groupId) {
+  const panel = document.getElementById('fundMonthly_' + groupId);
+  if (!panel) return;
+  const willShow = panel.style.display === 'none';
+  panel.style.display = willShow ? 'block' : 'none';
+  if (willShow) renderFundMonthlyTable(groupId);
+};
+
+function getFundMonthlyRows(groupId) {
+  const list = (window._fundGroupPays && window._fundGroupPays[groupId]) || [];
+  const byMonth = {};
+  list.forEach(p => {
+    const d = p.date || '';
+    const month = d.slice(0, 7); // YYYY-MM
+    if (!month) return;
+    if (!byMonth[month]) byMonth[month] = { month, count: 0, principal: 0, interest: 0, penalty: 0, minDate: d, maxDate: d };
+    const m = byMonth[month];
+    m.count += 1;
+    m.principal += (+p.principal||0);
+    m.interest  += (+p.interest||0) + (+p.serviceFee||0);
+    m.penalty   += (+p.penalty||0);
+    if (d < m.minDate) m.minDate = d;
+    if (d > m.maxDate) m.maxDate = d;
+  });
+  return Object.values(byMonth).sort((a,b) => a.month.localeCompare(b.month));
+}
+
+function renderFundMonthlyTable(groupId) {
+  const wrap = document.getElementById('fundMonthlyTable_' + groupId);
+  if (!wrap) return;
+  const rows = getFundMonthlyRows(groupId);
+  if (!rows.length) {
+    wrap.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted)">${tl('暂无还款数据','No payment data','គ្មានទិន្នន័យ')}</div>`;
+    return;
+  }
+  const totalCount = rows.reduce((a,r) => a + r.count, 0);
+  const totalAmt = rows.reduce((a,r) => a + r.principal + r.interest + r.penalty, 0);
+  wrap.innerHTML = `
+  <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${tl('注：还款笔数按每笔流水记录计算，同一客户当月还款多次会分别计入','Note: count is per transaction, not per customer','កំណត់ចំណាំ')}</div>
+  <div class="table-wrap"><table>
+    <tr><th>${tl('月份','Month','ខែ')}</th><th>${tl('日期范围','Date Range','ចន្លោះកាលបរិច្ឆេទ')}</th><th>${tl('还款笔数','Payment Count','ចំនួនដង')}</th><th>${tl('本金合计','Principal','ដើមទុន')}</th><th>${tl('利息合计','Interest','ការប្រាក់')}</th><th>${tl('滞纳金合计','Penalty','ពិន័យ')}</th><th>${tl('回款总额','Total','សរុប')}</th></tr>
+    ${rows.map(r => {
+      const total = r.principal + r.interest + r.penalty;
+      return `<tr>
+        <td class="fw700">${r.month}</td>
+        <td>${r.minDate} ~ ${r.maxDate}</td>
+        <td>${r.count}</td>
+        <td>${fmt(r.principal)}</td>
+        <td>${fmt(r.interest)}</td>
+        <td>${fmt(r.penalty)}</td>
+        <td class="fw700 text-green">${fmt(total)}</td>
+      </tr>`;
+    }).join('')}
+  </table></div>
+  <div style="margin-top:6px;font-size:13px;font-weight:700">${tl('合计','Total','សរុប')} ${totalCount} ${tl('笔，回款总额','payments, total','ដង, សរុប')} <span class="text-green">${fmt(totalAmt)}</span></div>`;
+}
+
+window.exportFundMonthly = function(groupId, groupLabel) {
+  const rows = getFundMonthlyRows(groupId);
+  if (!rows.length) { alert(tl('没有数据可导出','No data to export','គ្មានទិន្នន័យ')); return; }
+  const exportRows = rows.map(r => ({
+    '月份': r.month,
+    '日期范围': `${r.minDate} ~ ${r.maxDate}`,
+    '还款笔数': r.count,
+    '本金合计': r.principal,
+    '利息合计': r.interest,
+    '滞纳金合计': r.penalty,
+    '回款总额': r.principal + r.interest + r.penalty,
+  }));
+  const totalCount = rows.reduce((a,r) => a + r.count, 0);
+  const totalAmt = rows.reduce((a,r) => a + r.principal + r.interest + r.penalty, 0);
+  exportRows.push({ '月份': '合计', '日期范围': '', '还款笔数': totalCount, '本金合计': '', '利息合计': '', '滞纳金合计': '', '回款总额': totalAmt });
+  const ws = XLSX.utils.json_to_sheet(exportRows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '按月回款统计');
+  XLSX.writeFile(wb, `${groupLabel}_按月回款统计_${today()}.xlsx`);
+};
+
 window.toggleFundDetail = function(groupId) {
   const panel = document.getElementById('fundDetail_' + groupId);
   if (!panel) return;
@@ -5924,6 +6002,13 @@ function renderFundStats() {
       <span style="font-size:13px">💰 净收益 = <b style="color:var(--green)">${fmt(interest+penalty+earlyProfit-rebate)}</b></span>
       <span style="font-size:13px">📊 综合收益率 = <b style="color:var(--blue)">${totalIn>0?((interest+penalty+earlyProfit-rebate)/totalIn*100).toFixed(2):0}%</b></span>
       <button class="btn btn-outline btn-sm" onclick="toggleFundDetail(${g.id})" style="margin-left:auto">📋 查看明细</button>
+      <button class="btn btn-outline btn-sm" onclick="toggleFundMonthly(${g.id})">📅 按月回款统计</button>
+    </div>
+    <div id="fundMonthly_${g.id}" style="display:none;margin-top:12px">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+        <button class="btn btn-outline btn-sm" onclick="exportFundMonthly(${g.id}, '${esc(g.label)}')">📥 导出Excel</button>
+      </div>
+      <div id="fundMonthlyTable_${g.id}"></div>
     </div>
     <div id="fundDetail_${g.id}" style="display:none;margin-top:12px">
       <div style="display:flex;gap:8px;margin-bottom:8px">
