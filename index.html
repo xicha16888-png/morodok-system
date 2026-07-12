@@ -5716,6 +5716,202 @@ window.deleteStore = function(name) {
 // ══════════════════════════════════════════════════════
 // 资金统计
 // ══════════════════════════════════════════════════════
+window.toggleFundOverdue = function(groupId) {
+  const panel = document.getElementById('fundOverdue_' + groupId);
+  if (!panel) return;
+  const willShow = panel.style.display === 'none';
+  panel.style.display = willShow ? 'block' : 'none';
+  if (willShow) renderFundOverdueTable(groupId);
+};
+
+function getFundOverdueRows(groupId) {
+  const sales = window._fundGroupSales?.[groupId] || [];
+  const td = today();
+  const rows = [];
+  sales.forEach(s => {
+    if (s.status === '提前结清') return;
+    const overduePeriods = (s.schedule||[]).filter(p => !p.paid && p.dueDate && p.dueDate.replace(/\//g,'-') < td);
+    if (!overduePeriods.length) return;
+    const maxDays = Math.max(...overduePeriods.map(p => Math.floor((new Date(td)-new Date(p.dueDate.replace(/\//g,'-')))/86400000)));
+    const owed = overduePeriods.reduce((a,p) => a + (+p.principalDue||0) + (+p.interestDue||0), 0);
+    rows.push({
+      customer: s.customer, contractId: s.id, phone: s.customerPhone||'',
+      overdueCount: overduePeriods.length, maxDays, owed
+    });
+  });
+  return rows.sort((a,b) => b.maxDays - a.maxDays);
+}
+
+function renderFundOverdueTable(groupId) {
+  const wrap = document.getElementById('fundOverdueTable_' + groupId);
+  if (!wrap) return;
+  const rows = getFundOverdueRows(groupId);
+
+  // 逾期后已收回统计：曾经逾期、但已经还上的流水
+  const allPays = (window._fundGroupPays && window._fundGroupPays[groupId]) || [];
+  const recoveredLate = allPays.filter(p => typeof p.daysLate === 'number' && p.daysLate > 0);
+  const recoveredLateAmt = recoveredLate.reduce((a,p) => a + (+p.total||0), 0);
+  const recoveredLateCustomers = new Set(recoveredLate.map(p => String(p.contractId))).size;
+  const recoveredBlock = recoveredLate.length ? `
+  <div style="padding:10px 14px;background:#e8f5e9;border-radius:8px;margin-bottom:10px;font-size:13px">
+    ✅ ${tl('逾期后已收回','Recovered after overdue','បានទទួលបន្ទាប់ពីហួសកំណត់')}：<b>${recoveredLateCustomers}</b> ${tl('位客户','customers','នាក់')}，<b>${recoveredLate.length}</b> ${tl('笔，合计','payments, total','ដង, សរុប')} <b style="color:var(--green)">${fmt(recoveredLateAmt)}</b>
+    <span style="color:var(--muted);font-size:12px">（${tl('曾经逾期但已经追回，不算坏账','was overdue but recovered, not bad debt','')}）</span>
+  </div>` : '';
+
+  if (!rows.length) {
+    wrap.innerHTML = recoveredBlock + `<div class="alert alert-green">✅ ${tl('该阶段目前没有逾期客户','No overdue customers in this phase','គ្មានអតិថិជនហួសកំណត់')}</div>`;
+    return;
+  }
+  const totalOwed = rows.reduce((a,r) => a + r.owed, 0);
+  wrap.innerHTML = recoveredBlock + `
+  <div class="alert alert-red" style="margin-bottom:10px">⚠️ ${rows.length} ${tl('位客户逾期，逾期欠款合计','customers overdue, total owed','នាក់ហួសកំណត់, សរុបជំពាក់')} <b>${fmt(totalOwed)}</b></div>
+  <div class="table-wrap"><table>
+    <tr><th>${t('colCustomer')}</th><th>${tl('电话','Phone','ទូរស័ព្ទ')}</th><th>#</th><th>${tl('逾期期数','Overdue Periods','ដំណាក់ហួសកំណត់')}</th><th>${tl('最长逾期天数','Max Days Overdue','ថ្ងៃហួសកំណត់អតិបរមា')}</th><th>${tl('逾期欠款','Amount Owed','ជំពាក់')}</th></tr>
+    ${rows.map(r => `<tr>
+      <td class="fw700">${esc(r.customer||'')}</td>
+      <td>${esc(r.phone||'-')}</td>
+      <td class="text-blue">#${esc(String(r.contractId||''))}</td>
+      <td>${r.overdueCount}</td>
+      <td style="color:${r.maxDays>=30?'var(--red)':'var(--amber)'};font-weight:700">${r.maxDays}${tl('天','d','ថ្ងៃ')}</td>
+      <td class="fw700 text-red">${fmt(r.owed)}</td>
+    </tr>`).join('')}
+  </table></div>
+  <div style="margin-top:6px;font-size:12px;color:var(--muted)">${tl('提示：客户还清欠款后会自动从此列表消失','Once paid off, customers automatically disappear from this list','កំណត់ចំណាំ')}</div>`;
+}
+
+window.exportFundOverdue = function(groupId, groupLabel) {
+  const rows = getFundOverdueRows(groupId);
+  if (!rows.length) { alert(tl('没有逾期数据可导出','No overdue data to export','គ្មានទិន្នន័យ')); return; }
+  const exportRows = rows.map(r => ({
+    '客户': r.customer, '电话': r.phone, '合同号': r.contractId,
+    '逾期期数': r.overdueCount, '最长逾期天数': r.maxDays, '逾期欠款': r.owed
+  }));
+  const totalOwed = rows.reduce((a,r) => a + r.owed, 0);
+  exportRows.push({ '客户': '合计', '电话':'', '合同号':'', '逾期期数':'', '最长逾期天数': rows.length+'位客户', '逾期欠款': totalOwed });
+  const ws = XLSX.utils.json_to_sheet(exportRows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '逾期客户总表');
+  XLSX.writeFile(wb, `${groupLabel}_逾期客户总表_${today()}.xlsx`);
+};
+
+window.toggleFundDateQuery = function(groupId) {
+  const panel = document.getElementById('fundDateQuery_' + groupId);
+  if (!panel) return;
+  const willShow = panel.style.display === 'none';
+  panel.style.display = willShow ? 'block' : 'none';
+  if (willShow && !document.getElementById('fundQStart_'+groupId).value) {
+    // 默认展示本月
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+    document.getElementById('fundQStart_'+groupId).value = first;
+    document.getElementById('fundQEnd_'+groupId).value = today();
+    runFundDateQuery(groupId);
+  }
+};
+
+function getFundDateQueryRows(groupId, startDate, endDate) {
+  const sales = window._fundGroupSales?.[groupId] || [];
+  const td = today();
+  const rows = [];
+  sales.forEach(s => {
+    (s.schedule||[]).forEach(p => {
+      const dd = (p.dueDate||'').replace(/\//g,'-');
+      if (!dd || dd < startDate || dd > endDate) return;
+      const recvPrin = p.paid ? (+p.paidPrincipal||0) : 0;
+      const recvInt  = p.paid ? (+p.paidInterest||0) + (+p.paidServiceFee||0) : 0;
+      const duePrin  = +p.principalDue||0;
+      const dueInt   = (+p.interestDue||0) + (+p.serviceFeeDue||0);
+      let status = p.paid ? '已收' : (dd < td ? '逾期未收' : '未到期');
+      rows.push({
+        dueDate: dd, customer: s.customer, contractId: s.id, period: p.period,
+        duePrincipal: duePrin, dueInterest: dueInt,
+        recvPrincipal: recvPrin, recvInterest: recvInt,
+        gap: (duePrin + dueInt) - (recvPrin + recvInt),
+        status
+      });
+    });
+  });
+  return rows.sort((a,b) => a.dueDate.localeCompare(b.dueDate));
+}
+
+window.runFundDateQuery = function(groupId) {
+  const start = document.getElementById('fundQStart_'+groupId)?.value;
+  const end = document.getElementById('fundQEnd_'+groupId)?.value;
+  const summaryWrap = document.getElementById('fundDateQuerySummary_'+groupId);
+  const tableWrap = document.getElementById('fundDateQueryTable_'+groupId);
+  if (!start || !end) {
+    if (summaryWrap) summaryWrap.innerHTML = `<div class="alert alert-red">⚠️ ${tl('请选择开始和结束日期','Please select both dates','សូមជ្រើសរើសកាលបរិច្ឆេទ')}</div>`;
+    if (tableWrap) tableWrap.innerHTML = '';
+    return;
+  }
+  const rows = getFundDateQueryRows(groupId, start, end);
+  window._fundDateQueryCache = window._fundDateQueryCache || {};
+  window._fundDateQueryCache[groupId] = rows;
+
+  const dueTotal = rows.reduce((a,r) => a + r.duePrincipal + r.dueInterest, 0);
+  const recvTotal = rows.reduce((a,r) => a + r.recvPrincipal + r.recvInterest, 0);
+  const gapTotal = dueTotal - recvTotal;
+  const overdueCount = rows.filter(r => r.status==='逾期未收').length;
+
+  if (summaryWrap) {
+    summaryWrap.innerHTML = rows.length ? `
+    <div style="display:flex;gap:20px;flex-wrap:wrap;padding:10px 14px;background:#f0f7ff;border-radius:8px;margin-bottom:10px">
+      <span style="font-size:13px">${tl('应收总额','Receivable','ត្រូវទទួល')}：<b style="color:var(--blue)">${fmt(dueTotal)}</b></span>
+      <span style="font-size:13px">${tl('实收总额','Received','បានទទួល')}：<b style="color:var(--green)">${fmt(recvTotal)}</b></span>
+      <span style="font-size:13px">${tl('欠款总额','Outstanding','ជំពាក់')}：<b style="color:var(--red)">${fmt(gapTotal)}</b></span>
+      <span style="font-size:13px">${tl('逾期笔数','Overdue Count','ចំនួនហួសកំណត់')}：<b style="color:var(--red)">${overdueCount}</b> / ${rows.length}</span>
+    </div>` : '';
+  }
+  if (tableWrap) {
+    if (!rows.length) {
+      tableWrap.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted)">${tl('该日期范围内没有到期记录','No due periods in this range','គ្មានទិន្នន័យ')}</div>`;
+      return;
+    }
+    tableWrap.innerHTML = `<div class="table-wrap" style="max-height:450px;overflow-y:auto"><table>
+      <tr><th>${tl('到期日','Due Date','ថ្ងៃដល់កំណត់')}</th><th>${t('colCustomer')}</th><th>#</th><th>${tl('期数','Period','ដំណាក់')}</th>
+        <th>${tl('应收本金','Due Principal','ដើមទុនត្រូវ')}</th><th>${tl('应收利息','Due Interest','ការប្រាក់ត្រូវ')}</th>
+        <th>${tl('实收本金','Recv Principal','ដើមទុនបាន')}</th><th>${tl('实收利息','Recv Interest','ការប្រាក់បាន')}</th>
+        <th>${tl('差额','Gap','ខ្វះ')}</th><th>${tl('状态','Status','ស្ថានភាព')}</th></tr>
+      ${rows.map(r => {
+        const color = r.status==='已收' ? 'var(--green)' : r.status==='逾期未收' ? 'var(--red)' : 'var(--muted)';
+        const bg = r.status==='已收' ? '#e8f5e9' : r.status==='逾期未收' ? '#ffebee' : '#f5f5f5';
+        return `<tr>
+          <td>${r.dueDate}</td>
+          <td class="fw700">${esc(r.customer||'')}</td>
+          <td class="text-blue">#${esc(String(r.contractId||''))}</td>
+          <td>${r.period}</td>
+          <td>${fmt(r.duePrincipal)}</td>
+          <td>${fmt(r.dueInterest)}</td>
+          <td>${fmt(r.recvPrincipal)}</td>
+          <td>${fmt(r.recvInterest)}</td>
+          <td style="color:${r.gap>0?'var(--red)':'var(--muted)'}">${fmt(r.gap)}</td>
+          <td><span style="background:${bg};color:${color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${r.status}</span></td>
+        </tr>`;
+      }).join('')}
+    </table></div>`;
+  }
+};
+
+window.exportFundDateQuery = function(groupId, groupLabel) {
+  const rows = window._fundDateQueryCache?.[groupId];
+  if (!rows || !rows.length) { alert(tl('请先查询后再导出','Please query first','សូមស្វែងរកមុននឹងទាញយក')); return; }
+  const start = document.getElementById('fundQStart_'+groupId)?.value || '';
+  const end = document.getElementById('fundQEnd_'+groupId)?.value || '';
+  const exportRows = rows.map(r => ({
+    '到期日': r.dueDate, '客户': r.customer, '合同号': r.contractId, '期数': r.period,
+    '应收本金': r.duePrincipal, '应收利息': r.dueInterest,
+    '实收本金': r.recvPrincipal, '实收利息': r.recvInterest,
+    '差额': r.gap, '状态': r.status,
+  }));
+  const dueTotal = rows.reduce((a,r) => a + r.duePrincipal + r.dueInterest, 0);
+  const recvTotal = rows.reduce((a,r) => a + r.recvPrincipal + r.recvInterest, 0);
+  exportRows.push({ '到期日': '合计', '客户':'', '合同号':'', '期数':'', '应收本金':'', '应收利息':'', '实收本金':'', '实收利息':'', '差额': dueTotal-recvTotal, '状态':`应收${dueTotal.toFixed(2)}/实收${recvTotal.toFixed(2)}` });
+  const ws = XLSX.utils.json_to_sheet(exportRows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '应收实收明细');
+  XLSX.writeFile(wb, `${groupLabel}_应收实收明细_${start}~${end}.xlsx`);
+};
+
 window.toggleFundMonthly = function(groupId) {
   const panel = document.getElementById('fundMonthly_' + groupId);
   if (!panel) return;
@@ -5731,17 +5927,52 @@ function getFundMonthlyRows(groupId) {
     const d = p.date || '';
     const month = d.slice(0, 7); // YYYY-MM
     if (!month) return;
-    if (!byMonth[month]) byMonth[month] = { month, count: 0, principal: 0, interest: 0, penalty: 0, minDate: d, maxDate: d };
+    if (!byMonth[month]) byMonth[month] = { month, count: 0, total: 0, minDate: d, maxDate: d };
     const m = byMonth[month];
     m.count += 1;
-    m.principal += (+p.principal||0);
-    m.interest  += (+p.interest||0) + (+p.serviceFee||0);
-    m.penalty   += (+p.penalty||0);
+    m.total += (+p.total||0);
     if (d < m.minDate) m.minDate = d;
     if (d > m.maxDate) m.maxDate = d;
   });
   return Object.values(byMonth).sort((a,b) => a.month.localeCompare(b.month));
 }
+
+function getFundMonthCustomerRows(groupId, month) {
+  const list = (window._fundGroupPays && window._fundGroupPays[groupId]) || [];
+  const inMonth = list.filter(p => (p.date||'').slice(0,7) === month);
+  const byContract = {};
+  inMonth.forEach(p => {
+    const key = String(p.contractId||'') + '|' + (p.customer||'');
+    if (!byContract[key]) byContract[key] = { customer: p.customer, contractId: p.contractId, dates: [], total: 0, hasEarly: false, maxDaysLate: 0 };
+    const g = byContract[key];
+    const lateTag = (typeof p.daysLate === 'number' && p.daysLate > 0) ? ` (逾期${p.daysLate}天)` : '';
+    g.dates.push((p.date||'') + lateTag);
+    g.total += (+p.total||0);
+    if (p.isEarlySettlement) g.hasEarly = true;
+    if (typeof p.daysLate === 'number' && p.daysLate > g.maxDaysLate) g.maxDaysLate = p.daysLate;
+  });
+  return Object.values(byContract).sort((a,b) => a.customer.localeCompare(b.customer));
+}
+
+window.toggleFundMonthRow = function(groupId, month) {
+  const el = document.getElementById(`fundMonthCust_${groupId}_${month}`);
+  if (!el) return;
+  const willShow = el.style.display === 'none';
+  el.style.display = willShow ? 'table-row' : 'none';
+  if (willShow) {
+    const rows = getFundMonthCustomerRows(groupId, month);
+    const inner = el.querySelector('td');
+    inner.innerHTML = `<div style="padding:10px;background:#fafbfc"><table style="width:100%">
+      <tr><th>${t('colCustomer')}</th><th>#</th><th>${tl('还款日期','Payment Dates','ថ្ងៃទូទាត់')}</th><th>${tl('金额','Amount','ចំនួន')}</th></tr>
+      ${rows.map(r => `<tr>
+        <td class="fw700">${esc(r.customer||'')}${r.hasEarly?` <span style="background:#f3e5f5;color:#9c27b0;font-size:10px;padding:1px 6px;border-radius:8px">⚡${tl('提前结清','early','មុន')}</span>`:''}</td>
+        <td class="text-blue">#${esc(String(r.contractId||''))}</td>
+        <td style="font-size:12px;${r.maxDaysLate>0?'color:var(--red)':''}">${r.dates.join(', ')}</td>
+        <td class="fw700 text-green">${fmt(r.total)}</td>
+      </tr>`).join('')}
+    </table></div>`;
+  }
+};
 
 function renderFundMonthlyTable(groupId) {
   const wrap = document.getElementById('fundMonthlyTable_' + groupId);
@@ -5752,23 +5983,21 @@ function renderFundMonthlyTable(groupId) {
     return;
   }
   const totalCount = rows.reduce((a,r) => a + r.count, 0);
-  const totalAmt = rows.reduce((a,r) => a + r.principal + r.interest + r.penalty, 0);
+  const totalAmt = rows.reduce((a,r) => a + r.total, 0);
   wrap.innerHTML = `
-  <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${tl('注：还款笔数按每笔流水记录计算，同一客户当月还款多次会分别计入','Note: count is per transaction, not per customer','កំណត់ចំណាំ')}</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${tl('注：还款笔数按每笔流水记录计算，同一客户当月还款多次会分别计入；点击月份行可展开查看该月客户明细','Note: click a month row to see customer breakdown','កំណត់ចំណាំ')}</div>
   <div class="table-wrap"><table>
-    <tr><th>${tl('月份','Month','ខែ')}</th><th>${tl('日期范围','Date Range','ចន្លោះកាលបរិច្ឆេទ')}</th><th>${tl('还款笔数','Payment Count','ចំនួនដង')}</th><th>${tl('本金合计','Principal','ដើមទុន')}</th><th>${tl('利息合计','Interest','ការប្រាក់')}</th><th>${tl('滞纳金合计','Penalty','ពិន័យ')}</th><th>${tl('回款总额','Total','សរុប')}</th></tr>
-    ${rows.map(r => {
-      const total = r.principal + r.interest + r.penalty;
-      return `<tr>
+    <tr><th>${tl('月份','Month','ខែ')}</th><th>${tl('日期范围','Date Range','ចន្លោះកាលបរិច្ឆេទ')}</th><th>${tl('还款笔数','Payment Count','ចំនួនដង')}</th><th>${tl('回款总额','Total','សរុប')}</th><th></th></tr>
+    ${rows.map(r => `
+      <tr onclick="toggleFundMonthRow(${groupId}, '${r.month}')" style="cursor:pointer">
         <td class="fw700">${r.month}</td>
         <td>${r.minDate} ~ ${r.maxDate}</td>
         <td>${r.count}</td>
-        <td>${fmt(r.principal)}</td>
-        <td>${fmt(r.interest)}</td>
-        <td>${fmt(r.penalty)}</td>
-        <td class="fw700 text-green">${fmt(total)}</td>
-      </tr>`;
-    }).join('')}
+        <td class="fw700 text-green">${fmt(r.total)}</td>
+        <td style="color:var(--blue);font-size:12px">▼ ${tl('展开','Expand','ពង្រីក')}</td>
+      </tr>
+      <tr id="fundMonthCust_${groupId}_${r.month}" style="display:none"><td colspan="5"></td></tr>
+    `).join('')}
   </table></div>
   <div style="margin-top:6px;font-size:13px;font-weight:700">${tl('合计','Total','សរុប')} ${totalCount} ${tl('笔，回款总额','payments, total','ដង, សរុប')} <span class="text-green">${fmt(totalAmt)}</span></div>`;
 }
@@ -5776,21 +6005,23 @@ function renderFundMonthlyTable(groupId) {
 window.exportFundMonthly = function(groupId, groupLabel) {
   const rows = getFundMonthlyRows(groupId);
   if (!rows.length) { alert(tl('没有数据可导出','No data to export','គ្មានទិន្នន័យ')); return; }
-  const exportRows = rows.map(r => ({
-    '月份': r.month,
-    '日期范围': `${r.minDate} ~ ${r.maxDate}`,
-    '还款笔数': r.count,
-    '本金合计': r.principal,
-    '利息合计': r.interest,
-    '滞纳金合计': r.penalty,
-    '回款总额': r.principal + r.interest + r.penalty,
-  }));
-  const totalCount = rows.reduce((a,r) => a + r.count, 0);
-  const totalAmt = rows.reduce((a,r) => a + r.principal + r.interest + r.penalty, 0);
-  exportRows.push({ '月份': '合计', '日期范围': '', '还款笔数': totalCount, '本金合计': '', '利息合计': '', '滞纳金合计': '', '回款总额': totalAmt });
-  const ws = XLSX.utils.json_to_sheet(exportRows);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '按月回款统计');
+  const summaryRows = rows.map(r => ({ '月份': r.month, '日期范围': `${r.minDate} ~ ${r.maxDate}`, '还款笔数': r.count, '回款总额': r.total }));
+  const totalCount = rows.reduce((a,r) => a + r.count, 0);
+  const totalAmt = rows.reduce((a,r) => a + r.total, 0);
+  summaryRows.push({ '月份': '合计', '日期范围': '', '还款笔数': totalCount, '回款总额': totalAmt });
+  const ws1 = XLSX.utils.json_to_sheet(summaryRows);
+  XLSX.utils.book_append_sheet(wb, ws1, '按月汇总');
+  // 每月客户明细单独一张sheet
+  rows.forEach(r => {
+    const custRows = getFundMonthCustomerRows(groupId, r.month).map(c => ({
+      '客户': c.customer, '合同号': c.contractId, '还款日期': c.dates.join(', '), '含提前结清': c.hasEarly?'是':'', '金额': c.total
+    }));
+    if (custRows.length) {
+      const ws = XLSX.utils.json_to_sheet(custRows);
+      XLSX.utils.book_append_sheet(wb, ws, r.month.replace('-','年')+'月');
+    }
+  });
   XLSX.writeFile(wb, `${groupLabel}_按月回款统计_${today()}.xlsx`);
 };
 
@@ -5820,13 +6051,12 @@ function getFundDetailRows(groupId, keyword) {
   list.forEach(p => {
     const key = String(p.contractId||'') + '|' + (p.customer||'');
     if (!byContract[key]) {
-      byContract[key] = { customer: p.customer, contractId: p.contractId, principal: 0, interest: 0, penalty: 0, count: 0, lastDate: '' };
+      byContract[key] = { customer: p.customer, contractId: p.contractId, total: 0, count: 0, lastDate: '', hasEarly: false };
     }
     const g = byContract[key];
-    g.principal += (+p.principal||0);
-    g.interest  += (+p.interest||0) + (+p.serviceFee||0);
-    g.penalty   += (+p.penalty||0);
+    g.total += (+p.total||0);
     g.count += 1;
+    if (p.isEarlySettlement) g.hasEarly = true;
     if (!g.lastDate || (p.date||'') > g.lastDate) g.lastDate = p.date||'';
   });
   return Object.values(byContract).sort((a,b) => b.lastDate.localeCompare(a.lastDate));
@@ -5841,13 +6071,11 @@ window.exportFundDetail = function(groupId, groupLabel) {
     '合同号': r.contractId || '',
     '还款次数': r.count,
     '最近还款日': r.lastDate,
-    '本金合计': r.principal,
-    '利息合计': r.interest,
-    '滞纳金合计': r.penalty,
-    '总金额': r.principal + r.interest + r.penalty,
+    '含提前结清': r.hasEarly ? '是' : '',
+    '总金额': r.total,
   }));
-  const grandTotal = rows.reduce((a,r) => a + r.principal + r.interest + r.penalty, 0);
-  exportRows.push({ '客户': '合计', '合同号': '', '还款次数': rows.length + '位客户', '最近还款日': '', '本金合计': '', '利息合计': '', '滞纳金合计': '', '总金额': grandTotal });
+  const grandTotal = rows.reduce((a,r) => a + r.total, 0);
+  exportRows.push({ '客户': '合计', '合同号': '', '还款次数': rows.length + '位客户', '最近还款日': '', '含提前结清': '', '总金额': grandTotal });
   const ws = XLSX.utils.json_to_sheet(exportRows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '还款明细');
@@ -5862,23 +6090,16 @@ function renderFundDetailTable(groupId, keyword) {
     wrap.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted)">${tl('没有匹配的还款记录','No matching records','គ្មានទិន្នន័យ')}</div>`;
     return;
   }
-  const grandTotal = rows.reduce((a,r) => a + r.principal + r.interest + r.penalty, 0);
-
+  const grandTotal = rows.reduce((a,r) => a + r.total, 0);
   wrap.innerHTML = `<div class="table-wrap" style="max-height:400px;overflow-y:auto"><table>
-    <tr><th>${t('colCustomer')}</th><th>#</th><th>${tl('还款次数','Payments','ចំនួនដង')}</th><th>${tl('最近还款日','Last Payment','ថ្ងៃចុងក្រោយ')}</th><th>${tl('本金合计','Principal','ដើមទុន')}</th><th>${tl('利息合计','Interest','ការប្រាក់')}</th><th>${tl('滞纳金合计','Penalty','ពិន័យ')}</th><th>${tl('总金额','Total','សរុប')}</th></tr>
-    ${rows.map(r => {
-      const total = r.principal + r.interest + r.penalty;
-      return `<tr>
-        <td class="fw700">${esc(r.customer||'')}</td>
+    <tr><th>${t('colCustomer')}</th><th>#</th><th>${tl('还款次数','Payments','ចំនួនដង')}</th><th>${tl('最近还款日','Last Payment','ថ្ងៃចុងក្រោយ')}</th><th>${tl('总金额','Total','សរុប')}</th></tr>
+    ${rows.map(r => `<tr>
+        <td class="fw700">${esc(r.customer||'')}${r.hasEarly?` <span style="background:#f3e5f5;color:#9c27b0;font-size:10px;padding:1px 6px;border-radius:8px">⚡${tl('含提前结清','early','មុន')}</span>`:''}</td>
         <td class="text-blue">#${esc(String(r.contractId||''))}</td>
         <td>${r.count}</td>
         <td>${r.lastDate}</td>
-        <td>${fmt(r.principal)}</td>
-        <td>${fmt(r.interest)}</td>
-        <td>${fmt(r.penalty)}</td>
-        <td class="fw700 text-green">${fmt(total)}</td>
-      </tr>`;
-    }).join('')}
+        <td class="fw700 text-green">${fmt(r.total)}</td>
+      </tr>`).join('')}
   </table></div>
   <div style="margin-top:6px;font-size:13px;font-weight:700">${tl('共','Total','សរុប')} ${rows.length} ${tl('位客户还款，合计','customers, total','នាក់, សរុប')} <span class="text-green">${fmt(grandTotal)}</span></div>`;
 }
@@ -5888,6 +6109,19 @@ function renderFundStats() {
   const pays     = DB_get('payments')||[];
   const earlyPays= DB_get('earlyPayments')||[];
   const expenses = DB_get('expenses')||[];
+  const salesById = {};
+  sales.forEach(s => { salesById[String(s.id)] = s; });
+
+  function getDaysLate(p) {
+    const s = salesById[String(p.contractId)];
+    if (!s) return null;
+    const sched = (s.schedule||[]).find(x => x.period === p.period);
+    if (!sched || !sched.dueDate || !p.date) return null;
+    const due = new Date(sched.dueDate.replace(/\//g,'-'));
+    const paid = new Date(p.date);
+    const days = Math.round((paid - due) / 86400000);
+    return days; // 正数=逾期几天，0或负数=按时/提前
+  }
 
   // 读取账户组配置，默认两组
   let groups = DB_get('fundGroups');
@@ -5912,8 +6146,19 @@ function renderFundStats() {
     const totalIn = gSales.reduce((a,s) => a + ((+s.salePrice||0) - (+s.deposit||0)), 0);
     // 已回收本金
     const gIds = new Set(gSales.map(s=>String(s.id)));
-    const gPays = pays.filter(p => gIds.has(String(p.contractId)));
-    const recovered = gPays.reduce((a,p) => a + (+p.principal||0), 0);
+    const gPaysRaw = pays.filter(p => gIds.has(String(p.contractId)));
+    // 🔧 把"提前还款"也合并进回款记录里，统一只看总金额
+    const gEarlyPays = earlyPays.filter(e => gIds.has(String(e.contractId))).map(e => ({
+      date: e.date, customer: e.customer, contractId: e.contractId,
+      principal: 0, interest: 0, serviceFee: 0, penalty: 0,
+      total: +(e.negotiated ?? e.negotiatedAmount ?? 0),
+      isEarlySettlement: true
+    }));
+    const gPays = [
+      ...gPaysRaw.map(p => ({ ...p, total: (+p.principal||0)+(+p.interest||0)+(+p.serviceFee||0)+(+p.penalty||0), daysLate: getDaysLate(p) })),
+      ...gEarlyPays
+    ];
+    const recovered = gPaysRaw.reduce((a,p) => a + (+p.principal||0), 0);
     // 未回收
     const remaining = totalIn - recovered;
     // 利息收益
@@ -5929,9 +6174,11 @@ function renderFundStats() {
 
   // 供"查看明细"表格使用：把每组的还款流水（含客户姓名）存到全局变量
   window._fundGroupPays = {};
-  stats.forEach(({g, gPays}) => {
+  window._fundGroupSales = {};
+  stats.forEach(({g, gPays, gSales}) => {
     window._fundGroupPays[g.id] = (gPays||[]).slice()
       .sort((a,b) => (b.date||'').localeCompare(a.date||''));
+    window._fundGroupSales[g.id] = gSales||[];
   });
 
   const tSalary  = expenses.filter(e=>e.cat==='员工工资').reduce((a,e)=>a+(+e.amount||0),0);
@@ -6003,12 +6250,32 @@ function renderFundStats() {
       <span style="font-size:13px">📊 综合收益率 = <b style="color:var(--blue)">${totalIn>0?((interest+penalty+earlyProfit-rebate)/totalIn*100).toFixed(2):0}%</b></span>
       <button class="btn btn-outline btn-sm" onclick="toggleFundDetail(${g.id})" style="margin-left:auto">📋 查看明细</button>
       <button class="btn btn-outline btn-sm" onclick="toggleFundMonthly(${g.id})">📅 按月回款统计</button>
+      <button class="btn btn-outline btn-sm" onclick="toggleFundDateQuery(${g.id})">🔍 自定义日期查询</button>
+      <button class="btn btn-outline btn-sm" onclick="toggleFundOverdue(${g.id})" style="color:var(--red)">🔴 逾期客户总表</button>
+    </div>
+    <div id="fundOverdue_${g.id}" style="display:none;margin-top:12px">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+        <button class="btn btn-outline btn-sm" onclick="exportFundOverdue(${g.id}, '${esc(g.label)}')">📥 导出Excel</button>
+      </div>
+      <div id="fundOverdueTable_${g.id}"></div>
     </div>
     <div id="fundMonthly_${g.id}" style="display:none;margin-top:12px">
       <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
         <button class="btn btn-outline btn-sm" onclick="exportFundMonthly(${g.id}, '${esc(g.label)}')">📥 导出Excel</button>
       </div>
       <div id="fundMonthlyTable_${g.id}"></div>
+    </div>
+    <div id="fundDateQuery_${g.id}" style="display:none;margin-top:12px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
+        <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">${tl('开始日期','Start Date','ថ្ងៃចាប់ផ្តើម')}</label>
+          <input type="date" id="fundQStart_${g.id}" style="padding:8px"></div>
+        <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">${tl('结束日期','End Date','ថ្ងៃបញ្ចប់')}</label>
+          <input type="date" id="fundQEnd_${g.id}" style="padding:8px"></div>
+        <button class="btn btn-primary btn-sm" onclick="runFundDateQuery(${g.id})">🔍 ${tl('查询','Query','ស្វែងរក')}</button>
+        <button class="btn btn-outline btn-sm" onclick="exportFundDateQuery(${g.id}, '${esc(g.label)}')" style="margin-left:auto">📥 导出Excel</button>
+      </div>
+      <div id="fundDateQuerySummary_${g.id}"></div>
+      <div id="fundDateQueryTable_${g.id}"></div>
     </div>
     <div id="fundDetail_${g.id}" style="display:none;margin-top:12px">
       <div style="display:flex;gap:8px;margin-bottom:8px">
