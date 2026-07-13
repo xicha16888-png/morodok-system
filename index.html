@@ -6180,16 +6180,45 @@ window.toggleDetailRow = function(rowId, arrowId) {
 };
 
 // ── 业务员 tab：按合同「业务员」字段分组 ──
+window._staffSalesMonth = ''; // '' = 全部月份（AUDIT_START_MONTH 起）
+window.rerenderSalesTab = function() {
+  const wrap = document.getElementById('staffStatsWrap');
+  if (wrap) wrap.innerHTML = buildSalespersonStats();
+};
+
 function buildSalespersonStats() {
-  const sales = DB_get('sales') || [];
+  const allSales = DB_get('sales') || [];
   const td = today();
   const thisMonth = td.slice(0,7);
+
+  // 月份筛选选项：AUDIT_START_MONTH 起，实际出现过的月份
+  const months = [...new Set(allSales.map(s => (s.date||'').replace(/\//g,'-').slice(0,7)).filter(m => m && m >= AUDIT_START_MONTH))].sort().reverse();
+  const monthOpts = months.map(m => `<option value="${m}" ${window._staffSalesMonth===m?'selected':''}>${m}</option>`).join('');
+  const monthSelectHtml = `
+  <div style="margin-bottom:12px">
+    <select onchange="window._staffSalesMonth=this.value;rerenderSalesTab()" style="padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit">
+      <option value="" ${window._staffSalesMonth===''?'selected':''}>${tl('全部月份('+AUDIT_START_MONTH+'起)','All Months (from '+AUDIT_START_MONTH+')','')}</option>
+      ${monthOpts}
+    </select>
+  </div>`;
+
+  // 只统计 AUDIT_START_MONTH 起、且符合当前月份筛选的合同
+  const sales = allSales.filter(s => {
+    const m = (s.date||'').replace(/\//g,'-').slice(0,7);
+    if (!m || m < AUDIT_START_MONTH) return false;
+    if (window._staffSalesMonth && m !== window._staffSalesMonth) return false;
+    return true;
+  });
 
   const byPerson = {};
   sales.forEach(s => {
     const name = (s.salesperson||'').trim() || tl('未填写','Unassigned','មិន​បាន​បញ្ជាក់');
     (byPerson[name] = byPerson[name] || []).push(s);
   });
+
+  if (!Object.keys(byPerson).length) {
+    return monthSelectHtml + `<div class="card"><div class="empty-state"><div class="ei">💼</div><p>${tl('该范围内暂无数据','No data in this range','គ្មាន​ទិន្នន័យ')}</p></div></div>`;
+  }
 
   const rows = Object.keys(byPerson).map(name => {
     const list = byPerson[name];
@@ -6202,14 +6231,12 @@ function buildSalespersonStats() {
     return { name, total: list.length, monthCount, totalLoan, repayRate, bd30Rate: bd30.rate, bd30Amt: bd30.amt, list };
   }).sort((a,b) => b.total - a.total);
 
-  if (!rows.length) return `<div class="card"><div class="empty-state"><div class="ei">💼</div><p>${tl('暂无数据','No data','គ្មាន​ទិន្នន័យ')}</p></div></div>`;
-
   const totalPeople = rows.length;
   const totalContracts = rows.reduce((a,d)=>a+d.total,0);
   const totalLoanAll = rows.reduce((a,d)=>a+d.totalLoan,0);
   const highRisk = rows.filter(d=>d.bd30Rate>10).length;
 
-  return `
+  return monthSelectHtml + `
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
     ${[
       ['💼', tl('业务员数','Salespeople','ចំនួន'), totalPeople, 'var(--sky)'],
@@ -6268,26 +6295,51 @@ function buildSalespersonStats() {
     </div>
   </div>
   <div style="margin-top:10px;font-size:11px;color:var(--muted)">
-    ${tl('按合同「业务员」字段归属（销售登记时填写）；回款率/坏账率为该业务员名下所有合同累计口径，不分月份','Grouped by the contract Salesperson field; repay/bad-debt rate is lifetime across all their contracts','')}
+    ${tl('只统计 '+AUDIT_START_MONTH+' 起签约的合同；按合同「业务员」字段归属（销售登记时填写）；回款率/坏账率为该业务员名下所选范围内合同累计口径','Only contracts signed from '+AUDIT_START_MONTH+' onward; grouped by the contract Salesperson field; repay/bad-debt rate is cumulative across the selected range','')}
   </div>`;
 }
 
 // ── 催收员 tab：按还款记录「登记人」字段分组（从本次更新起自动记录，登记时无需手动填写）──
+window._staffCollectorMonth = ''; // '' = 全部月份（AUDIT_START_MONTH 起）
+window.rerenderCollectorTab = function() {
+  const wrap = document.getElementById('staffStatsWrap');
+  if (wrap) wrap.innerHTML = buildCollectorStats();
+};
+
 function buildCollectorStats() {
   const sales = DB_get('sales') || [];
-  const payments = DB_get('payments') || [];
+  const allPayments = DB_get('payments') || [];
   const td = today();
   const thisMonth = td.slice(0,7);
 
   const salesById = {};
   sales.forEach(s => { salesById[String(s.id)] = s; });
 
+  // 月份筛选选项：按还款日期，AUDIT_START_MONTH 起实际出现过的月份
+  const months = [...new Set(allPayments.map(p => (p.date||'').replace(/\//g,'-').slice(0,7)).filter(m => m && m >= AUDIT_START_MONTH))].sort().reverse();
+  const monthOpts = months.map(m => `<option value="${m}" ${window._staffCollectorMonth===m?'selected':''}>${m}</option>`).join('');
+  const monthSelectHtml = `
+  <div style="margin-bottom:12px">
+    <select onchange="window._staffCollectorMonth=this.value;rerenderCollectorTab()" style="padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit">
+      <option value="" ${window._staffCollectorMonth===''?'selected':''}>${tl('全部月份('+AUDIT_START_MONTH+'起)','All Months (from '+AUDIT_START_MONTH+')','')}</option>
+      ${monthOpts}
+    </select>
+  </div>`;
+
+  // 只统计 AUDIT_START_MONTH 起、且符合当前月份筛选、且有登记人归属的还款记录
+  const payments = allPayments.filter(p => {
+    const m = (p.date||'').replace(/\//g,'-').slice(0,7);
+    if (!m || m < AUDIT_START_MONTH) return false;
+    if (window._staffCollectorMonth && m !== window._staffCollectorMonth) return false;
+    return true;
+  });
+
   const attributed = payments.filter(p => p.recordedBy);
-  const unattributed = payments.length - attributed.length;
+  const unattributedInRange = payments.length - attributed.length;
 
   if (!attributed.length) {
-    return `<div class="card"><div class="empty-state"><div class="ei">📞</div>
-      <p>${tl('暂无归属数据','No attributed data yet','គ្មាន​ទិន្នន័យ')}</p>
+    return monthSelectHtml + `<div class="card"><div class="empty-state"><div class="ei">📞</div>
+      <p>${tl('该范围内暂无归属数据','No attributed data in this range','គ្មាន​ទិន្នន័យ')}</p>
       <p style="font-size:12px;color:var(--muted);margin-top:10px;max-width:360px;margin-left:auto;margin-right:auto">${tl('系统已开始自动记录「谁登记了这笔还款」，从现在起的新还款记录会自动出现在这里，不需要任何人手动填写','The system now auto-captures who recorded each payment — new records will appear here automatically, no manual entry needed','')}</p>
     </div></div>`;
   }
@@ -6322,7 +6374,7 @@ function buildCollectorStats() {
   const totalAmt = rows.reduce((a,d)=>a+d.totalCollected,0);
   const totalPenaltyAll = rows.reduce((a,d)=>a+d.totalPenalty,0);
 
-  return `
+  return monthSelectHtml + `
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
     ${[
       ['📞', tl('人数','Staff','ចំនួន'), totalPeople, 'var(--sky)'],
@@ -6358,9 +6410,9 @@ function buildCollectorStats() {
       </table>
     </div>
   </div>
-  ${unattributed>0 ? `<div style="margin-top:10px;font-size:11px;color:var(--muted)">${tl('另有 '+unattributed+' 笔历史还款记录没有登记人信息（本功能上线前的旧数据），不计入统计','', '')}</div>` : ''}
+  ${unattributedInRange>0 ? `<div style="margin-top:10px;font-size:11px;color:var(--muted)">${tl('该范围内另有 '+unattributedInRange+' 笔还款记录没有登记人信息（本功能上线前的旧数据），不计入统计','', '')}</div>` : ''}
   <div style="margin-top:6px;font-size:11px;color:var(--muted)">
-    ${tl('归属 = 登记这笔还款时登录的账号（自动记录，无需手动填写）；逾期追回 = 还款日晚于该期应还日的部分，体现催收实际成效，区别于客户到期自己主动还款','Attribution = the logged-in account when the payment was recorded (automatic); overdue recovered = payments made after the due date','')}
+    ${tl('只统计 '+AUDIT_START_MONTH+' 起的还款记录；归属 = 登记这笔还款时登录的账号（自动记录，无需手动填写）；逾期追回 = 还款日晚于该期应还日的部分，体现催收实际成效，区别于客户到期自己主动还款','Only payments from '+AUDIT_START_MONTH+' onward; attribution = the logged-in account when the payment was recorded; overdue recovered = payments made after the due date','')}
   </div>`;
 }
 
@@ -8285,7 +8337,14 @@ window.openAuditDetail = async function(contractId) {
   const statusStyle = {'待审核':'#e65100','已通过':'#2e7d32','有问题':'#c62828','待补充':'#1565c0'};
 
   content.innerHTML = `
-    <h3 style="margin:0 0 16px;color:#0d2137">合同审核 — #${s.id}</h3>
+    <h3 style="margin:0 0 8px;color:#0d2137">合同审核 — #${s.id}</h3>
+    ${audit?.auditor_name ? `
+    <div style="display:inline-flex;align-items:center;gap:6px;background:#e3f2fd;color:#1565c0;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:16px">
+      🕵️ 当前审核人：${esc(audit.auditor_name)}${audit.updated_at ? `（${new Date(audit.updated_at).toLocaleString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})} 更新）` : ''}
+    </div>` : `
+    <div style="display:inline-flex;align-items:center;gap:6px;background:#f5f5f5;color:#90a4ae;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:16px">
+      🕵️ 尚未有人审核过这份合同
+    </div>`}
     <!-- 基本信息 -->
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px">
       ${[['客户姓名',s.customer],['手机号',s.customerPhone||'—'],['型号',s.modelName||'—'],
