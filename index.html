@@ -1010,12 +1010,12 @@ function buildSidebar() {
       ${navItem('payment-add','💳',t('paymentAdd'))}
       ${navItem('early-payment','⚡',t('earlyPayment'))}
     </div>`:''}
-    ${(show('audit')||show('auditor-stats'))?`
+    ${(show('audit')||show('staff-stats'))?`
     <div class="nav-divider"></div>
     <div style="padding:4px 0">
       <div class="sb-label">${tl('内审管理','Audit Mgmt','ការគ្រប់គ្រង​សវនកម្ម')}</div>
       ${navItem('audit','📋','合同审核')}
-      ${navItem('auditor-stats','🕵️','内审绩效 🔐')}
+      ${navItem('staff-stats','🏆','员工绩效 🔐')}
     </div>`:''}
     ${(show('stats-collection')||show('stats-profit')||show('finance-report')||show('expenses')||show('store-stats')||show('fund-stats'))?`
     <div class="nav-divider"></div>
@@ -1076,7 +1076,7 @@ const MOB_MORE_ITEMS = [
   {page:'reminder-tomorrow',icon:'⏰', label:'reminderTomorrow'},
   {divider:true},
   {page:'audit',            icon:'📋', label:'合同审核'},
-  {page:'auditor-stats',    icon:'🕵️', label:'内审绩效',        lock:true},
+  {page:'staff-stats',      icon:'🏆', label:'员工绩效',        lock:true},
   {page:'stats-collection', icon:'📊', label:'statsCollection', lock:true},
   {page:'stats-profit',     icon:'💰', label:'statsProfit',     lock:true},
   {page:'finance-report',   icon:'📈', label:'financeReport',   lock:true},
@@ -1274,7 +1274,7 @@ window.closeModal = () => document.getElementById('modalBg').classList.remove('o
 // ══════════════════════════════════════════════════════
 // 🔐 密码保护
 // ══════════════════════════════════════════════════════
-const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','expenses','store-stats','auditor-stats','fund-stats'];
+const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','expenses','store-stats','staff-stats','fund-stats'];
 const REPORT_PWD = 'morodok888';
 const DELETE_PWD = 'cao';
 const EDIT_PWD = 'edit888';
@@ -1343,7 +1343,7 @@ window.checkPwd = function(page) {
 const PAGES = {
   'home': renderHome, 'sale-add': renderSaleAdd, 'sale-list': renderSaleList,
   'payment-add': renderPaymentAdd, 'early-payment': renderEarlyPayment,
-  'stats-collection': renderStatsCollection, 'finance-report': renderFinanceReport, 'expenses': renderExpenses, 'store-stats': renderStoreStats, 'auditor-stats': renderAuditorStats, 'fund-stats': renderFundStats, 'fund-settings': renderFundSettings,
+  'stats-collection': renderStatsCollection, 'finance-report': renderFinanceReport, 'expenses': renderExpenses, 'store-stats': renderStoreStats, 'staff-stats': renderStaffStats, 'fund-stats': renderFundStats, 'fund-settings': renderFundSettings,
   'stats-profit': renderStatsProfit, 'reminder-tomorrow': renderReminderTomorrow,
   'reminder-overdue': renderReminderOverdue, 'payment-query': renderPaymentQuery,
   'phones': renderPhones, 'suppliers': renderSuppliers,
@@ -1593,7 +1593,7 @@ const ROLE_PAGES = {
   boss:      'all', // 全部页面
   manager:   ['home','sale-add','sale-list','payment-add','early-payment',
                'stats-collection','stats-profit','finance-report','expenses',
-               'store-stats','audit','auditor-stats','fund-stats','reminder-tomorrow','reminder-overdue',
+               'store-stats','audit','staff-stats','fund-stats','reminder-tomorrow','reminder-overdue',
                'payment-query','phones','suppliers','purchase-add','inventory','company'],
   salesManager: ['home','sale-add','sale-list','reminder-tomorrow','reminder-overdue','payment-query'],
   sales:     ['home','sale-add','sale-list','reminder-tomorrow','reminder-overdue','payment-query'],
@@ -4022,13 +4022,16 @@ window.submitPayment = async function() {
   // 保存收款记录（不足额也记录，备查）
   const pays = DB_get('payments')||[];
   const newPayId = newId();
+  const _payUser = getCurrentUser();
   pays.push({
     id: newPayId, contractId, customer: s.customer, period: periodNo,
     date: pDate, principal: parseFloat(principal.toFixed(2)),
     interest: parseFloat(interest.toFixed(2)), serviceFee, penalty,
     isPartial: !isFullPaid,
     shortfall: isFullPaid ? 0 : parseFloat(shortfall.toFixed(2)),
-    advanceDays: advanceDays > 0 ? advanceDays : 0
+    advanceDays: advanceDays > 0 ? advanceDays : 0,
+    recordedBy: _payUser?.displayName || _payUser?.username || '',
+    recordedByRole: _payUser?.role || ''
   });
   DB_set('payments', pays);
   logActivity('还款登记', `#${contractId} ${s.customer} 第${periodNo}期`, `本金$${principal.toFixed(2)} 利息$${interest.toFixed(2)}${penalty?` 滞纳金$${penalty}`:''}`);
@@ -6082,19 +6085,250 @@ function renderStoreStats() {
 }
 
 // ══════════════════════════════════════════════════════
-// AUDITOR STATS 内审绩效统计
+// STAFF STATS 员工绩效（业务员 / 内审 / 催收员）
 // ══════════════════════════════════════════════════════
-function renderAuditorStats() {
+function renderStaffStats() {
   return `
   <div class="page-header">
-    <div class="page-title">🕵️ ${tl('内审绩效','Auditor Performance','សមិទ្ធិផលអ្នកសវនកម្ម')}</div>
-    <div class="page-sub">${tl('按审核人统计合同数量、回款率与坏账率','Contracts, collection rate & bad debt rate per auditor','ស្ថិតិតាមអ្នកសវនកម្ម')}</div>
+    <div class="page-title">🏆 ${tl('员工绩效','Staff Performance','សមិទ្ធិផលបុគ្គលិក')}</div>
+    <div class="page-sub">${tl('按角色统计业务量、回款率与坏账率','Volume, collection rate & bad debt rate by staff role','ស្ថិតិតាមតួនាទី')}</div>
   </div>
-  <div id="auditorStatsWrap"><div style="text-align:center;padding:30px;color:#90a4ae">${tl('加载中...','Loading...','កំពុង​ផ្ទុក...')}</div></div>`;
+  <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap" id="staffStatsTabs">
+    ${[['sales','💼',tl('业务员','Salesperson','ភ្នាក់ងារ​លក់')],['auditor','🕵️',tl('内审','Auditor','សវនកម្ម')],['collector','📞',tl('催收员','Collector','អ្នកប្រមូល')]].map(([key,icon,label])=>`
+      <button class="btn ${key==='sales'?'btn-primary':'btn-outline'} btn-sm" data-tab="${key}" onclick="switchStaffTab('${key}')">${icon} ${label}</button>
+    `).join('')}
+  </div>
+  <div id="staffStatsWrap"><div style="text-align:center;padding:30px;color:#90a4ae">${tl('加载中...','Loading...','កំពុង​ផ្ទុក...')}</div></div>`;
 }
 
-window.loadAuditorStats = async function() {
-  const wrap = document.getElementById('auditorStatsWrap');
+window._staffStatsTab = 'sales';
+window.switchStaffTab = function(tab) {
+  window._staffStatsTab = tab;
+  document.querySelectorAll('#staffStatsTabs button').forEach(b => {
+    const active = b.dataset.tab === tab;
+    b.className = 'btn ' + (active ? 'btn-primary' : 'btn-outline') + ' btn-sm';
+  });
+  renderStaffTabContent(tab);
+};
+
+function renderStaffTabContent(tab) {
+  const wrap = document.getElementById('staffStatsWrap');
+  if (!wrap) return;
+  if (tab === 'sales') { wrap.innerHTML = buildSalespersonStats(); }
+  else if (tab === 'collector') { wrap.innerHTML = buildCollectorStats(); }
+  else if (tab === 'auditor') {
+    wrap.innerHTML = `<div style="text-align:center;padding:30px;color:#90a4ae">${tl('加载中...','Loading...','កំពុង​ផ្ទុក...')}</div>`;
+    loadAuditorTabContent();
+  }
+}
+
+// 共用：坏账计算（本金+利息，逾期超过 days 天且未还）
+function calcStaffBadDebt(contractSales, days, td) {
+  const totalAmt = contractSales.reduce((a,s) =>
+    a + (s.schedule||[]).reduce((b,p) => b + (+p.principalDue||0) + (+p.interestDue||0), 0), 0);
+  const overdue = contractSales.flatMap(s =>
+    (s.schedule||[]).filter(p => !p.paid && p.dueDate && Math.floor((new Date(td)-new Date(p.dueDate))/86400000) > days));
+  const bdAmt = overdue.reduce((a,p) => a + (+p.principalDue||0) + (+p.interestDue||0), 0);
+  return { amt: bdAmt, rate: totalAmt > 0 ? (bdAmt/totalAmt*100) : 0 };
+}
+
+window.toggleDetailRow = function(rowId, arrowId) {
+  const row = document.getElementById(rowId);
+  if (!row) return;
+  const isHidden = row.style.display === 'none';
+  row.style.display = isHidden ? 'table-row' : 'none';
+  const arrow = document.getElementById(arrowId);
+  if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
+};
+
+// ── 业务员 tab：按合同「业务员」字段分组 ──
+function buildSalespersonStats() {
+  const sales = DB_get('sales') || [];
+  const td = today();
+  const thisMonth = td.slice(0,7);
+
+  const byPerson = {};
+  sales.forEach(s => {
+    const name = (s.salesperson||'').trim() || tl('未填写','Unassigned','មិន​បាន​បញ្ជាក់');
+    (byPerson[name] = byPerson[name] || []).push(s);
+  });
+
+  const rows = Object.keys(byPerson).map(name => {
+    const list = byPerson[name];
+    const totalLoan = list.reduce((a,s)=>a+(+s.installmentAmount||0),0);
+    const monthCount = list.filter(s=>(s.date||'').replace(/\//g,'-').slice(0,7)===thisMonth).length;
+    const totalDue = list.reduce((a,s)=>a+(s.schedule||[]).reduce((b,p)=>b+(+p.principalDue||0)+(+p.interestDue||0),0),0);
+    const totalPaid = list.reduce((a,s)=>a+(s.schedule||[]).reduce((b,p)=>b+(p.paid?(+p.paidPrincipal||0)+(+p.paidInterest||0):0),0),0);
+    const repayRate = totalDue > 0 ? (totalPaid/totalDue*100) : 0;
+    const bd30 = calcStaffBadDebt(list, 30, td);
+    return { name, total: list.length, monthCount, totalLoan, repayRate, bd30Rate: bd30.rate, bd30Amt: bd30.amt, list };
+  }).sort((a,b) => b.total - a.total);
+
+  if (!rows.length) return `<div class="card"><div class="empty-state"><div class="ei">💼</div><p>${tl('暂无数据','No data','គ្មាន​ទិន្នន័យ')}</p></div></div>`;
+
+  const totalPeople = rows.length;
+  const totalContracts = rows.reduce((a,d)=>a+d.total,0);
+  const totalLoanAll = rows.reduce((a,d)=>a+d.totalLoan,0);
+  const highRisk = rows.filter(d=>d.bd30Rate>10).length;
+
+  return `
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+    ${[
+      ['💼', tl('业务员数','Salespeople','ចំនួន'), totalPeople, 'var(--sky)'],
+      ['📋', tl('合同总数','Total Contracts','សរុប'), totalContracts, 'var(--navy)'],
+      ['💰', tl('放款总额','Total Loan','ចំនួន​ប្រាក់'), '$'+fmt(totalLoanAll), 'var(--green)'],
+      ['⚠️', tl('高风险业务员','High Risk','ហានិ​ភ័យ​ខ្ពស់'), highRisk, 'var(--red)'],
+    ].map(([icon,label,val,color])=>`
+      <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+        <div style="font-size:20px">${icon}</div>
+        <div style="font-size:11px;color:var(--muted);margin:4px 0">${label}</div>
+        <div style="font-size:24px;font-weight:800;color:${color}">${val}</div>
+      </div>`).join('')}
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table>
+        <tr style="position:sticky;top:0;z-index:2">
+          <th style="min-width:120px">${tl('业务员','Salesperson','ភ្នាក់ងារ')}</th>
+          <th style="text-align:center">${tl('合同数','Contracts','ចំនួន')}</th>
+          <th style="text-align:center">${tl('本月新增','This Mo.','ខែ​នេះ')}</th>
+          <th style="text-align:center">${tl('放款总额','Total Loan','ចំនួន​ប្រាក់')}</th>
+          <th style="text-align:center;min-width:100px">${tl('回款率','Repay Rate','អត្រា​សង')}</th>
+          <th style="text-align:center;min-width:120px">${tl('坏账率(30天)','Bad Debt 30d','អន្តរ​ការ​30​ថ្ងៃ')}</th>
+          <th style="text-align:center">${tl('坏账金额','Bad Debt Amt','ចំនួន​អន្តរ​ការ')}</th>
+        </tr>
+        ${rows.map((d,i) => {
+          const riskClass = d.bd30Rate>10?'text-red':d.bd30Rate>5?'text-amber':'text-green';
+          const riskBg = d.bd30Rate>10?'#fff0f0':d.bd30Rate>5?'#fffbe6':'';
+          const repayClass = d.repayRate>=90?'text-green':d.repayRate>=70?'text-amber':'text-red';
+          return `<tr style="cursor:pointer;${riskBg?'background:'+riskBg:''}" onclick="toggleDetailRow('sp-${i}','sp-arrow-${i}')">
+            <td style="font-weight:600;color:var(--navy)"><span style="margin-right:6px;font-size:10px;color:var(--muted)" id="sp-arrow-${i}">▶</span>${esc(d.name)}</td>
+            <td style="text-align:center;font-weight:700">${d.total}</td>
+            <td style="text-align:center;color:var(--green)">${d.monthCount}</td>
+            <td style="text-align:center">$${fmt(d.totalLoan)}</td>
+            <td style="text-align:center" class="fw700 ${repayClass}">${d.repayRate.toFixed(1)}%</td>
+            <td style="text-align:center"><span class="fw700 ${riskClass}" style="font-size:14px">${d.bd30Rate.toFixed(1)}%</span>${d.bd30Rate>10?'<span style="font-size:10px;margin-left:4px">⚠️</span>':''}</td>
+            <td style="text-align:center;${d.bd30Amt>0?'color:var(--red)':''}">${d.bd30Amt>0?fmt(d.bd30Amt):'-'}</td>
+          </tr>
+          <tr id="sp-${i}" style="display:none;background:#f8fbff">
+            <td colspan="7" style="padding:16px">
+              <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px">📄 ${tl('合同列表','Contracts','បញ្ជី')} (${d.total})</div>
+              <table style="width:100%;font-size:12px">
+                <tr style="position:sticky;top:0;background:#f8fbff"><th>#</th><th>${tl('客户','Customer','អ្នក​ប្រើ')}</th><th>${tl('型号','Model','ម៉ូ​ដែល')}</th><th>${tl('状态','Status','ស្ថានភាព')}</th><th>${tl('日期','Date','កាល​បរិច្ឆេទ')}</th></tr>
+                ${[...d.list].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(s=>`
+                <tr style="cursor:pointer" onclick="event.stopPropagation();viewSchedule('${s.id}')">
+                  <td class="fw700 text-blue">#${s.id}</td><td>${esc(s.customer)}</td>
+                  <td style="font-size:11px">${esc(s.modelName||'-')}</td>
+                  <td><span class="badge ${s.status==='已结清'||s.status==='提前结清'?'badge-green':'badge-blue'}" style="font-size:10px">${esc(s.status||'-')}</span></td>
+                  <td style="color:var(--muted)">${esc(s.date||'-')}</td>
+                </tr>`).join('')}
+              </table>
+            </td>
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>
+  </div>
+  <div style="margin-top:10px;font-size:11px;color:var(--muted)">
+    ${tl('按合同「业务员」字段归属（销售登记时填写）；回款率/坏账率为该业务员名下所有合同累计口径，不分月份','Grouped by the contract Salesperson field; repay/bad-debt rate is lifetime across all their contracts','')}
+  </div>`;
+}
+
+// ── 催收员 tab：按还款记录「登记人」字段分组（从本次更新起自动记录，登记时无需手动填写）──
+function buildCollectorStats() {
+  const sales = DB_get('sales') || [];
+  const payments = DB_get('payments') || [];
+  const td = today();
+  const thisMonth = td.slice(0,7);
+
+  const salesById = {};
+  sales.forEach(s => { salesById[String(s.id)] = s; });
+
+  const attributed = payments.filter(p => p.recordedBy);
+  const unattributed = payments.length - attributed.length;
+
+  if (!attributed.length) {
+    return `<div class="card"><div class="empty-state"><div class="ei">📞</div>
+      <p>${tl('暂无归属数据','No attributed data yet','គ្មាន​ទិន្នន័យ')}</p>
+      <p style="font-size:12px;color:var(--muted);margin-top:10px;max-width:360px;margin-left:auto;margin-right:auto">${tl('系统已开始自动记录「谁登记了这笔还款」，从现在起的新还款记录会自动出现在这里，不需要任何人手动填写','The system now auto-captures who recorded each payment — new records will appear here automatically, no manual entry needed','')}</p>
+    </div></div>`;
+  }
+
+  const byPerson = {};
+  attributed.forEach(p => {
+    const name = p.recordedBy || tl('未知','Unknown','មិន​ស្គាល់');
+    (byPerson[name] = byPerson[name] || []).push(p);
+  });
+
+  const rows = Object.keys(byPerson).map(name => {
+    const list = byPerson[name];
+    const count = list.length;
+    const monthCount = list.filter(p=>(p.date||'').replace(/\//g,'-').slice(0,7)===thisMonth).length;
+    const totalCollected = list.reduce((a,p)=>a+(+p.principal||0)+(+p.interest||0),0);
+    const totalPenalty = list.reduce((a,p)=>a+(+p.penalty||0),0);
+    // 逾期追回：还款日晚于该期应还日，说明这笔钱是催回来的，不是客户按时自己还的
+    let overdueRecovered = 0, overdueCount = 0;
+    list.forEach(p => {
+      const s = salesById[String(p.contractId)];
+      const sched = s?.schedule?.find(x=>x.period===p.period);
+      if (sched?.dueDate && p.date && p.date.replace(/\//g,'-') > sched.dueDate.replace(/\//g,'-')) {
+        overdueRecovered += (+p.principal||0)+(+p.interest||0)+(+p.penalty||0);
+        overdueCount++;
+      }
+    });
+    return { name, count, monthCount, totalCollected, totalPenalty, overdueRecovered, overdueCount };
+  }).sort((a,b) => b.totalCollected - a.totalCollected);
+
+  const totalPeople = rows.length;
+  const totalCount = rows.reduce((a,d)=>a+d.count,0);
+  const totalAmt = rows.reduce((a,d)=>a+d.totalCollected,0);
+  const totalPenaltyAll = rows.reduce((a,d)=>a+d.totalPenalty,0);
+
+  return `
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+    ${[
+      ['📞', tl('人数','Staff','ចំនួន'), totalPeople, 'var(--sky)'],
+      ['📋', tl('处理还款笔数','Payments Processed','ចំនួន'), totalCount, 'var(--navy)'],
+      ['💰', tl('累计收款','Total Collected','ចំនួន​ប្រាក់'), '$'+fmt(totalAmt), 'var(--green)'],
+      ['⏰', tl('滞纳金实收','Late Fee Collected','ប្រាក់​ពិន័យ'), '$'+fmt(totalPenaltyAll), 'var(--amber)'],
+    ].map(([icon,label,val,color])=>`
+      <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+        <div style="font-size:20px">${icon}</div>
+        <div style="font-size:11px;color:var(--muted);margin:4px 0">${label}</div>
+        <div style="font-size:24px;font-weight:800;color:${color}">${val}</div>
+      </div>`).join('')}
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table>
+        <tr style="position:sticky;top:0;z-index:2">
+          <th style="min-width:120px">${tl('姓名','Name','ឈ្មោះ')}</th>
+          <th style="text-align:center">${tl('处理笔数','Payments','ចំនួន')}</th>
+          <th style="text-align:center">${tl('本月笔数','This Mo.','ខែ​នេះ')}</th>
+          <th style="text-align:center">${tl('累计收款','Collected','ចំនួន')}</th>
+          <th style="text-align:center">${tl('滞纳金实收','Late Fee','ប្រាក់​ពិន័យ')}</th>
+          <th style="text-align:center;min-width:110px">${tl('逾期追回','Overdue Recovered','ត្រូវ​បាន​ទាមទារ')}</th>
+        </tr>
+        ${rows.map(d => `<tr>
+          <td style="font-weight:600;color:var(--navy)">${esc(d.name)}</td>
+          <td style="text-align:center;font-weight:700">${d.count}</td>
+          <td style="text-align:center;color:var(--green)">${d.monthCount}</td>
+          <td style="text-align:center">$${fmt(d.totalCollected)}</td>
+          <td style="text-align:center;color:var(--amber)">$${fmt(d.totalPenalty)}</td>
+          <td style="text-align:center">$${fmt(d.overdueRecovered)} <span style="color:var(--muted);font-size:11px">(${d.overdueCount}${tl('笔','','')})</span></td>
+        </tr>`).join('')}
+      </table>
+    </div>
+  </div>
+  ${unattributed>0 ? `<div style="margin-top:10px;font-size:11px;color:var(--muted)">${tl('另有 '+unattributed+' 笔历史还款记录没有登记人信息（本功能上线前的旧数据），不计入统计','', '')}</div>` : ''}
+  <div style="margin-top:6px;font-size:11px;color:var(--muted)">
+    ${tl('归属 = 登记这笔还款时登录的账号（自动记录，无需手动填写）；逾期追回 = 还款日晚于该期应还日的部分，体现催收实际成效，区别于客户到期自己主动还款','Attribution = the logged-in account when the payment was recorded (automatic); overdue recovered = payments made after the due date','')}
+  </div>`;
+}
+
+// ── 内审 tab：沿用合同审核表 morodok_audits（需要异步拉取）──
+window.loadAuditorTabContent = async function() {
+  const wrap = document.getElementById('staffStatsWrap');
   if (!wrap) return;
   const sales = DB_get('sales') || [];
   const td = today();
@@ -6107,22 +6341,14 @@ window.loadAuditorStats = async function() {
     if (Array.isArray(rows)) audits = rows;
   } catch(e) {}
 
+  // 若切换到别的 tab 了，异步结果回来时不要覆盖
+  if (window._staffStatsTab !== 'auditor') return;
+
   if (!audits.length) {
     wrap.innerHTML = `<div class="card"><div class="empty-state"><div class="ei">🕵️</div><p>${tl('暂无审核记录','No audit records yet','គ្មាន​កំណត់​ត្រា')}</p></div></div>`;
     return;
   }
 
-  function calcAuditorBadDebt(contractSales, days) {
-    const totalAmt = contractSales.reduce((a,s) =>
-      a + (s.schedule||[]).reduce((b,p) => b + (+p.principalDue||0) + (+p.interestDue||0), 0), 0);
-    const overdue = contractSales.flatMap(s =>
-      (s.schedule||[]).filter(p => !p.paid && p.dueDate && Math.floor((new Date(td)-new Date(p.dueDate))/86400000) > days));
-    const bdAmt = overdue.reduce((a,p) => a + (+p.principalDue||0) + (+p.interestDue||0), 0);
-    const rate = totalAmt > 0 ? (bdAmt/totalAmt*100) : 0;
-    return { amt: bdAmt, rate };
-  }
-
-  // 按审核人分组（合同用最新一次审核记录归属，一张合同只算给最后审核它的人）
   const byAuditor = {};
   audits.forEach(a => {
     const name = a.auditor_name || tl('未知','Unknown','មិន​ស្គាល់');
@@ -6140,7 +6366,7 @@ window.loadAuditorStats = async function() {
     const totalPaid = contractSales.reduce((a,s) =>
       a + (s.schedule||[]).reduce((b,p) => b + (p.paid ? (+p.paidPrincipal||0)+(+p.paidInterest||0) : 0), 0), 0);
     const repayRate = totalDue > 0 ? (totalPaid/totalDue*100) : 0;
-    const bd30 = calcAuditorBadDebt(contractSales, 30);
+    const bd30 = calcStaffBadDebt(contractSales, 30, td);
     return {
       name: g.name, total: g.records.length,
       passed: statusCount['已通过']||0, issue: statusCount['有问题']||0,
@@ -6185,7 +6411,7 @@ window.loadAuditorStats = async function() {
           const riskClass = d.bd30Rate>10?'text-red':d.bd30Rate>5?'text-amber':'text-green';
           const riskBg = d.bd30Rate>10?'#fff0f0':d.bd30Rate>5?'#fffbe6':'';
           const repayClass = d.repayRate>=90?'text-green':d.repayRate>=70?'text-amber':'text-red';
-          return `<tr style="cursor:pointer;${riskBg?'background:'+riskBg:''}" onclick="toggleAuditorDetail('adetail-${i}')">
+          return `<tr style="cursor:pointer;${riskBg?'background:'+riskBg:''}" onclick="toggleDetailRow('adetail-${i}','aarrow-${i}')">
             <td style="font-weight:600;color:var(--navy)">
               <span style="margin-right:6px;font-size:10px;color:var(--muted)" id="aarrow-${i}">▶</span>${esc(d.name)}
             </td>
@@ -6227,17 +6453,6 @@ window.loadAuditorStats = async function() {
     ${tl('回款率 = 已还本金利息 ÷ 应还本金利息（该审核人名下所有合同，累计）；坏账率(30天) = 逾期30天以上未还金额 ÷ 总应收金额','Repay rate = paid principal+interest / due principal+interest (all-time, contracts under this auditor); Bad debt rate = overdue 30d+ unpaid / total due','')}
   </div>`;
 };
-
-window.toggleAuditorDetail = function(id) {
-  const row = document.getElementById(id);
-  if (!row) return;
-  const isHidden = row.style.display === 'none';
-  row.style.display = isHidden ? 'table-row' : 'none';
-  const idx = id.replace('adetail-','');
-  const arrow = document.getElementById('aarrow-'+idx);
-  if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
-};
-
 function daysDiff(dateStr, today) {
   return Math.floor((new Date(today) - new Date(dateStr)) / 86400000);
 }
@@ -8384,7 +8599,7 @@ window.initPage = function(page) {
 const _origInitPage3 = window.initPage;
 window.initPage = function(page) {
   _origInitPage3(page);
-  if (page === 'auditor-stats') loadAuditorStats();
+  if (page === 'staff-stats') renderStaffTabContent(window._staffStatsTab || 'sales');
 };
 
 
