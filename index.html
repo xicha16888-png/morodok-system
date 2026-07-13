@@ -1010,7 +1010,7 @@ function buildSidebar() {
       ${navItem('payment-add','💳',t('paymentAdd'))}
       ${navItem('early-payment','⚡',t('earlyPayment'))}
     </div>`:''}
-    ${(show('stats-collection')||show('stats-profit')||show('finance-report')||show('expenses')||show('store-stats')||show('fund-stats'))?`
+    ${(show('stats-collection')||show('stats-profit')||show('finance-report')||show('expenses')||show('store-stats')||show('auditor-stats')||show('fund-stats'))?`
     <div class="nav-divider"></div>
     <div style="padding:4px 0">
       <div class="sb-label">${t('reports')}</div>
@@ -1019,6 +1019,7 @@ function buildSidebar() {
       ${navItem('finance-report','📈',t('financeReport'),' 🔐')}
       ${navItem('expenses','🧾',t('expenses'),' 🔐')}
       ${navItem('store-stats','🏪',t('storeStats'),' 🔐')}
+      ${navItem('auditor-stats','🕵️','内审绩效 🔐')}
       ${navItem('fund-stats','🏦','资金统计 🔐')}
     </div>`:''}
     ${(show('reminder-tomorrow')||show('reminder-overdue')||show('payment-query'))?`
@@ -1265,7 +1266,7 @@ window.closeModal = () => document.getElementById('modalBg').classList.remove('o
 // ══════════════════════════════════════════════════════
 // 🔐 密码保护
 // ══════════════════════════════════════════════════════
-const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','expenses','store-stats','fund-stats'];
+const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','expenses','store-stats','auditor-stats','fund-stats'];
 const REPORT_PWD = 'morodok888';
 const DELETE_PWD = 'cao';
 const EDIT_PWD = 'edit888';
@@ -1334,7 +1335,7 @@ window.checkPwd = function(page) {
 const PAGES = {
   'home': renderHome, 'sale-add': renderSaleAdd, 'sale-list': renderSaleList,
   'payment-add': renderPaymentAdd, 'early-payment': renderEarlyPayment,
-  'stats-collection': renderStatsCollection, 'finance-report': renderFinanceReport, 'expenses': renderExpenses, 'store-stats': renderStoreStats, 'fund-stats': renderFundStats, 'fund-settings': renderFundSettings,
+  'stats-collection': renderStatsCollection, 'finance-report': renderFinanceReport, 'expenses': renderExpenses, 'store-stats': renderStoreStats, 'auditor-stats': renderAuditorStats, 'fund-stats': renderFundStats, 'fund-settings': renderFundSettings,
   'stats-profit': renderStatsProfit, 'reminder-tomorrow': renderReminderTomorrow,
   'reminder-overdue': renderReminderOverdue, 'payment-query': renderPaymentQuery,
   'phones': renderPhones, 'suppliers': renderSuppliers,
@@ -1584,7 +1585,7 @@ const ROLE_PAGES = {
   boss:      'all', // 全部页面
   manager:   ['home','sale-add','sale-list','payment-add','early-payment',
                'stats-collection','stats-profit','finance-report','expenses',
-               'store-stats','fund-stats','reminder-tomorrow','reminder-overdue',
+               'store-stats','auditor-stats','fund-stats','reminder-tomorrow','reminder-overdue',
                'payment-query','phones','suppliers','purchase-add','inventory','company'],
   salesManager: ['home','sale-add','sale-list','reminder-tomorrow','reminder-overdue','payment-query'],
   sales:     ['home','sale-add','sale-list','reminder-tomorrow','reminder-overdue','payment-query'],
@@ -2598,7 +2599,31 @@ window.submitSale = function() {
 // ══════════════════════════════════════════════════════
 // SALE LIST
 // ══════════════════════════════════════════════════════
+// 销售查询页：审核人信息缓存（合同ID -> 审核记录 {auditor_name, status}）
+window._auditMap = window._auditMap || {};
+async function loadAuditMapForSaleList() {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/morodok_audits?select=contract_id,auditor_name,status`,
+      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
+    const rows = await res.json();
+    if (Array.isArray(rows)) {
+      window._auditMap = {};
+      rows.forEach(r => { window._auditMap[r.contract_id] = r; });
+      // 若当前正在销售查询页，刷新表格把审核人显示出来
+      if (window._currentPage === 'sale-list' && typeof filterSales === 'function') filterSales();
+    }
+  } catch(e) { /* 静默失败，不影响主流程 */ }
+}
+
+function renderAuditorBadge(contractId) {
+  const a = (window._auditMap||{})[contractId];
+  if (!a || !a.auditor_name) return `<span style="font-size:11px;color:#b0bec5">${tl('未审核','Not audited','មិន​ទាន់')}</span>`;
+  const statusColor = {'待审核':'#e65100','已通过':'#2e7d32','有问题':'#c62828','待补充':'#1565c0'}[a.status] || '#607d8b';
+  return `<span style="font-size:11px;font-weight:600;color:${statusColor}" title="${esc(a.status||'')}">${esc(a.auditor_name)}</span>`;
+}
+
 function renderSaleList() {
+  loadAuditMapForSaleList();
   const allSales = DB_get('sales') || [];
   const stores = DB_get('stores') || [];
   // 从销售记录和店家列表合并所有店家名
@@ -2671,13 +2696,13 @@ function buildSalesTable(sales) {
   const uniqueDates = [...new Set(groupOrder)];
 
   let html = `<div class="table-wrap"><table>
-    <tr><th>${t("colNo")}</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>🏪 ${tl('店家','Store','ហាង')}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colDeposit")}</th><th>${t("colPrincipal")}</th><th>${t("colPeriods")}</th><th>${t("colMonthly")}</th><th>${t("colProgress")}</th><th>${t("colStatus")}</th><th>${t("colAction")}</th></tr>`;
+    <tr><th>${t("colNo")}</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>🏪 ${tl('店家','Store','ហាង')}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colDeposit")}</th><th>${t("colPrincipal")}</th><th>${t("colPeriods")}</th><th>${t("colMonthly")}</th><th>${t("colProgress")}</th><th>${t("colStatus")}</th><th>${tl('审核人','Auditor','អ្នកសវនកម្ម')}</th><th>${t("colAction")}</th></tr>`;
 
   uniqueDates.forEach(date => {
     const rows = groups[date];
     const groupId = 'dg_' + date.replace(/-/g,'');
     html += `<tr style="background:var(--navy);cursor:pointer" onclick="toggleDateGroup('${groupId}')">
-      <td colspan="13" style="color:#fff;font-weight:700;padding:8px 12px;font-size:13px">
+      <td colspan="14" style="color:#fff;font-weight:700;padding:8px 12px;font-size:13px">
         📅 ${date} &nbsp;
         <span style="background:rgba(255,255,255,0.2);border-radius:12px;padding:2px 10px;font-size:12px">${rows.length} ${tl('单','orders','ដំណើរ')}</span>
         <span id="${groupId}_icon" style="float:right;font-size:16px">▼</span>
@@ -2699,6 +2724,7 @@ function buildSalesTable(sales) {
             <div style="background:var(--sky);height:4px;border-radius:2px;width:${Math.round(paid/s.periods*100)}%"></div>
           </div></td>
         <td><span class="badge ${s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':s.status==='逾期'?'badge-red':'badge-blue'}">${s.status}</span></td>
+        <td>${renderAuditorBadge(s.id)}</td>
         <td style="white-space:nowrap">
           <button class="btn btn-outline btn-sm" onclick="viewSchedule('${s.id}')">${t('repaySchedule')}</button>
           <button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="showContractImages('${s.id}')">📎 材料</button>
@@ -6047,6 +6073,163 @@ function renderStoreStats() {
   </div>`}`;
 }
 
+// ══════════════════════════════════════════════════════
+// AUDITOR STATS 内审绩效统计
+// ══════════════════════════════════════════════════════
+function renderAuditorStats() {
+  return `
+  <div class="page-header">
+    <div class="page-title">🕵️ ${tl('内审绩效','Auditor Performance','សមិទ្ធិផលអ្នកសវនកម្ម')}</div>
+    <div class="page-sub">${tl('按审核人统计合同数量、回款率与坏账率','Contracts, collection rate & bad debt rate per auditor','ស្ថិតិតាមអ្នកសវនកម្ម')}</div>
+  </div>
+  <div id="auditorStatsWrap"><div style="text-align:center;padding:30px;color:#90a4ae">${tl('加载中...','Loading...','កំពុង​ផ្ទុក...')}</div></div>`;
+}
+
+window.loadAuditorStats = async function() {
+  const wrap = document.getElementById('auditorStatsWrap');
+  if (!wrap) return;
+  const sales = DB_get('sales') || [];
+  const td = today();
+
+  let audits = [];
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/morodok_audits?select=*`,
+      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
+    const rows = await res.json();
+    if (Array.isArray(rows)) audits = rows;
+  } catch(e) {}
+
+  if (!audits.length) {
+    wrap.innerHTML = `<div class="card"><div class="empty-state"><div class="ei">🕵️</div><p>${tl('暂无审核记录','No audit records yet','គ្មាន​កំណត់​ត្រា')}</p></div></div>`;
+    return;
+  }
+
+  function calcAuditorBadDebt(contractSales, days) {
+    const totalAmt = contractSales.reduce((a,s) =>
+      a + (s.schedule||[]).reduce((b,p) => b + (+p.principalDue||0) + (+p.interestDue||0), 0), 0);
+    const overdue = contractSales.flatMap(s =>
+      (s.schedule||[]).filter(p => !p.paid && p.dueDate && Math.floor((new Date(td)-new Date(p.dueDate))/86400000) > days));
+    const bdAmt = overdue.reduce((a,p) => a + (+p.principalDue||0) + (+p.interestDue||0), 0);
+    const rate = totalAmt > 0 ? (bdAmt/totalAmt*100) : 0;
+    return { amt: bdAmt, rate };
+  }
+
+  // 按审核人分组（合同用最新一次审核记录归属，一张合同只算给最后审核它的人）
+  const byAuditor = {};
+  audits.forEach(a => {
+    const name = a.auditor_name || tl('未知','Unknown','មិន​ស្គាល់');
+    if (!byAuditor[name]) byAuditor[name] = { name, records: [] };
+    byAuditor[name].records.push(a);
+  });
+
+  const auditorData = Object.values(byAuditor).map(g => {
+    const statusCount = {};
+    g.records.forEach(r => { statusCount[r.status||'待审核'] = (statusCount[r.status||'待审核']||0) + 1; });
+    const contractIds = new Set(g.records.map(r => String(r.contract_id)));
+    const contractSales = sales.filter(s => contractIds.has(String(s.id)));
+    const totalDue = contractSales.reduce((a,s) =>
+      a + (s.schedule||[]).reduce((b,p) => b + (+p.principalDue||0) + (+p.interestDue||0), 0), 0);
+    const totalPaid = contractSales.reduce((a,s) =>
+      a + (s.schedule||[]).reduce((b,p) => b + (p.paid ? (+p.paidPrincipal||0)+(+p.paidInterest||0) : 0), 0), 0);
+    const repayRate = totalDue > 0 ? (totalPaid/totalDue*100) : 0;
+    const bd30 = calcAuditorBadDebt(contractSales, 30);
+    return {
+      name: g.name, total: g.records.length,
+      passed: statusCount['已通过']||0, issue: statusCount['有问题']||0,
+      pending: statusCount['待补充']||0, waiting: statusCount['待审核']||0,
+      repayRate, bd30Rate: bd30.rate, bd30Amt: bd30.amt, contractSales
+    };
+  }).sort((a,b) => b.total - a.total);
+
+  const totalAuditors = auditorData.length;
+  const totalAudited = auditorData.reduce((a,d)=>a+d.total,0);
+  const totalPassed = auditorData.reduce((a,d)=>a+d.passed,0);
+  const highRisk = auditorData.filter(d=>d.bd30Rate>10).length;
+
+  wrap.innerHTML = `
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+    ${[
+      ['🕵️', tl('内审员数','Auditors','ចំនួន​អ្នកសវនកម្ម'), totalAuditors, 'var(--sky)'],
+      ['📋', tl('已审核合同','Audited Contracts','កិច្ចសន្យា​បាន​ត្រួតពិនិត្យ'), totalAudited, 'var(--navy)'],
+      ['✅', tl('已通过','Passed','ឆ្លងកាត់'), totalPassed, 'var(--green)'],
+      ['⚠️', tl('高风险审核人','High Risk','ហានិ​ភ័យ​ខ្ពស់'), highRisk, 'var(--red)'],
+    ].map(([icon,label,val,color])=>`
+      <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+        <div style="font-size:20px">${icon}</div>
+        <div style="font-size:11px;color:var(--muted);margin:4px 0">${label}</div>
+        <div style="font-size:24px;font-weight:800;color:${color}">${val}</div>
+      </div>`).join('')}
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table>
+        <tr style="position:sticky;top:0;z-index:2">
+          <th style="min-width:120px">${tl('审核人','Auditor','អ្នកសវនកម្ម')}</th>
+          <th style="text-align:center">${tl('审核合同数','Audited','ចំនួន')}</th>
+          <th style="text-align:center">✅ ${tl('已通过','Passed','ឆ្លងកាត់')}</th>
+          <th style="text-align:center">⚠️ ${tl('有问题','Issue','មាន​បញ្ហា')}</th>
+          <th style="text-align:center">📌 ${tl('待补充','Pending','រង់ចាំ')}</th>
+          <th style="text-align:center;min-width:100px">${tl('回款率','Repay Rate','អត្រា​សង')}</th>
+          <th style="text-align:center;min-width:120px">${tl('坏账率(30天)','Bad Debt 30d','អន្តរ​ការ​30​ថ្ងៃ')}</th>
+          <th style="text-align:center">${tl('坏账金额','Bad Debt Amt','ចំនួន​អន្តរ​ការ')}</th>
+        </tr>
+        ${auditorData.map((d,i) => {
+          const riskClass = d.bd30Rate>10?'text-red':d.bd30Rate>5?'text-amber':'text-green';
+          const riskBg = d.bd30Rate>10?'#fff0f0':d.bd30Rate>5?'#fffbe6':'';
+          const repayClass = d.repayRate>=90?'text-green':d.repayRate>=70?'text-amber':'text-red';
+          return `<tr style="cursor:pointer;${riskBg?'background:'+riskBg:''}" onclick="toggleAuditorDetail('adetail-${i}')">
+            <td style="font-weight:600;color:var(--navy)">
+              <span style="margin-right:6px;font-size:10px;color:var(--muted)" id="aarrow-${i}">▶</span>${esc(d.name)}
+            </td>
+            <td style="text-align:center;font-weight:700">${d.total}</td>
+            <td style="text-align:center;color:var(--green)">${d.passed}</td>
+            <td style="text-align:center;color:var(--red)">${d.issue}</td>
+            <td style="text-align:center;color:var(--sky)">${d.pending}</td>
+            <td style="text-align:center" class="fw700 ${repayClass}">${d.repayRate.toFixed(1)}%</td>
+            <td style="text-align:center">
+              <span class="fw700 ${riskClass}" style="font-size:14px">${d.bd30Rate.toFixed(1)}%</span>
+              ${d.bd30Rate>10?'<span style="font-size:10px;margin-left:4px">⚠️</span>':''}
+            </td>
+            <td style="text-align:center;${d.bd30Amt>0?'color:var(--red)':''}">${d.bd30Amt>0?fmt(d.bd30Amt):'-'}</td>
+          </tr>
+          <tr id="adetail-${i}" style="display:none;background:#f8fbff">
+            <td colspan="8" style="padding:16px">
+              <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px">📄 ${tl('审核合同列表','Audited Contracts','បញ្ជី​កិច្ចសន្យា')} (${d.total})</div>
+              ${d.contractSales.length ? `<table style="width:100%;font-size:12px">
+                <tr style="position:sticky;top:0;background:#f8fbff">
+                  <th>#</th><th>${tl('客户','Customer','អ្នក​ប្រើ')}</th><th>${tl('型号','Model','ម៉ូ​ដែល')}</th>
+                  <th>${tl('状态','Status','ស្ថានភាព')}</th><th>${tl('日期','Date','កាល​បរិច្ឆេទ')}</th>
+                </tr>
+                ${[...d.contractSales].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(s=>`
+                <tr style="cursor:pointer" onclick="event.stopPropagation();viewSchedule('${s.id}')">
+                  <td class="fw700 text-blue">#${s.id}</td>
+                  <td>${esc(s.customer)}</td>
+                  <td style="font-size:11px">${esc(s.modelName||'-')}</td>
+                  <td><span class="badge ${s.status==='已结清'||s.status==='提前结清'?'badge-green':'badge-blue'}" style="font-size:10px">${esc(s.status||'-')}</span></td>
+                  <td style="color:var(--muted)">${esc(s.date||'-')}</td>
+                </tr>`).join('')}
+              </table>` : `<div style="color:var(--muted);font-size:12px">${tl('暂无匹配合同（合同可能已被删除）','No matching contract','គ្មាន​ទិន្នន័យ')}</div>`}
+            </td>
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>
+  </div>
+  <div style="margin-top:10px;font-size:11px;color:var(--muted)">
+    ${tl('回款率 = 已还本金利息 ÷ 应还本金利息（该审核人名下所有合同，累计）；坏账率(30天) = 逾期30天以上未还金额 ÷ 总应收金额','Repay rate = paid principal+interest / due principal+interest (all-time, contracts under this auditor); Bad debt rate = overdue 30d+ unpaid / total due','')}
+  </div>`;
+};
+
+window.toggleAuditorDetail = function(id) {
+  const row = document.getElementById(id);
+  if (!row) return;
+  const isHidden = row.style.display === 'none';
+  row.style.display = isHidden ? 'table-row' : 'none';
+  const idx = id.replace('adetail-','');
+  const arrow = document.getElementById('aarrow-'+idx);
+  if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
+};
+
 function daysDiff(dateStr, today) {
   return Math.floor((new Date(today) - new Date(dateStr)) / 86400000);
 }
@@ -8187,6 +8370,13 @@ const _origInitPage2 = window.initPage;
 window.initPage = function(page) {
   _origInitPage2(page);
   if (page === 'user-mgmt') loadUserList();
+};
+
+// 初始化内审绩效页时加载数据
+const _origInitPage3 = window.initPage;
+window.initPage = function(page) {
+  _origInitPage3(page);
+  if (page === 'auditor-stats') loadAuditorStats();
 };
 
 
