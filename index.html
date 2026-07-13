@@ -1010,7 +1010,14 @@ function buildSidebar() {
       ${navItem('payment-add','💳',t('paymentAdd'))}
       ${navItem('early-payment','⚡',t('earlyPayment'))}
     </div>`:''}
-    ${(show('stats-collection')||show('stats-profit')||show('finance-report')||show('expenses')||show('store-stats')||show('auditor-stats')||show('fund-stats'))?`
+    ${(show('audit')||show('auditor-stats'))?`
+    <div class="nav-divider"></div>
+    <div style="padding:4px 0">
+      <div class="sb-label">${tl('内审管理','Audit Mgmt','ការគ្រប់គ្រង​សវនកម្ម')}</div>
+      ${navItem('audit','📋','合同审核')}
+      ${navItem('auditor-stats','🕵️','内审绩效 🔐')}
+    </div>`:''}
+    ${(show('stats-collection')||show('stats-profit')||show('finance-report')||show('expenses')||show('store-stats')||show('fund-stats'))?`
     <div class="nav-divider"></div>
     <div style="padding:4px 0">
       <div class="sb-label">${t('reports')}</div>
@@ -1019,7 +1026,6 @@ function buildSidebar() {
       ${navItem('finance-report','📈',t('financeReport'),' 🔐')}
       ${navItem('expenses','🧾',t('expenses'),' 🔐')}
       ${navItem('store-stats','🏪',t('storeStats'),' 🔐')}
-      ${navItem('auditor-stats','🕵️','内审绩效 🔐')}
       ${navItem('fund-stats','🏦','资金统计 🔐')}
     </div>`:''}
     ${(show('reminder-tomorrow')||show('reminder-overdue')||show('payment-query'))?`
@@ -1069,6 +1075,8 @@ const MOB_MORE_ITEMS = [
   {page:'payment-query',    icon:'📋', label:'paymentQuery'},
   {page:'reminder-tomorrow',icon:'⏰', label:'reminderTomorrow'},
   {divider:true},
+  {page:'audit',            icon:'📋', label:'合同审核'},
+  {page:'auditor-stats',    icon:'🕵️', label:'内审绩效',        lock:true},
   {page:'stats-collection', icon:'📊', label:'statsCollection', lock:true},
   {page:'stats-profit',     icon:'💰', label:'statsProfit',     lock:true},
   {page:'finance-report',   icon:'📈', label:'financeReport',   lock:true},
@@ -1585,7 +1593,7 @@ const ROLE_PAGES = {
   boss:      'all', // 全部页面
   manager:   ['home','sale-add','sale-list','payment-add','early-payment',
                'stats-collection','stats-profit','finance-report','expenses',
-               'store-stats','auditor-stats','fund-stats','reminder-tomorrow','reminder-overdue',
+               'store-stats','audit','auditor-stats','fund-stats','reminder-tomorrow','reminder-overdue',
                'payment-query','phones','suppliers','purchase-add','inventory','company'],
   salesManager: ['home','sale-add','sale-list','reminder-tomorrow','reminder-overdue','payment-query'],
   sales:     ['home','sale-add','sale-list','reminder-tomorrow','reminder-overdue','payment-query'],
