@@ -1277,6 +1277,7 @@ window.closeModal = () => document.getElementById('modalBg').classList.remove('o
 const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','expenses','store-stats','staff-stats','fund-stats'];
 const REPORT_PWD = 'morodok888';
 const DELETE_PWD = 'cao';
+const AUDIT_START_MONTH = '2026-07'; // 内审管理只统计这个月份起的合同
 const EDIT_PWD = 'edit888';
 let _reportUnlocked = false; // 会话内解锁状态
 
@@ -6327,11 +6328,13 @@ function buildCollectorStats() {
 }
 
 // ── 内审 tab：沿用合同审核表 morodok_audits（需要异步拉取）──
+window._staffAuditCache = null;   // 拉取到的原始审核记录缓存，避免切换月份时重复请求
+window._staffAuditMonth = '';     // '' = 全部月份（AUDIT_START_MONTH 起）
+
 window.loadAuditorTabContent = async function() {
   const wrap = document.getElementById('staffStatsWrap');
   if (!wrap) return;
-  const sales = DB_get('sales') || [];
-  const td = today();
+  wrap.innerHTML = `<div style="text-align:center;padding:30px;color:#90a4ae">${tl('加载中...','Loading...','កំពុង​ផ្ទុក...')}</div>`;
 
   let audits = [];
   try {
@@ -6344,13 +6347,46 @@ window.loadAuditorTabContent = async function() {
   // 若切换到别的 tab 了，异步结果回来时不要覆盖
   if (window._staffStatsTab !== 'auditor') return;
 
-  if (!audits.length) {
-    wrap.innerHTML = `<div class="card"><div class="empty-state"><div class="ei">🕵️</div><p>${tl('暂无审核记录','No audit records yet','គ្មាន​កំណត់​ត្រា')}</p></div></div>`;
+  window._staffAuditCache = audits;
+  renderAuditorTabTable();
+};
+
+window.renderAuditorTabTable = function() {
+  const wrap = document.getElementById('staffStatsWrap');
+  if (!wrap) return;
+  const audits = window._staffAuditCache || [];
+  const sales = DB_get('sales') || [];
+  const td = today();
+  const salesById = {};
+  sales.forEach(s => { salesById[String(s.id)] = s; });
+
+  // 月份筛选选项：AUDIT_START_MONTH 起，合同里实际出现过的月份
+  const months = [...new Set(sales.map(s => (s.date||'').replace(/\//g,'-').slice(0,7)).filter(m => m && m >= AUDIT_START_MONTH))].sort().reverse();
+  const monthOpts = months.map(m => `<option value="${m}" ${window._staffAuditMonth===m?'selected':''}>${m}</option>`).join('');
+  const monthSelectHtml = `
+  <div style="margin-bottom:12px">
+    <select onchange="window._staffAuditMonth=this.value;renderAuditorTabTable()" style="padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit">
+      <option value="" ${window._staffAuditMonth===''?'selected':''}>${tl('全部月份('+AUDIT_START_MONTH+'起)','All Months (from '+AUDIT_START_MONTH+')','')}</option>
+      ${monthOpts}
+    </select>
+  </div>`;
+
+  // 只统计 AUDIT_START_MONTH 起、且合同签约月份符合当前筛选的审核记录
+  const filteredAudits = audits.filter(a => {
+    const s = salesById[String(a.contract_id)];
+    const m = (s?.date||'').replace(/\//g,'-').slice(0,7);
+    if (!m || m < AUDIT_START_MONTH) return false;
+    if (window._staffAuditMonth && m !== window._staffAuditMonth) return false;
+    return true;
+  });
+
+  if (!filteredAudits.length) {
+    wrap.innerHTML = monthSelectHtml + `<div class="card"><div class="empty-state"><div class="ei">🕵️</div><p>${tl('该范围内暂无审核记录','No audit records in this range','គ្មាន​កំណត់​ត្រា')}</p></div></div>`;
     return;
   }
 
   const byAuditor = {};
-  audits.forEach(a => {
+  filteredAudits.forEach(a => {
     const name = a.auditor_name || tl('未知','Unknown','មិន​ស្គាល់');
     if (!byAuditor[name]) byAuditor[name] = { name, records: [] };
     byAuditor[name].records.push(a);
@@ -6380,7 +6416,7 @@ window.loadAuditorTabContent = async function() {
   const totalPassed = auditorData.reduce((a,d)=>a+d.passed,0);
   const highRisk = auditorData.filter(d=>d.bd30Rate>10).length;
 
-  wrap.innerHTML = `
+  wrap.innerHTML = monthSelectHtml + `
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
     ${[
       ['🕵️', tl('内审员数','Auditors','ចំនួន​អ្នកសវនកម្ម'), totalAuditors, 'var(--sky)'],
@@ -6450,7 +6486,7 @@ window.loadAuditorTabContent = async function() {
     </div>
   </div>
   <div style="margin-top:10px;font-size:11px;color:var(--muted)">
-    ${tl('回款率 = 已还本金利息 ÷ 应还本金利息（该审核人名下所有合同，累计）；坏账率(30天) = 逾期30天以上未还金额 ÷ 总应收金额','Repay rate = paid principal+interest / due principal+interest (all-time, contracts under this auditor); Bad debt rate = overdue 30d+ unpaid / total due','')}
+    ${tl('只统计 '+AUDIT_START_MONTH+' 起签约的合同；回款率 = 已还本金利息 ÷ 应还本金利息（该审核人名下所选范围内合同，累计）；坏账率(30天) = 逾期30天以上未还金额 ÷ 总应收金额','Only contracts signed from '+AUDIT_START_MONTH+' onward; Repay rate = paid / due principal+interest; Bad debt rate = overdue 30d+ unpaid / total due','')}
   </div>`;
 };
 function daysDiff(dateStr, today) {
@@ -8019,15 +8055,23 @@ window.importExcel = function(input) {
 
 // ══════════════════════════════════════════════════════
 function renderAudit() {
+  const sales = DB_get('sales') || [];
+  const months = [...new Set(sales.map(s => (s.date||'').replace(/\//g,'-').slice(0,7)).filter(m => m && m >= AUDIT_START_MONTH))].sort().reverse();
+  const monthOpts = months.map(m => `<option value="${m}">${m}</option>`).join('');
   return `
   <div class="page-header">
     <div class="page-title">📋 合同审核</div>
-    <div class="page-sub">${tl('查看合同详情 · 审核材料图片 · 标记审核状态','View contract details · Review documents · Mark review status','មើលព័ត៌មានលម្អិត · ត្រួតពិនិត្យរូបភាព · សម្គាល់ស្ថានភាព')}</div>
+    <div class="page-sub">${tl('查看合同详情 · 审核材料图片 · 标记审核状态（仅'+AUDIT_START_MONTH+'起的合同）','View contract details · Review documents · Mark review status (from '+AUDIT_START_MONTH+' onward)','មើលព័ត៌មានលម្អិត · ត្រួតពិនិត្យរូបភាព · សម្គាល់ស្ថានភាព')}</div>
   </div>
   <div class="card">
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
       <input id="auditSearch" type="text" placeholder="搜索客户姓名 / 合同号" oninput="renderAuditList()"
         style="flex:1;min-width:180px;padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit">
+      <select id="auditMonthFilter" onchange="renderAuditList()"
+        style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit">
+        <option value="">${tl('全部月份('+AUDIT_START_MONTH+'起)','All Months (from '+AUDIT_START_MONTH+')','')}</option>
+        ${monthOpts}
+      </select>
       <select id="auditStatus" onchange="renderAuditList()"
         style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit">
         <option value="">全部状态</option>
@@ -8056,9 +8100,13 @@ window.renderAuditList = async function() {
 
   const q = (document.getElementById('auditSearch')?.value||'').toLowerCase();
   const st = document.getElementById('auditStatus')?.value||'';
+  const mf = document.getElementById('auditMonthFilter')?.value||'';
 
-  // 获取所有合同
+  // 获取所有合同：只要 AUDIT_START_MONTH 起的
   const sales = (DB_get('sales')||[]).filter(s => {
+    const m = (s.date||'').replace(/\//g,'-').slice(0,7);
+    if (!m || m < AUDIT_START_MONTH) return false;
+    if (mf && m !== mf) return false;
     if (q && !s.customer?.toLowerCase().includes(q) && !s.id?.toLowerCase().includes(q)) return false;
     return true;
   });
@@ -8071,6 +8119,7 @@ window.renderAuditList = async function() {
     const rows = await res.json();
     if (Array.isArray(rows)) rows.forEach(r => { auditMap[r.contract_id] = r; });
   } catch(e) {}
+  window._auditMap = auditMap; // 与销售查询页共用同一份缓存
 
   // 过滤审核状态
   const filtered = sales.filter(s => {
@@ -8092,25 +8141,49 @@ window.renderAuditList = async function() {
     '待补充': 'background:#e3f2fd;color:#1565c0'
   };
 
+  // 按月分组（倒序）
+  const sorted = filtered.slice().sort((a,b) => (b.date||'').localeCompare(a.date||''));
+  const groups = {};
+  const groupOrder = [];
+  sorted.forEach(s => {
+    const m = (s.date||'').replace(/\//g,'-').slice(0,7);
+    if (!groups[m]) { groups[m] = []; groupOrder.push(m); }
+    groups[m].push(s);
+  });
+
   wrap.innerHTML = `<div class="table-wrap"><table>
     <tr>
       <th>合同号</th><th>客户</th><th>电话</th><th>型号</th>
-      <th>签约日期</th><th>期数</th><th>审核状态</th><th>操作</th>
+      <th>签约日期</th><th>期数</th><th>审核状态</th><th>审核人</th><th>操作</th>
     </tr>
-    ${filtered.map(s => {
-      const audit = auditMap[s.id];
-      const status = audit?.status || '待审核';
-      const sty = statusStyle[status] || '';
-      return `<tr>
-        <td class="fw700 text-blue">#${s.id}</td>
-        <td class="fw700">${esc(s.customer||'')}</td>
-        <td>${esc(s.customerPhone||'')}</td>
-        <td style="font-size:12px">${esc(s.modelName||'-')}</td>
-        <td>${s.date||''}</td>
-        <td>${s.periods||'-'}期</td>
-        <td><span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;${sty}">${status}</span></td>
-        <td><button onclick="openAuditDetail('${s.id}')" class="btn btn-primary btn-sm">审核</button></td>
-      </tr>`;
+    ${groupOrder.map(m => {
+      const rows = groups[m];
+      const groupId = 'ag_' + m.replace(/-/g,'');
+      return `<tr style="background:var(--navy);cursor:pointer" onclick="toggleDateGroup('${groupId}')">
+        <td colspan="9" style="color:#fff;font-weight:700;padding:8px 12px;font-size:13px">
+          📅 ${m} &nbsp;
+          <span style="background:rgba(255,255,255,0.2);border-radius:12px;padding:2px 10px;font-size:12px">${rows.length} 单</span>
+          <span id="${groupId}_icon" style="float:right;font-size:16px">▼</span>
+        </td>
+      </tr>
+      <tbody id="${groupId}" style="display:none">
+      ${rows.map(s => {
+        const audit = auditMap[s.id];
+        const status = audit?.status || '待审核';
+        const sty = statusStyle[status] || '';
+        return `<tr>
+          <td class="fw700 text-blue">#${s.id}</td>
+          <td class="fw700">${esc(s.customer||'')}</td>
+          <td>${esc(s.customerPhone||'')}</td>
+          <td style="font-size:12px">${esc(s.modelName||'-')}</td>
+          <td>${s.date||''}</td>
+          <td>${s.periods||'-'}期</td>
+          <td><span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;${sty}">${status}</span></td>
+          <td>${renderAuditorBadge(s.id)}</td>
+          <td><button onclick="openAuditDetail('${s.id}')" class="btn btn-primary btn-sm">审核</button></td>
+        </tr>`;
+      }).join('')}
+      </tbody>`;
     }).join('')}
   </table></div>`;
 };
