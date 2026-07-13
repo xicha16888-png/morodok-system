@@ -1605,10 +1605,20 @@ async function sha256(text) {
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
-// 获取当前登录用户
+// 获取当前登录用户（localStorage持久化 + 12小时有效期，超时自动失效）
+const LOGIN_TTL_MS = 12 * 60 * 60 * 1000; // 12小时
 function getCurrentUser() {
-  try { return JSON.parse(sessionStorage.getItem('morodok_user') || 'null'); }
-  catch(e) { return null; }
+  try {
+    const raw = localStorage.getItem('morodok_user');
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || !data.loginTime) return null;
+    if (Date.now() - data.loginTime > LOGIN_TTL_MS) {
+      localStorage.removeItem('morodok_user'); // 超过12小时，自动失效
+      return null;
+    }
+    return data;
+  } catch(e) { return null; }
 }
 
 // 检查页面访问权限
@@ -1644,10 +1654,11 @@ window.doLogin = async function() {
     }
     const user = users[0];
     if (user.password_hash !== hash) throw new Error(tl('密码错误','Incorrect password','ពាក្យ​សម្ងាត់​មិន​ត្រូវ'));
-    // 保存登录状态
-    sessionStorage.setItem('morodok_user', JSON.stringify({
+    // 保存登录状态（localStorage持久化，12小时内免登录）
+    localStorage.setItem('morodok_user', JSON.stringify({
       id: user.id, username: user.username,
-      role: user.role, displayName: user.display_name
+      role: user.role, displayName: user.display_name,
+      loginTime: Date.now()
     }));
     // 显示用户信息
     showUserHeader(user);
@@ -1664,7 +1675,7 @@ window.doLogin = async function() {
 // 退出登录
 window.doLogout = function() {
   if (!confirm(tl('确定要退出登录吗？','Confirm logout?','តើ​អ្នក​ប្រាកដ​ជា​ចង់​ចេញ​ទេ?'))) return;
-  sessionStorage.removeItem('morodok_user');
+  localStorage.removeItem('morodok_user');
   location.reload();
 };
 
