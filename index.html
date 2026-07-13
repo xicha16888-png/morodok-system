@@ -1762,6 +1762,11 @@ window._pendingPayReceipt = null;
 window.previewPayReceipt = function(input) {
   const file = input.files[0];
   if (!file) return;
+  setPayReceiptFile(file);
+};
+
+// 收款凭证：把文件（无论来自选择文件还是粘贴）存入待上传变量并显示预览
+function setPayReceiptFile(file) {
   window._pendingPayReceipt = file;
   const reader = new FileReader();
   reader.onload = e => {
@@ -1769,7 +1774,27 @@ window.previewPayReceipt = function(input) {
     if (preview) preview.innerHTML = `<img src="${e.target.result}" style="max-width:160px;max-height:120px;border-radius:6px;object-fit:cover;border:1px solid var(--border)">`;
   };
   reader.readAsDataURL(file);
-};
+}
+
+// 收款凭证：支持直接粘贴截图（Ctrl+V），只要收款登记页面打开着就生效
+document.addEventListener('paste', function(e) {
+  const preview = document.getElementById('pReceiptPreview');
+  if (!preview) return; // 收款登记页面未打开，不处理
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type && item.type.indexOf('image/') === 0) {
+      const raw = item.getAsFile();
+      if (raw) {
+        const ext = (item.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+        const named = new File([raw], `paste_${Date.now()}.${ext}`, { type: item.type });
+        setPayReceiptFile(named);
+      }
+      e.preventDefault();
+      break;
+    }
+  }
+});
 
 window.uploadPayReceipt = async function(paymentId) {
   const file = window._pendingPayReceipt;
@@ -3106,6 +3131,7 @@ function renderPaymentAdd() {
       <div class="form-group"><label>${t('remarks')}</label><input id="pNote" placeholder="${tl('可选','Optional','ស្រេច​ចិត្ត')}"></div>
       <div class="form-group span3">
         <label>${tl('收款凭证截图（可选，方便日后核实）','Payment Screenshot (optional)','រូបភាព​បញ្ជាក់​ការ​បង់​ប្រាក់')}</label>
+        <div style="font-size:11px;color:#90a4ae;margin:2px 0 6px">${tl('也可以直接粘贴截图 Ctrl+V','Or paste screenshot with Ctrl+V','ឬ​ចម្លង​រូបភាព​ដោយ Ctrl+V')}</div>
         <div id="pReceiptPreview" style="margin-bottom:6px"></div>
         <input type="file" accept="image/*" capture="environment" onchange="previewPayReceipt(this)">
       </div>
