@@ -1937,7 +1937,7 @@ function renderSaleAdd() {
   return `
   <div class="page-header">
     <div class="page-title">➕ 新建合同</div>
-    <div class="page-sub">填写信息后系统自动计算还款计划</div>
+    <div class="page-sub">${tl('填写信息后系统自动计算还款计划','Fill in details and the system auto-calculates the repayment schedule','បំពេញព័ត៌មានហើយប្រព័ន្ធនឹងគណនាកាលវិភាគសងប្រាក់ដោយស្វ័យប្រវត្តិ')}</div>
   </div>
 
   <div class="card">
@@ -2264,6 +2264,18 @@ window.calcInstall = function() {
 window.PHONE_CATALOG = null; // 运行时由 initSaleModelUI 从 phones 表构建: { Apple: {model: {storage: maxLoanAmount}}, OPPO: {...} }
 window._saleUIState = { brand: 'Apple', modelName: '', storage: '' };
 const CONDITIONS = ['全新','99新','95新','90新','80新','70新'];
+const CONDITION_LABELS = {
+  '全新': {zh:'全新', en:'Brand New', km:'ថ្មី១០០%'},
+  '99新': {zh:'99新', en:'99% New',  km:'ថ្មី99%'},
+  '95新': {zh:'95新', en:'95% New',  km:'ថ្មី95%'},
+  '90新': {zh:'90新', en:'90% New',  km:'ថ្មី90%'},
+  '80新': {zh:'80新', en:'80% New',  km:'ថ្មី80%'},
+  '70新': {zh:'70新', en:'70% New',  km:'ថ្មី70%'},
+};
+function conditionLabel(c) {
+  const l = CONDITION_LABELS[c];
+  return l ? tl(l.zh, l.en, l.km) : c;
+}
 
 function buildPhoneCatalog() {
   const phones = DB_get('phones') || [];
@@ -2288,7 +2300,7 @@ function renderConditionToggle() {
   if (!wrap) return;
   wrap.innerHTML = CONDITIONS.map((c,i) => `
     <button type="button" onclick="selectCondition('${c}')" data-cond="${c}"
-      style="padding:6px 12px;border-radius:16px;border:1.5px solid ${i===0?'#9c27b0':'#ddd'};background:${i===0?'#9c27b0':'#fff'};color:${i===0?'#fff':'#666'};font-size:12px;font-weight:700;cursor:pointer">${c}</button>
+      style="padding:6px 12px;border-radius:16px;border:1.5px solid ${i===0?'#9c27b0':'#ddd'};background:${i===0?'#9c27b0':'#fff'};color:${i===0?'#fff':'#666'};font-size:12px;font-weight:700;cursor:pointer">${conditionLabel(c)}</button>
   `).join('');
 }
 
@@ -2313,10 +2325,28 @@ window.selectBrand = function(brand) {
   populateModelDropdown(brand);
 };
 
+function sortModelNames(models) {
+  // 按型号里的数字从小到大排序(比如 iPhone 11 排在 iPhone 12 前面)，数字相同再按后缀排(基础版<Pro<ProMax<Plus等)
+  const suffixOrder = ['','plus','pro','promax','air'];
+  function parseModel(m) {
+    const numMatch = m.match(/(\d+)/);
+    const num = numMatch ? parseInt(numMatch[1]) : 9999;
+    const suffix = m.replace(/^.*?\d+\s*/,'').toLowerCase().replace(/\s+/g,'');
+    let suffixRank = suffixOrder.indexOf(suffix);
+    if (suffixRank === -1) suffixRank = suffixOrder.length; // 未知后缀排最后
+    return { num, suffixRank };
+  }
+  return [...models].sort((a,b) => {
+    const pa = parseModel(a), pb = parseModel(b);
+    if (pa.num !== pb.num) return pa.num - pb.num;
+    return pa.suffixRank - pb.suffixRank;
+  });
+}
+
 function populateModelDropdown(brand) {
   const sel = document.getElementById('sModelName');
   if (!sel || !window.PHONE_CATALOG) return;
-  const models = Object.keys(window.PHONE_CATALOG[brand] || {});
+  const models = sortModelNames(Object.keys(window.PHONE_CATALOG[brand] || {}));
   sel.innerHTML = models.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
   window._saleUIState.modelName = models[0] || '';
   onModelNameChange();
@@ -2817,31 +2847,31 @@ window.editSale = function(id) {
   const periodOpts = [3,6,9,12].map(n=>`<option value="${n}" ${n===s.periods?'selected':''}>${n}期</option>`).join('');
   const svcPeriodOpts = [3,6,9,12].map(n=>`<option value="${n}" ${n===(s.svcPeriods||s.periods)?'selected':''}>${n}期</option>`).join('');
 
-  showModal(`✏️ 编辑合同 #${s.id} — ${s.customer}`,
+  showModal(`✏️ ${tl('编辑合同','Edit Contract','កែប្រែកិច្ចសន្យា')} #${s.id} — ${s.customer}`,
     `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:13px">
-      <div><label style="font-size:11px;color:var(--muted)">合同日期</label><input id="eDate" type="date" value="${s.date}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">客户姓名</label><input id="eCust" value="${s.customer}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">客户电话</label><input id="eCustPhone" value="${s.customerPhone||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">店铺名称</label><input id="eShop" value="${s.shopName||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">业务员</label><input id="eSalesperson" value="${s.salesperson||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">手机型号</label><select id="eModel" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${phoneOpts}</select></div>
-      <div><label style="font-size:11px;color:var(--muted)">销售价格 ($)</label><input id="eSalePrice" type="number" value="${s.salePrice}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">首付金额 ($)</label><input id="eDeposit" type="number" value="${s.deposit}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">分期期数</label><select id="ePeriods" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${periodOpts}</select></div>
-      <div><label style="font-size:11px;color:var(--muted)">首次还款日</label><input id="eFirstDue" type="date" value="${s.firstDue||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('合同日期','Contract Date','ថ្ងៃកិច្ចសន្យា')}</label><input id="eDate" type="date" value="${s.date}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('客户姓名','Customer Name','ឈ្មោះអតិថិជន')}</label><input id="eCust" value="${s.customer}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('客户电话','Customer Phone','ទូរស័ព្ទអតិថិជន')}</label><input id="eCustPhone" value="${s.customerPhone||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('店铺名称','Store Name','ឈ្មោះហាង')}</label><input id="eShop" value="${s.shopName||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('业务员','Salesperson','ភ្នាក់ងារ')}</label><input id="eSalesperson" value="${s.salesperson||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('手机型号','Phone Model','ម៉ូដែលទូរស័ព្ទ')}</label><select id="eModel" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${phoneOpts}</select></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('销售价格','Sale Price','តម្លៃលក់')} ($)</label><input id="eSalePrice" type="number" value="${s.salePrice}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('首付金额','Deposit','ប្រាក់ដាក់ដំបូង')} ($)</label><input id="eDeposit" type="number" value="${s.deposit}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('分期期数','Periods','ដំណាក់កាល')}</label><select id="ePeriods" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${periodOpts}</select></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('首次还款日','First Due Date','ថ្ងៃដល់កំណត់ដំបូង')}</label><input id="eFirstDue" type="date" value="${s.firstDue||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl("每期本金","Monthly Principal","ដើមទុនប្រចាំខែ")} ($)</label><input id="eMonthlyPrincipal" type="number" value="${s.schedule&&s.schedule.length?(s.schedule[0].principalDue||0):(s.installmentAmount&&s.periods?(+s.installmentAmount/(s.periods===3?3:s.periods-1)).toFixed(2):0)}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl("每期利息","Monthly Interest","ការ​ប្រាក់​ប្រចាំ​ខែ")} ($)</label><input id="eMonthlyInt" type="number" value="${s.totalInterest&&s.periods?(+s.totalInterest/s.periods).toFixed(2):0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">手续费期数</label><select id="eSvcPeriods" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${svcPeriodOpts}</select></div>
-      <div><label style="font-size:11px;color:var(--muted)">每期手续费 ($)</label><input id="eMonthlySvc" type="number" value="${s.totalServiceFee&&s.svcPeriods?(+s.totalServiceFee/(s.svcPeriods||s.periods)).toFixed(2):0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('手续费期数','Fee Periods','ដំណាក់កម្រៃ')}</label><select id="eSvcPeriods" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${svcPeriodOpts}</select></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('每期手续费','Monthly Fee','កម្រៃប្រចាំខែ')} ($)</label><input id="eMonthlySvc" type="number" value="${s.totalServiceFee&&s.svcPeriods?(+s.totalServiceFee/(s.svcPeriods||s.periods)).toFixed(2):0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl("每期还款合计","Monthly Total","សរុប​ប្រចាំ​ខែ")} ($)</label><input id="eMonthly" type="number" value="${s.monthlyPayment||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl("每日滞纳金","Daily Late Fee","ពិន័យ​ប្រចាំ​ថ្ងៃ")} ($)</label><input id="eDailyFee" type="number" value="${s.dailyLateFee||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">店家返点 ($)</label><input id="eRebate" type="number" value="${s.storeRebate||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div style="grid-column:span 3"><label style="font-size:11px;color:var(--muted)">备注</label><input id="eNote" value="${s.note||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('店家返点','Store Rebate','កម្រៃហាង')} ($)</label><input id="eRebate" type="number" value="${s.storeRebate||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div style="grid-column:span 3"><label style="font-size:11px;color:var(--muted)">${tl('备注','Remarks','ចំណាំ')}</label><input id="eNote" value="${s.note||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
     </div>
     <div id="editMsg" style="margin-top:10px"></div>
     <div style="margin-top:14px;display:flex;gap:10px">
-      <button class="btn btn-primary" onclick="saveEditSale('${id}')" style="flex:1">💾 保存更改</button>
-      <button class="btn btn-outline" onclick="closeModal()" style="flex:1">取消</button>
+      <button class="btn btn-primary" onclick="saveEditSale('${id}')" style="flex:1">💾 ${tl('保存更改','Save Changes','រក្សាទុក')}</button>
+      <button class="btn btn-outline" onclick="closeModal()" style="flex:1">${tl('取消','Cancel','បោះបង់')}</button>
     </div>`
   );
 };
@@ -3711,22 +3741,22 @@ window.quickPay = function(contractId, period) {
 };
 window.confirmEdit = function(msg, onConfirm) {
   window._pendingEditCallback = onConfirm;
-  showModal('🔐 确认修改', `
+  showModal(`🔐 ${tl('确认修改','Confirm Edit','បញ្ជាក់ការកែប្រែ')}`, `
     <p style="margin-bottom:12px;color:var(--amber)">${esc(msg)}</p>
     <div class="form-group">
-      <label>请输入修改密码</label>
-      <input type="password" id="editPwdInput" placeholder="密码" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"
+      <label>${tl('请输入修改密码','Enter edit password','សូមបញ្ចូលពាក្យសម្ងាត់')}</label>
+      <input type="password" id="editPwdInput" placeholder="${tl('密码','Password','ពាក្យសម្ងាត់')}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"
         onkeydown="if(event.key==='Enter')document.getElementById('confirmEditBtn').click()">
     </div>
     <div id="editPwdMsg" style="color:var(--red);font-size:12px;margin-top:6px"></div>
     <div style="margin-top:14px;display:flex;gap:10px">
       <button id="confirmEditBtn" class="btn btn-primary" onclick="
         const v = document.getElementById('editPwdInput').value;
-        if(v !== EDIT_PWD){ document.getElementById('editPwdMsg').textContent='密码错误'; return; }
+        if(v !== EDIT_PWD){ document.getElementById('editPwdMsg').textContent=tl('密码错误','Wrong password','ពាក្យសម្ងាត់មិនត្រូវ'); return; }
         closeModal();
         if(window._pendingEditCallback) { window._pendingEditCallback(); window._pendingEditCallback=null; }
-      ">确认修改</button>
-      <button class="btn btn-outline" onclick="closeModal();window._pendingEditCallback=null;">取消</button>
+      ">${tl('确认修改','Confirm','បញ្ជាក់')}</button>
+      <button class="btn btn-outline" onclick="closeModal();window._pendingEditCallback=null;">${tl('取消','Cancel','បោះបង់')}</button>
     </div>
   `);
   setTimeout(()=>document.getElementById('editPwdInput')?.focus(), 100);
@@ -3752,22 +3782,22 @@ window.logActivity = logActivity;
 
 window.confirmDelete = function(msg, onConfirm) {
   window._pendingDeleteCallback = onConfirm;
-  showModal('🔐 确认删除', `
+  showModal(`🔐 ${tl('确认删除','Confirm Delete','បញ្ជាក់ការលុប')}`, `
     <p style="margin-bottom:12px;color:var(--red)">${msg}</p>
     <div class="form-group">
-      <label>请输入删除密码</label>
-      <input type="password" id="deletePwdInput" placeholder="密码" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"
+      <label>${tl('请输入删除密码','Enter delete password','សូមបញ្ចូលពាក្យសម្ងាត់លុប')}</label>
+      <input type="password" id="deletePwdInput" placeholder="${tl('密码','Password','ពាក្យសម្ងាត់')}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"
         onkeydown="if(event.key==='Enter')document.getElementById('confirmDeleteBtn').click()">
     </div>
     <div id="deletePwdMsg" style="color:var(--red);font-size:12px;margin-top:6px"></div>
     <div style="margin-top:14px;display:flex;gap:10px">
       <button id="confirmDeleteBtn" class="btn btn-danger" onclick="
         const v = document.getElementById('deletePwdInput').value;
-        if(v !== DELETE_PWD){ document.getElementById('deletePwdMsg').textContent='密码错误'; return; }
+        if(v !== DELETE_PWD){ document.getElementById('deletePwdMsg').textContent=tl('密码错误','Wrong password','ពាក្យសម្ងាត់មិនត្រូវ'); return; }
         closeModal();
         if(window._pendingDeleteCallback) { window._pendingDeleteCallback(); window._pendingDeleteCallback=null; }
-      ">确认删除</button>
-      <button class="btn btn-outline" onclick="closeModal();window._pendingDeleteCallback=null;">取消</button>
+      ">${tl('确认删除','Confirm Delete','បញ្ជាក់ការលុប')}</button>
+      <button class="btn btn-outline" onclick="closeModal();window._pendingDeleteCallback=null;">${tl('取消','Cancel','បោះបង់')}</button>
     </div>
   `);
   setTimeout(()=>document.getElementById('deletePwdInput')?.focus(), 100);
@@ -4185,7 +4215,7 @@ function renderStatsProfit() {
   const catEntries = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
 
   return `
-  <div class="page-header"><div class="page-title">💰 ${t("profitTitle")}</div><div class="page-sub">含利息 + 手续费 + 提前还款 − 店家返点 − 日常开支</div></div>
+  <div class="page-header"><div class="page-title">💰 ${t("profitTitle")}</div><div class="page-sub">${tl('含利息 + 手续费 + 提前还款 − 店家返点 − 日常开支','Interest + Fees + Early Repayment − Rebate − Expenses','ការប្រាក់ + កម្រៃ + សងមុន − កម្រៃហាង − ចំណាយ')}</div></div>
 
   <!-- 利润公式说明 -->
   <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#5d4037">
@@ -4904,7 +4934,7 @@ function renderEarlyPayment() {
     </div>
 
     <div class="form-grid" style="margin-top:14px">
-      <div class="form-group span3"><label>备注</label><input id="epNote" placeholder="协商详情（可选）"></div>
+      <div class="form-group span3"><label>${tl('备注','Remarks','សម្គាល់')}</label><input id="epNote" placeholder="${tl('协商详情（可选）','Negotiation details (optional)','ព័ត៌មានលម្អិត (ស្រេចចិត្ត)')}"></div>
     </div>
     <div class="btn-row">
       <button class="btn btn-success" onclick="submitEarlyPayment()">${t("confirmEarly")}</button>
@@ -5636,7 +5666,7 @@ function renderExpenses() {
   return `
   <div class="page-header">
     <div class="page-title">🧾 ${t('expensesTitle')}</div>
-    <div class="page-sub">记录日常运营支出，自动纳入月度财务与利润统计</div>
+    <div class="page-sub">${tl('记录日常运营支出，自动纳入月度财务与利润统计','Record daily operating expenses, auto-included in monthly finance & profit stats','កត់ត្រាចំណាយប្រតិបត្តិការប្រចាំថ្ងៃ ដោយស្វ័យប្រវត្តិបញ្ចូលទៅរបាយការណ៍ហិរញ្ញវត្ថុ')}</div>
   </div>
 
   <div class="card">
@@ -7545,7 +7575,7 @@ function renderAudit() {
   return `
   <div class="page-header">
     <div class="page-title">📋 合同审核</div>
-    <div class="page-sub">查看合同详情 · 审核材料图片 · 标记审核状态</div>
+    <div class="page-sub">${tl('查看合同详情 · 审核材料图片 · 标记审核状态','View contract details · Review documents · Mark review status','មើលព័ត៌មានលម្អិត · ត្រួតពិនិត្យរូបភាព · សម្គាល់ស្ថានភាព')}</div>
   </div>
   <div class="card">
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
@@ -7853,7 +7883,7 @@ function renderActivityLog() {
   return `
   <div class="page-header">
     <div class="page-title">📜 操作日志</div>
-    <div class="page-sub">记录谁、什么时候、对哪份合同/流水做了什么操作</div>
+    <div class="page-sub">${tl('记录谁、什么时候、对哪份合同/流水做了什么操作','Records who did what, when, to which contract/payment','កត់ត្រាថាអ្នកណាបានធ្វើអ្វី នៅពេលណា')}</div>
   </div>
   <div class="card">
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
@@ -7923,7 +7953,7 @@ function renderUserMgmt() {
   return `
   <div class="page-header">
     <div class="page-title">👥 账号管理</div>
-    <div class="page-sub">创建员工账号 · 分配角色 · 重置密码</div>
+    <div class="page-sub">${tl('创建员工账号 · 分配角色 · 重置密码','Create staff accounts · Assign roles · Reset passwords','បង្កើតគណនីបុគ្គលិក · កំណត់តួនាទី · កំណត់ពាក្យសម្ងាត់ឡើងវិញ')}</div>
   </div>
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
