@@ -4936,22 +4936,56 @@ window.submitPurchase = function() {
 // ══════════════════════════════════════════════════════
 // EARLY PAYMENT 提前还款
 // ══════════════════════════════════════════════════════
+// 合同选择改成自定义可点击下拉（原生 <select> 弹出层在部分环境里点击不生效/关不掉，
+// 这里保留一个隐藏的 <select id="epContract"> 供 calcEarlyProfit 等函数照常读取 selectedOptions，
+// 但视觉上和交互全部由下面这个自绘的 <div> 列表接管，点击直接触发 selectEpContract。
 window.filterEpContracts = function() {
   const kw = (document.getElementById('epSearch')?.value || '').trim().toLowerCase();
-  const sel = document.getElementById('epContract');
-  if (!sel || !window._epAllOptionsHtml) return;
-  if (!kw) { sel.innerHTML = window._epAllOptionsHtml; return; }
-  // 解析出全部<option>，按客户姓名或合同号(#后面的文字)过滤
+  const dd = document.getElementById('epDropdown');
+  if (!dd || !window._epAllOptionsHtml) return;
   const wrap = document.createElement('div');
   wrap.innerHTML = window._epAllOptionsHtml;
-  const matched = [...wrap.querySelectorAll('option')].filter(opt => {
+  const all = [...wrap.querySelectorAll('option')];
+  const matched = kw ? all.filter(opt => {
     const text = opt.textContent.toLowerCase();
     const customer = (opt.dataset.customer || '').toLowerCase();
     return text.includes(kw) || customer.includes(kw);
-  });
-  sel.innerHTML = matched.length ? matched.map(o => o.outerHTML).join('') : '<option>—' + (tl('无匹配结果','No match','គ្មានលទ្ធផល')) + '—</option>';
-  if (matched.length) calcEarlyProfit();
+  }) : all;
+
+  if (!matched.length) {
+    dd.innerHTML = `<div style="padding:12px 14px;color:#90a4ae;font-size:13px;text-align:center">${tl('无匹配结果','No match','គ្មានលទ្ធផល')}</div>`;
+    dd.style.display = 'block';
+    return;
+  }
+  dd.innerHTML = matched.map(opt => `
+    <div onclick="selectEpContract('${esc(opt.value)}')"
+      style="padding:10px 14px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0"
+      onmouseover="this.style.background='#f0f7ff'" onmouseout="this.style.background=''">
+      ${esc(opt.textContent)}
+    </div>`).join('');
+  dd.style.display = 'block';
 };
+
+window.selectEpContract = function(id) {
+  const sel = document.getElementById('epContract');
+  const dd = document.getElementById('epDropdown');
+  const searchEl = document.getElementById('epSearch');
+  if (!sel) return;
+  sel.value = id;
+  const opt = sel.selectedOptions[0];
+  if (searchEl && opt) searchEl.value = opt.textContent;
+  if (dd) dd.style.display = 'none';
+  calcEarlyProfit();
+};
+
+// 点击下拉外部区域时收起
+document.addEventListener('click', function(e) {
+  const dd = document.getElementById('epDropdown');
+  const searchEl = document.getElementById('epSearch');
+  if (!dd || dd.style.display === 'none') return;
+  if (e.target === searchEl || dd.contains(e.target)) return;
+  dd.style.display = 'none';
+});
 
 function renderEarlyPayment() {
   const sales = (DB_get('sales')||[]).filter(s => s.status === '进行中' || s.status === 'Active');
@@ -4983,8 +5017,11 @@ function renderEarlyPayment() {
     <div class="form-grid">
       <div class="form-group span3">
         <label>${t('selectContract')}</label>
-        <input type="text" id="epSearch" placeholder="${tl('输入客户姓名或合同号搜索…','Search by name or contract #…','ស្វែងរកតាមឈ្មោះ ឬលេខកិច្ចសន្យា…')}" oninput="filterEpContracts()" style="margin-bottom:6px">
-        <select id="epContract" onchange="calcEarlyProfit()">${opts||'<option>—</option>'}</select>
+        <div style="position:relative">
+          <input type="text" id="epSearch" autocomplete="off" placeholder="${tl('输入客户姓名或合同号搜索…','Search by name or contract #…','ស្វែងរកតាមឈ្មោះ ឬលេខកិច្ចសន្យា…')}" oninput="filterEpContracts()" onfocus="filterEpContracts()">
+          <div id="epDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:80;background:#fff;border:1.5px solid var(--border);border-radius:8px;margin-top:4px;max-height:260px;overflow-y:auto;box-shadow:0 6px 20px rgba(0,0,0,.15)"></div>
+        </div>
+        <select id="epContract" onchange="calcEarlyProfit()" style="display:none">${opts||'<option>—</option>'}</select>
       </div>
       <div class="form-group"><label>${t("paymentDate")}</label><input type="date" id="epDate" value="${today()}"></div>
       <div class="form-group"><label>${t("remainPrincipal")}</label><input id="epRemainP" readonly style="background:#f0f7ff"></div>
