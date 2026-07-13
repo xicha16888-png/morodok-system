@@ -1586,6 +1586,7 @@ const ROLE_PAGES = {
                'stats-collection','stats-profit','finance-report','expenses',
                'store-stats','fund-stats','reminder-tomorrow','reminder-overdue',
                'payment-query','phones','suppliers','purchase-add','inventory','company'],
+  salesManager: ['home','sale-add','sale-list','reminder-tomorrow','reminder-overdue','payment-query'],
   sales:     ['home','sale-add','sale-list','reminder-tomorrow','reminder-overdue','payment-query'],
   entry:     ['home','sale-add','sale-list','payment-add','early-payment',
                'reminder-tomorrow','reminder-overdue','payment-query'],
@@ -1595,7 +1596,7 @@ const ROLE_PAGES = {
 };
 
 const ROLE_LABEL = {
-  boss:'老板', manager:'主管', sales:'业务员',
+  boss:'老板', manager:'主管', salesManager:'业务主管', sales:'业务员',
   entry:'录入员', collector:'催收员', auditor:'内审员'
 };
 
@@ -1632,8 +1633,8 @@ function canAccess(page) {
 
 // 登录
 window.doLogin = async function() {
-  const username = (document.getElementById('loginUser')?.value||'').trim();
-  const password = (document.getElementById('loginPass')?.value||'').trim();
+  const username = (document.getElementById('loginUser')?.value||'').trim().toLowerCase();
+  const password = (document.getElementById('loginPass')?.value||'').trim().toLowerCase();
   const errEl = document.getElementById('loginErr');
   const btn = document.getElementById('loginBtn');
   if (!username || !password) {
@@ -1645,7 +1646,7 @@ window.doLogin = async function() {
   try {
     const hash = await sha256(password);
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/morodok_users?username=eq.${encodeURIComponent(username)}&active=eq.true&select=*`,
+      `${SUPABASE_URL}/rest/v1/morodok_users?username=ilike.${encodeURIComponent(username)}&active=eq.true&select=*`,
       { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
     );
     const users = await res.json();
@@ -2676,8 +2677,10 @@ function buildSalesTable(sales) {
         <td style="white-space:nowrap">
           <button class="btn btn-outline btn-sm" onclick="viewSchedule('${s.id}')">${t('repaySchedule')}</button>
           <button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="showContractImages('${s.id}')">📎 材料</button>
+          ${(() => { const u = getCurrentUser(); const role = u?.role || 'boss'; return (role==='boss'||role==='manager'||role==='salesManager') ? `
           <button class="btn btn-primary btn-sm" style="margin-left:4px" onclick="editSale('${s.id}')">${tl('编辑','Edit','កែប្រែ')}</button>
           <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSale('${s.id}')">${t('deleteBtn')}</button>
+          ` : ''; })()}
         </td>
       </tr>`;
     });
@@ -2839,6 +2842,10 @@ window.viewSchedule = function(id) {
 
 
 window.editSale = function(id) {
+  const _u = getCurrentUser(); const _role = _u?.role || 'boss';
+  if (_role !== 'boss' && _role !== 'manager' && _role !== 'salesManager') {
+    alert(tl('只有老板/主管才能编辑合同','Only boss/manager can edit contracts','មានតែចៅហ្វាយ/អ្នកគ្រប់គ្រងទេ')); return;
+  }
   const sales = DB_get('sales') || [];
   const s = sales.find(x => String(x.id) === String(id));
   if (!s) return;
@@ -2877,6 +2884,10 @@ window.editSale = function(id) {
 };
 
 window.saveEditSale = function(id) {
+  const _u2 = getCurrentUser(); const _role2 = _u2?.role || 'boss';
+  if (_role2 !== 'boss' && _role2 !== 'manager' && _role2 !== 'salesManager') {
+    alert(tl('只有老板/主管才能编辑合同','Only boss/manager can edit contracts','មានតែចៅហ្វាយ/អ្នកគ្រប់គ្រងទេ')); return;
+  }
   const sales = DB_get('sales') || [];
   const idx = sales.findIndex(x => String(x.id) === String(id));
   if (idx < 0) return;
@@ -2991,6 +3002,10 @@ window.saveEditSale = function(id) {
 };
 
 window.deleteSale = function(id) {
+  const _u3 = getCurrentUser(); const _role3 = _u3?.role || 'boss';
+  if (_role3 !== 'boss' && _role3 !== 'manager' && _role3 !== 'salesManager') {
+    alert(tl('只有老板/主管才能删除合同','Only boss/manager can delete contracts','មានតែចៅហ្វាយ/អ្នកគ្រប់គ្រងទេ')); return;
+  }
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
   if (!s) return;
   confirmDelete(`${tl("删除合同","Delete contract","លុប​កិច្ចសន្យា")} #${s.id} — ${s.customer}？${tl("此操作不可撤销！","This cannot be undone!","សកម្ម​នេះ​មិន​អាច​ត្រឡប់​វិញ!")}`, async function() {
@@ -7985,6 +8000,7 @@ function renderUserMgmt() {
         <select id="nuRole"
           style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
           <option value="sales">业务员</option>
+          <option value="salesManager">业务主管</option>
           <option value="entry">录入员</option>
           <option value="collector">催收员</option>
           <option value="auditor">内审员</option>
@@ -8011,9 +8027,9 @@ window.showAddUserForm = function() {
 };
 
 window.saveNewUser = async function() {
-  const username = document.getElementById('nuUsername')?.value.trim();
+  const username = document.getElementById('nuUsername')?.value.trim().toLowerCase();
   const display  = document.getElementById('nuDisplay')?.value.trim();
-  const password = document.getElementById('nuPassword')?.value.trim();
+  const password = document.getElementById('nuPassword')?.value.trim().toLowerCase();
   const role     = document.getElementById('nuRole')?.value;
   const msg = document.getElementById('addUserMsg');
   if (!username||!display||!password||!role) {
@@ -8047,24 +8063,57 @@ window.loadUserList = async function() {
     if (!Array.isArray(users)||!users.length) {
       wrap.innerHTML='<div style="padding:20px;color:#90a4ae;text-align:center">暂无账号</div>'; return;
     }
-    const roleBg = {boss:'#ffebee',manager:'#e8eaf6',sales:'#e8f5e9',entry:'#e3f2fd',collector:'#fff3e0',auditor:'#f3e5f5'};
-    const roleColor = {boss:'#c62828',manager:'#283593',sales:'#2e7d32',entry:'#1565c0',collector:'#e65100',auditor:'#6a1b9a'};
+    const roleBg = {boss:'#ffebee',manager:'#e8eaf6',salesManager:'#e0f2f1',sales:'#e8f5e9',entry:'#e3f2fd',collector:'#fff3e0',auditor:'#f3e5f5'};
+    const roleColor = {boss:'#c62828',manager:'#283593',salesManager:'#00695c',sales:'#2e7d32',entry:'#1565c0',collector:'#e65100',auditor:'#6a1b9a'};
+    const roleOrder = ['boss','manager','salesManager','sales','entry','collector','auditor'];
+
+    // 🔧 按角色分组，同类角色排在一起
+    const byRole = {};
+    users.forEach(u => { (byRole[u.role] = byRole[u.role] || []).push(u); });
+    const sortedRoles = [...roleOrder.filter(r => byRole[r]), ...Object.keys(byRole).filter(r => !roleOrder.includes(r))];
+
+    const roleOptionsHtml = roleOrder.map(r => `<option value="${r}">${ROLE_LABEL[r]||r}</option>`).join('');
+
     wrap.innerHTML = `<div class="table-wrap"><table>
       <tr><th>用户名</th><th>显示姓名</th><th>角色</th><th>状态</th><th>创建时间</th><th>操作</th></tr>
-      ${users.map(u=>`<tr>
-        <td class="fw700">${esc(u.username)}</td>
-        <td>${esc(u.display_name)}</td>
-        <td><span style="padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:${roleBg[u.role]||'#f5f5f5'};color:${roleColor[u.role]||'#333'}">${ROLE_LABEL[u.role]||u.role}</span></td>
-        <td>${u.active?'<span style="color:var(--green)">✅ 正常</span>':'<span style="color:var(--red)">🚫 禁用</span>'}</td>
-        <td style="font-size:12px;color:#90a4ae">${u.created_at?.slice(0,10)||''}</td>
-        <td>
-          <button onclick="resetUserPwd('${u.id}','${esc(u.username)}')" class="btn btn-outline btn-sm" style="font-size:11px;margin-right:4px">🔑 重置密码</button>
-          <button onclick="toggleUserActive('${u.id}',${u.active})" class="btn btn-outline btn-sm" style="font-size:11px;color:${u.active?'var(--red)':'var(--green)'}">${u.active?'禁用':'启用'}</button>
-        </td>
-      </tr>`).join('')}
+      ${sortedRoles.map(role => `
+        <tr style="background:#f5f7fa"><td colspan="6" style="font-weight:700;color:${roleColor[role]||'#333'};padding:6px 12px">${ROLE_LABEL[role]||role}（${byRole[role].length}人）</td></tr>
+        ${byRole[role].map(u=>`<tr>
+          <td class="fw700">${esc(u.username)}</td>
+          <td>${esc(u.display_name)}</td>
+          <td>
+            <select onchange="changeUserRole('${u.id}', this.value, '${esc(u.username)}')" style="padding:2px 6px;border-radius:8px;font-size:12px;font-weight:600;background:${roleBg[u.role]||'#f5f5f5'};color:${roleColor[u.role]||'#333'};border:1px solid ${roleColor[u.role]||'#ccc'}">
+              ${roleOrder.map(r => `<option value="${r}" ${r===u.role?'selected':''}>${ROLE_LABEL[r]||r}</option>`).join('')}
+            </select>
+          </td>
+          <td>${u.active?'<span style="color:var(--green)">✅ 正常</span>':'<span style="color:var(--red)">🚫 禁用</span>'}</td>
+          <td style="font-size:12px;color:#90a4ae">${u.created_at?.slice(0,10)||''}</td>
+          <td>
+            <button onclick="resetUserPwd('${u.id}','${esc(u.username)}')" class="btn btn-outline btn-sm" style="font-size:11px;margin-right:4px">🔑 重置密码</button>
+            <button onclick="toggleUserActive('${u.id}',${u.active})" class="btn btn-outline btn-sm" style="font-size:11px;color:${u.active?'var(--red)':'var(--green)'}">${u.active?'禁用':'启用'}</button>
+            <button onclick="deleteUser('${u.id}','${esc(u.username)}')" class="btn btn-danger btn-sm" style="font-size:11px;margin-left:4px">🗑️ 删除</button>
+          </td>
+        </tr>`).join('')}
+      `).join('')}
     </table></div>`;
   } catch(e) {
     wrap.innerHTML = `<div style="color:red;padding:16px">加载失败: ${e.message}</div>`;
+  }
+};
+
+window.changeUserRole = async function(userId, newRole, username) {
+  if (!confirm(`确定把 ${username} 的角色改成"${ROLE_LABEL[newRole]||newRole}"吗？`)) { loadUserList(); return; }
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/morodok_users?id=eq.${userId}`,
+      { method:'PATCH', headers:{ 'apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}`,
+        'Content-Type':'application/json','Prefer':'return=minimal' },
+        body: JSON.stringify({ role: newRole }) });
+    if (!res.ok) throw new Error('状态码 ' + res.status);
+    logActivity && logActivity('修改账号角色', username, `改为${ROLE_LABEL[newRole]||newRole}`);
+    loadUserList();
+  } catch(e) {
+    alert('修改失败：'+e.message);
+    loadUserList();
   }
 };
 
@@ -8072,7 +8121,7 @@ window.resetUserPwd = async function(userId, username) {
   const newPwd = prompt(`重置 ${username} 的密码：`);
   if (!newPwd || newPwd.length < 4) { alert('密码至少4位'); return; }
   try {
-    const hash = await sha256(newPwd);
+    const hash = await sha256(newPwd.trim().toLowerCase());
     await fetch(`${SUPABASE_URL}/rest/v1/morodok_users?id=eq.${userId}`,
       { method:'PATCH', headers:{ 'apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}`,
         'Content-Type':'application/json','Prefer':'return=minimal' },
@@ -8090,6 +8139,21 @@ window.toggleUserActive = async function(userId, current) {
         body: JSON.stringify({ active: !current }) });
     loadUserList();
   } catch(e) { alert('操作失败：'+e.message); }
+};
+
+window.deleteUser = async function(userId, username) {
+  if (!confirm(`⚠️ 确定要彻底删除账号 "${username}" 吗？此操作不可撤销！`)) return;
+  const pwd = prompt('请输入删除密码确认：');
+  if (pwd !== DELETE_PWD) { alert('密码错误，已取消删除'); return; }
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/morodok_users?id=eq.${userId}`,
+      { method:'DELETE', headers:{ 'apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}`,
+        'Prefer':'return=minimal' } });
+    if (!res.ok) throw new Error('状态码 ' + res.status);
+    logActivity && logActivity('删除账号', username, '账号已彻底删除');
+    alert(`✅ 账号 "${username}" 已删除`);
+    loadUserList();
+  } catch(e) { alert('删除失败：'+e.message); }
 };
 
 // 初始化账号管理页时加载列表
