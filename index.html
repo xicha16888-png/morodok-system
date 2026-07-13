@@ -1982,6 +1982,15 @@ function renderSaleAdd() {
     <div style="background:#f3e5f5;border-radius:10px;padding:16px;margin-bottom:14px;border-left:4px solid #9c27b0">
       <div style="font-size:13px;font-weight:700;color:#9c27b0;margin-bottom:14px">${t('step2Title')}</div>
 
+      <div class="form-group" style="margin-bottom:14px">
+        <label>${tl('放款方式','Loan Method','វិធីសាស្ត្រកម្ចី')}</label>
+        <div id="loanMethodToggle" style="display:flex;gap:8px;margin-top:4px">
+          <button type="button" class="btn-toggle method-btn-el active" data-method="new" onclick="selectLoanMethod('new')" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid #9c27b0;background:#9c27b0;color:#fff;font-weight:700;cursor:pointer">${tl('新方式（按型号限额）','New (model-capped)','ថ្មី')}</button>
+          <button type="button" class="btn-toggle method-btn-el" data-method="old" onclick="selectLoanMethod('old')" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid #ddd;background:#fff;color:#666;font-weight:700;cursor:pointer">${tl('老方式（自由填写）','Old (manual entry)','ចាស់')}</button>
+        </div>
+      </div>
+
+      <!-- ══════ 品牌/型号/容量/成色：新老方式共用同一个库存选择 ══════ -->
       <div class="form-group" style="margin-bottom:12px">
         <label>${tl('品牌','Brand','ម៉ាក')}</label>
         <div id="brandToggle" style="display:flex;gap:8px;margin-top:4px">
@@ -2009,22 +2018,55 @@ function renderSaleAdd() {
         <input type="hidden" id="sCondition" value="全新">
       </div>
 
-      <div class="form-grid">
-        <div class="form-group"><label>${t('installPeriods')}</label>${periodSelect('sPeriods', 3, 'onPeriodChangeCalc()')}</div>
-        <div class="form-group"><label>${t('firstDueDate')}</label>
-          <input type="date" id="sFirstDue" onchange="validateFirstDue()">
+      <!-- ══════ 新方式：期数/额度限制 ══════ -->
+      <div id="newMethodSection">
+        <div class="form-grid">
+          <div class="form-group"><label>${t('installPeriods')}</label>${periodSelect('sPeriods', 3, 'onPeriodChangeCalc()')}</div>
+          <div class="form-group"><label>${t('firstDueDate')}</label>
+            <input type="date" id="sFirstDue" onchange="validateFirstDue()">
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top:12px">
+          <label>${tl('贷款金额（本金）($) *','Loan Amount ($) *','ចំនួនកម្ចី ($) *')} <span id="loanRangeHint" style="font-weight:400;color:#888;font-size:12px"></span></label>
+          <input type="range" id="sLoanSlider" min="0" max="0" value="0" step="1" oninput="onLoanSliderChange()" style="width:100%;margin:6px 0">
+          <input type="number" id="sSalePrice" placeholder="0.00" step="0.01" oninput="onLoanInputChange()" style="font-size:18px;font-weight:700;width:100%">
+        </div>
+
+        <div class="form-group" style="margin-top:12px">
+          <label>${tl('售价 ($，仅记录，不参与计算)','Retail Price ($, reference only)','តម្លៃលក់ ($, កត់ត្រាតែប៉ុណ្ណោះ)')}</label>
+          <input type="number" id="sRetailPrice" placeholder="0.00" step="0.01">
         </div>
       </div>
 
-      <div class="form-group" style="margin-top:12px">
-        <label>${tl('贷款金额（本金）($) *','Loan Amount ($) *','ចំនួនកម្ចី ($) *')} <span id="loanRangeHint" style="font-weight:400;color:#888;font-size:12px"></span></label>
-        <input type="range" id="sLoanSlider" min="0" max="0" value="0" step="1" oninput="onLoanSliderChange()" style="width:100%;margin:6px 0">
-        <input type="number" id="sSalePrice" placeholder="0.00" step="0.01" oninput="onLoanInputChange()" style="font-size:18px;font-weight:700;width:100%">
-      </div>
-
-      <div class="form-group" style="margin-top:12px">
-        <label>${tl('售价 ($，仅记录，不参与计算)','Retail Price ($, reference only)','តម្លៃលក់ ($, កត់ត្រាតែប៉ុណ្ណោះ)')}</label>
-        <input type="number" id="sRetailPrice" placeholder="0.00" step="0.01">
+      <!-- ══════ 老方式：自由填写售价/首付/利息+手续费合并 ══════ -->
+      <div id="oldMethodSection" style="display:none">
+        <div class="form-grid">
+          <div class="form-group"><label>${t('salePrice')} ($) *</label>
+            <input type="number" id="oSalePrice" placeholder="0.00" step="0.01" oninput="calcInstallOld()" style="font-size:18px;font-weight:700">
+          </div>
+          <div class="form-group"><label>${t('deposit')} ($)</label>
+            <input type="number" id="oDeposit" value="0" step="0.01" oninput="calcInstallOld()" style="font-size:18px;font-weight:700">
+          </div>
+        </div>
+        <div class="form-grid" style="margin-top:12px">
+          <div class="form-group"><label>${t('installPeriods')}</label>${periodSelect('oPeriods', 3, 'calcInstallOld()')}</div>
+          <div class="form-group"><label>${t('firstDueDate')}</label>
+            <input type="date" id="oFirstDue" onchange="validateFirstDue()">
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:12px">
+          <label>${tl('每期利息+手续费合计 ($) *（业务员直接填一个总数，不用分开算）','Interest + Fee per period ($) *','ការប្រាក់+កម្រៃប្រចាំដំណាក់')}</label>
+          <input type="number" id="oMonthlyIntFee" placeholder="0.00" step="0.01" oninput="calcInstallOld()" style="font-size:18px;font-weight:700;width:100%">
+        </div>
+        <div class="form-grid" style="margin-top:12px">
+          <div class="form-group"><label>${tl('每日滞纳金 ($)','Daily Late Fee ($)','ពិន័យប្រចាំថ្ងៃ')}</label>
+            <input type="number" id="oDailyFee" placeholder="0.00" step="0.01">
+          </div>
+          <div class="form-group"><label>${tl('店家返点 ($)','Store Rebate ($)','កម្រៃហាង')}</label>
+            <input type="number" id="oRebate" placeholder="0.00" step="0.01">
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2126,6 +2168,54 @@ window.checkPhoneDup = function() {
   } else {
     msg.innerHTML = '';
   }
+};
+
+window._loanMethod = 'new';
+window.selectLoanMethod = function(method) {
+  window._loanMethod = method;
+  document.querySelectorAll('.method-btn-el').forEach(b => {
+    const active = b.dataset.method === method;
+    b.style.background = active ? '#9c27b0' : '#fff';
+    b.style.color = active ? '#fff' : '#666';
+    b.style.borderColor = active ? '#9c27b0' : '#ddd';
+  });
+  const newSec = document.getElementById('newMethodSection');
+  const oldSec = document.getElementById('oldMethodSection');
+  if (newSec) newSec.style.display = method === 'new' ? 'block' : 'none';
+  if (oldSec) oldSec.style.display = method === 'old' ? 'block' : 'none';
+  if (method === 'new') { calcInstall(); } else { calcInstallOld(); }
+};
+
+// 老方式计算：售价-首付=本金，利息+手续费由业务员直接填一个合计数
+window.calcInstallOld = function() {
+  const price = +(document.getElementById('oSalePrice')?.value || 0);
+  const dep   = +(document.getElementById('oDeposit')?.value || 0);
+  const periods = +(document.getElementById('oPeriods')?.value || 3);
+  const monthlyIntFee = +(document.getElementById('oMonthlyIntFee')?.value || 0);
+  const principal = Math.max(0, price - dep);
+
+  const resultCard = document.getElementById('calcResultCard');
+  if (!principal) { if (resultCard) resultCard.style.display = 'none'; return; }
+  if (resultCard) resultCard.style.display = 'block';
+
+  const actualPeriods = periods === 3 ? 3 : periods - 1;
+  const monthlyPrincipal = actualPeriods > 0 ? Math.ceil(principal / actualPeriods) : 0;
+  const monthly = monthlyPrincipal + monthlyIntFee;
+  const totalIntFee = monthlyIntFee * actualPeriods;
+  const netProfit = (monthly * actualPeriods) - principal - (+(document.getElementById('oRebate')?.value || 0));
+
+  const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = '$' + v; };
+  setText('sInstAmt', principal.toFixed(2));
+  setText('sMonthly', monthly.toFixed(2));
+  setText('sMonthlyPrincipal', monthlyPrincipal.toFixed(2));
+  setText('sMonthlyInt', monthlyIntFee.toFixed(2));
+  setText('sRebate', (+(document.getElementById('oRebate')?.value || 0)).toFixed(2));
+  setText('sDailyFee', (+(document.getElementById('oDailyFee')?.value || 0)).toFixed(2));
+
+  const setHidden = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  setHidden('sActualPeriods', actualPeriods);
+  setHidden('sNetProfit', netProfit.toFixed(2));
+  setHidden('sTotalInt', totalIntFee.toFixed(2));
 };
 
 window.calcInstall = function() {
@@ -2316,19 +2406,43 @@ window._calcInstall_old = function() {
 };
 
 window.submitSale = function() {
+  const isOld = window._loanMethod === 'old';
   const cust        = document.getElementById('sCust')?.value?.trim();
   const custPhone   = document.getElementById('sCustPhone')?.value?.trim() || '';
   const shopName    = document.getElementById('sShopName')?.value?.trim() || '';
   const salesperson = document.getElementById('sSalesperson')?.value?.trim() || '';
-  const principal   = +(document.getElementById('sSalePrice')?.value || 0); // 贷款金额=本金
-  const retailPrice = +(document.getElementById('sRetailPrice')?.value || 0); // 仅记录,不参与计算
-  const brand       = window._saleUIState?.brand || 'Apple';
-  const modelName   = window._saleUIState?.modelName || document.getElementById('sModelName')?.value || '';
-  const storage     = document.getElementById('sStorage')?.value || '';
-  const condition   = document.getElementById('sCondition')?.value || '全新';
-  const periods     = +(document.getElementById('sPeriods')?.value || 3);
+
+  let principal, retailPrice, brand, modelName, storage, condition, periods, firstDue, deposit;
+  let monthlyInt, monthlySvc, rebate, dailyFee;
+
+  if (isOld) {
+    const price = +(document.getElementById('oSalePrice')?.value || 0);
+    deposit     = +(document.getElementById('oDeposit')?.value || 0);
+    principal   = Math.max(0, price - deposit);
+    retailPrice = price;
+    brand       = window._saleUIState?.brand || 'Apple';
+    modelName   = window._saleUIState?.modelName || document.getElementById('sModelName')?.value || '';
+    storage     = document.getElementById('sStorage')?.value || '';
+    condition   = document.getElementById('sCondition')?.value || '全新';
+    periods     = +(document.getElementById('oPeriods')?.value || 3);
+    firstDue    = document.getElementById('oFirstDue')?.value || '';
+    const monthlyIntFee = +(document.getElementById('oMonthlyIntFee')?.value || 0);
+    monthlyInt  = monthlyIntFee; // 老方式：利息+手续费合并为一个数，全部记在"利息"里，手续费记0
+    monthlySvc  = 0;
+    rebate      = +(document.getElementById('oRebate')?.value || 0);
+    dailyFee    = +(document.getElementById('oDailyFee')?.value || 0);
+  } else {
+    principal   = +(document.getElementById('sSalePrice')?.value || 0); // 贷款金额=本金
+    retailPrice = +(document.getElementById('sRetailPrice')?.value || 0); // 仅记录,不参与计算
+    deposit     = 0;
+    brand       = window._saleUIState?.brand || 'Apple';
+    modelName   = window._saleUIState?.modelName || document.getElementById('sModelName')?.value || '';
+    storage     = document.getElementById('sStorage')?.value || '';
+    condition   = document.getElementById('sCondition')?.value || '全新';
+    periods     = +(document.getElementById('sPeriods')?.value || 3);
+    firstDue    = document.getElementById('sFirstDue')?.value || '';
+  }
   const svcPeriods  = 3;
-  const firstDue    = document.getElementById('sFirstDue')?.value || '';
   const sDateVal    = document.getElementById('sDate')?.value || '';
   if (firstDue && sDateVal && firstDue.slice(0,7) <= sDateVal.slice(0,7)) {
     showMsg('saleMsg', _lang==='km'?'ថ្ងៃ​ទូទាត់​ទី​១​មិន​អាច​នៅ​ក្នុង​ខែ​កិច្ចសន្យា​!':_lang==='en'?'First due date cannot be in contract month!':
@@ -2347,18 +2461,22 @@ window.submitSale = function() {
   if (!principal) { showMsg('saleMsg', t('msgFillPrice'), 'red'); return; }
   if (!firstDue)  { showMsg('saleMsg', t('msgFillDue'), 'red'); return; }
 
-  // 🔒 按型号+容量的放款上限做最终校验(防止绕过UI直接改滑块/输入框超额)
-  const maxLoan = (typeof getCurrentMaxLoan === 'function') ? getCurrentMaxLoan() : null;
-  if (maxLoan != null && principal > maxLoan) {
-    showMsg('saleMsg', `⚠️ ${tl('该型号最高可放款','Max loan for this model','កម្រិត')} $${maxLoan}，${tl('请调整贷款金额','please adjust loan amount','សូមកែសម្រួល')}`, 'red');
-    return;
+  // 🔒 按型号+容量的放款上限做最终校验(防止绕过UI直接改滑块/输入框超额) —— 只在新方式下生效
+  if (!isOld) {
+    const maxLoan = (typeof getCurrentMaxLoan === 'function') ? getCurrentMaxLoan() : null;
+    if (maxLoan != null && principal > maxLoan) {
+      showMsg('saleMsg', `⚠️ ${tl('该型号最高可放款','Max loan for this model','កម្រិត')} $${maxLoan}，${tl('请调整贷款金额','please adjust loan amount','សូមកែសម្រួល')}`, 'red');
+      return;
+    }
   }
 
   const actualPeriods = periods === 3 ? 3 : periods - 1;
-  const monthlyInt  = Math.ceil(principal * 0.07);
-  const monthlySvc  = 0;
-  const rebate      = Math.floor(principal * (periods <= 6 ? 0.05 : 0.10));
-  const dailyFee    = Math.ceil(principal * 0.02);
+  if (!isOld) {
+    monthlyInt  = Math.ceil(principal * 0.07);
+    monthlySvc  = 0;
+    rebate      = Math.floor(principal * (periods <= 6 ? 0.05 : 0.10));
+    dailyFee    = Math.ceil(principal * 0.02);
+  }
   const intRate     = principal > 0 ? monthlyInt / principal : 0;
   const svcRate     = 0;
   const totalInt    = monthlyInt * actualPeriods;
@@ -2388,14 +2506,14 @@ window.submitSale = function() {
     emergencyContacts,
     modelName: `${brand === 'Apple' ? 'iPhone' : brand} ${modelName} ${storage}`.trim(),
     brand, phoneModel: modelName, storage, condition,
-    salePrice: retailPrice, deposit: 0, installmentAmount: principal,
+    salePrice: retailPrice, deposit, installmentAmount: principal,
     periods, svcPeriods,
     interestRate: intRate * 100, serviceFeeRate: svcRate * 100,
     monthlyPayment: monthly,
     totalInterest: totalInt, totalServiceFee: totalSvc,
     contractNetProfit: contractNetProfit,
     dailyLateFee: dailyFee, storeRebate: rebate,
-    firstDue, note, schedule, status: '进行中'
+    firstDue, note, schedule, status: '进行中', loanMethod: isOld ? 'old' : 'new'
   };
 
   const sales = DB_get('sales') || [];
@@ -2403,7 +2521,7 @@ window.submitSale = function() {
   DB_set('sales', sales);
   logActivity('新建合同', `#${sale.id} ${cust}`, `贷款金额$${principal}，${periods}期，型号${sale.modelName||''}`);
   showMsg('saleMsg', `✅ ${t('saved')} #${sale.id} — ${cust}，${periods}${t('period')}，${fmt(monthly)}/${t('period')}`, 'green');
-  ['sCust','sCustPhone','sSalePrice','sRetailPrice','sNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['sCust','sCustPhone','sSalePrice','sRetailPrice','sNote','oSalePrice','oDeposit','oMonthlyIntFee','oDailyFee','oRebate'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const rc = document.getElementById('calcResultCard');
   if (rc) rc.style.display = 'none';
   ['sInstAmt','sMonthly','sMonthlyPrincipal','sMonthlyInt','sRebate','sDailyFee'].forEach(id => {
@@ -2417,7 +2535,8 @@ window.submitSale = function() {
       showMsg('saleMsg', `✅ 合同 #${sale.id} 已保存，${count > 0 ? count + '张图片已上传' : ''}`, 'green');
     });
   }
-  calcInstall(); updateBadges();
+  if (isOld) { calcInstallOld(); } else { calcInstall(); }
+  updateBadges();
 };
 
 // ══════════════════════════════════════════════════════
