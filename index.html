@@ -1085,8 +1085,13 @@ const MORE_LABEL = {zh:'更多', en:'More', km:'ច្រើនទៀត'};
 function buildMobileNav(activePage) {
   const inner = document.getElementById('mobNavInner');
   if (!inner) return;
-  const isMore = !MOB_MAIN.find(m => m.page === activePage && m.page !== '__more');
-  inner.innerHTML = MOB_MAIN.map(item => {
+  const u = getCurrentUser();
+  const role = u?.role || 'boss';
+  const allowed = role === 'boss' ? null : (ROLE_PAGES[role] || []);
+  const canSee = page => page === '__more' || allowed === null || allowed.includes(page);
+  const items = MOB_MAIN.filter(item => canSee(item.page));
+  const isMore = !items.find(m => m.page === activePage && m.page !== '__more');
+  inner.innerHTML = items.map(item => {
     const isActive = item.page === '__more' ? isMore : item.page === activePage;
     const lbl = item.page === '__more' ? (MORE_LABEL[_lang]||MORE_LABEL.zh) : (t(item.label)||item.label);
     return `<button class="mob-nav-item ${isActive?'active':''}" onclick="${item.page==='__more'?'toggleMobMore()':'closeMobMore();nav(\''+item.page+'\')'}">
@@ -1100,8 +1105,12 @@ function buildMobileNav(activePage) {
 function buildMobileMore(activePage) {
   const menu = document.getElementById('mobMoreMenu');
   if (!menu) return;
+  const u = getCurrentUser();
+  const role = u?.role || 'boss';
+  const allowed = role === 'boss' ? null : (ROLE_PAGES[role] || []);
+  const canSee = page => allowed === null || allowed.includes(page);
   menu.innerHTML = '<div style="width:40px;height:4px;background:#e0e0e0;border-radius:2px;margin:8px auto 12px"></div>' +
-    MOB_MORE_ITEMS.map(item => {
+    MOB_MORE_ITEMS.filter(item => item.divider || canSee(item.page)).map(item => {
       if (item.divider) return '<div class="mob-more-divider"></div>';
       const isActive = item.page === activePage;
       return `<button class="mob-more-item" onclick="closeMobMore();nav('${item.page}')" style="${isActive?'background:#f0f7ff;':''}">
@@ -1514,18 +1523,39 @@ function renderHome() {
   </div>`:''})()}
   
   <div class="home-grid">
-    ${[['➕',t('saleAdd'),t('newContractSub').slice(0,10),'sale-add'],['💳',t('paymentAdd'),tl('录入收款记录','Record payment','ចុះ​ការ​ទូ​ទាត់'),'payment-add'],
-       ['📊',t('statsCollection')+'🔐',tl('月度汇总','Monthly summary','សង្ខេប​ប្រចាំ​ខែ'),'stats-collection'],['💰',t('statsProfit')+'🔐',tl('盈利分析','Profit analysis','វិភាគ​ប្រាក់​ចំណេញ'),'stats-profit'],
-       ['📈',t('financeReport')+'🔐',tl('放款/回款/利润','Loans/Collections','ផ្ដល់/ប្រមូល/ចំណេញ'),'finance-report'],['⚡',t('earlyPayment'),tl('协商结清','Early settlement','ទូ​ទាត់​ចរ​ចា'),'early-payment'],
-       ['🔍',t('saleList'),tl('合同检索','Contract search','ស្វែង​រក​កិច្ចសន្យា'),'sale-list'],['⏰',t('reminderTomorrow'),tl('明日到期','Due tomorrow','ដល់​កំណត់​ស្អែក'),'reminder-tomorrow'],
-       ['🚨',t('reminderOverdue'),tl('催收列表','Overdue list','បញ្ជី​ហួស​កំណត់'),'reminder-overdue'],['📋',t('paymentQuery'),tl('30天计划','30-day plan','ផែន​ការ​30​ថ្ងៃ'),'payment-query']
-    ].map(([i,l,s,p]) => `<div class="home-card" onclick="nav('${p}')"><div class="icon">${i}</div><div class="label">${l}</div><div class="sublabel">${s}</div></div>`).join('')}
+    ${(() => {
+      const u = getCurrentUser();
+      const role = u?.role || 'boss';
+      const allowed = role === 'boss' ? null : (ROLE_PAGES[role] || []);
+      const canSee = page => allowed === null || allowed.includes(page);
+      return [
+        ['➕',t('saleAdd'),t('newContractSub').slice(0,10),'sale-add'],
+        ['💳',t('paymentAdd'),tl('录入收款记录','Record payment','ចុះ​ការ​ទូ​ទាត់'),'payment-add'],
+        ['📊',t('statsCollection')+'🔐',tl('月度汇总','Monthly summary','សង្ខេប​ប្រចាំ​ខែ'),'stats-collection'],
+        ['💰',t('statsProfit')+'🔐',tl('盈利分析','Profit analysis','វិភាគ​ប្រាក់​ចំណេញ'),'stats-profit'],
+        ['📈',t('financeReport')+'🔐',tl('放款/回款/利润','Loans/Collections','ផ្ដល់/ប្រមូល/ចំណេញ'),'finance-report'],
+        ['⚡',t('earlyPayment'),tl('协商结清','Early settlement','ទូ​ទាត់​ចរ​ចា'),'early-payment'],
+        ['🔍',t('saleList'),tl('合同检索','Contract search','ស្វែង​រក​កិច្ចសន្យា'),'sale-list'],
+        ['⏰',t('reminderTomorrow'),tl('明日到期','Due tomorrow','ដល់​កំណត់​ស្អែក'),'reminder-tomorrow'],
+        ['🚨',t('reminderOverdue'),tl('催收列表','Overdue list','បញ្ជី​ហួស​កំណត់'),'reminder-overdue'],
+        ['📋',t('paymentQuery'),tl('30天计划','30-day plan','ផែន​ការ​30​ថ្ងៃ'),'payment-query']
+      ].filter(([,,,p]) => canSee(p))
+       .map(([i,l,s,p]) => `<div class="home-card" onclick="nav('${p}')"><div class="icon">${i}</div><div class="label">${l}</div><div class="sublabel">${s}</div></div>`).join('');
+    })()}
   </div>
-  <div class="card"><div class="card-header"><div class="card-title">${t('quickEntry')}</div></div>
-  <div class="home-bottom-row">
-    ${[[`⚙️ ${t('company')}`,'company'],[`🏢 ${t('suppliers')}`,'suppliers'],[`📱 ${t('phones')}`,'phones'],[`🛒 ${t('purchaseAdd')}`,'purchase-add'],[`📦 ${t('inventory')}`,'inventory'],[`🧾 ${t('expenses')}`,'expenses']]
-    .map(([l,p]) => `<button class="home-bottom-btn" onclick="nav('${p}')">${l}</button>`).join('')}
-  </div></div>`;
+  ${(() => {
+    const u = getCurrentUser();
+    const role = u?.role || 'boss';
+    const allowed = role === 'boss' ? null : (ROLE_PAGES[role] || []);
+    const canSee = page => allowed === null || allowed.includes(page);
+    const items = [[`⚙️ ${t('company')}`,'company'],[`🏢 ${t('suppliers')}`,'suppliers'],[`📱 ${t('phones')}`,'phones'],[`🛒 ${t('purchaseAdd')}`,'purchase-add'],[`📦 ${t('inventory')}`,'inventory'],[`🧾 ${t('expenses')}`,'expenses']]
+      .filter(([,p]) => canSee(p));
+    if (!items.length) return '';
+    return `<div class="card"><div class="card-header"><div class="card-title">${t('quickEntry')}</div></div>
+    <div class="home-bottom-row">
+      ${items.map(([l,p]) => `<button class="home-bottom-btn" onclick="nav('${p}')">${l}</button>`).join('')}
+    </div></div>`;
+  })()}`;
 }
 
 // ══════════════════════════════════════════════════════
@@ -2732,8 +2762,11 @@ window.saveEditSale = function(id) {
   const maxPaidPeriodNum = paidPeriods.length ? Math.max(...paidPeriods.map(p => p.period)) : 0;
   if (maxPaidPeriodNum > actualPeriods) {
     const proceed = confirm(
-      `⚠️ 已还款到第${maxPaidPeriodNum}期，但新设置的期数只有${actualPeriods}期（少于已还期数）。\n` +
-      `系统会保留已还的${maxPaidPeriodNum}期不变，实际排期表期数会自动调整为${maxPaidPeriodNum}期。\n\n继续保存吗？`
+      tl(
+        `⚠️ 已还款到第${maxPaidPeriodNum}期，但新设置的期数只有${actualPeriods}期（少于已还期数）。\n系统会保留已还的${maxPaidPeriodNum}期不变，实际排期表期数会自动调整为${maxPaidPeriodNum}期。\n\n继续保存吗？`,
+        `⚠️ Already paid through period ${maxPaidPeriodNum}, but the new period count is only ${actualPeriods} (fewer than paid periods).\nThe system will keep the ${maxPaidPeriodNum} paid periods unchanged; the schedule will auto-adjust to ${maxPaidPeriodNum} periods.\n\nContinue saving?`,
+        `⚠️ បានទូទាត់រហូតដល់ដំណាក់កាលទី ${maxPaidPeriodNum} ប៉ុន្តែចំនួនដំណាក់កាលថ្មីមានតែ ${actualPeriods} (តិចជាងចំនួនបានទូទាត់)។\nប្រព័ន្ធនឹងរក្សាទុក ${maxPaidPeriodNum} ដំណាក់កាលដែលបានទូទាត់ដដែល។\n\nបន្តរក្សាទុកទេ?`
+      )
     );
     if (!proceed) return;
   }
@@ -3165,6 +3198,27 @@ window.toggleMonthGroup = function(id) {
 function buildPayTableGrouped(pays, isCollector) {
   if (!pays.length) return `<div class="empty-state"><div class="ei">📝</div><p>${t('noRecord')}</p></div>`;
 
+  // 🔔 疑似重复登记检测：同一份合同，7天内有2笔或以上还款记录，就标红提醒
+  const allPays = DB_get('payments') || [];
+  const byContract = {};
+  allPays.forEach(p => {
+    const cid = String(p.contractId);
+    if (!byContract[cid]) byContract[cid] = [];
+    byContract[cid].push(p);
+  });
+  function isSuspicious(p) {
+    const list = byContract[String(p.contractId)] || [];
+    const pd = new Date((p.date||'').replace(/\//g,'-'));
+    if (isNaN(pd)) return false;
+    return list.some(other => {
+      if (other.id === p.id) return false;
+      const od = new Date((other.date||'').replace(/\//g,'-'));
+      if (isNaN(od)) return false;
+      const diffDays = Math.abs((pd - od) / 86400000);
+      return diffDays <= 7;
+    });
+  }
+
   // 按日期分组
   const groups = {};
   pays.forEach(p => {
@@ -3186,14 +3240,16 @@ function buildPayTableGrouped(pays, isCollector) {
         ${dayPays.map((p,i) => {
           const total = (+p.principal||0)+(+p.interest||0)+(+p.serviceFee||0)+(+p.penalty||0);
           const isEarly = false; // 提前结清在单独的⚡视图显示
-          const bg = isEarly ? '#e8f5e9' : (i%2===0?'#fff':'#f9fafb');
-          const borderLeft = isEarly ? 'border-left:3px solid #4caf50;' : '';
+          const suspicious = isSuspicious(p);
+          const bg = suspicious ? '#fff3e0' : (isEarly ? '#e8f5e9' : (i%2===0?'#fff':'#f9fafb'));
+          const borderLeft = suspicious ? 'border-left:3px solid #e65100;' : (isEarly ? 'border-left:3px solid #4caf50;' : '');
           return `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:${bg};${borderLeft}border-bottom:1px solid #f0f0f0;flex-wrap:wrap">
             <div style="flex:1;min-width:120px">
               <div style="font-weight:700;font-size:13px">${esc(p.customer)}
                 ${p.isPartial ? `<span style="background:#fff3e0;color:#e65100;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">${tl("部分收款","Partial","ផ្នែក")}</span>` : ''}
                 ${isEarly ? `<span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">${tl("⚡提前还款","⚡Early","⚡សង​មុន")}</span>` : ''}
                 ${(+p.advanceDays||0)>30 ? `<span style="background:#ffebee;color:#c62828;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700" title="${tl('提前','Advance','មុន')}${p.advanceDays}${tl('天，超过1个月，建议核对','days, over 1 month, please verify','ថ្ងៃ')}">🔔${tl('提前','Advance','មុន')}${p.advanceDays}${tl('天','d','ថ្ងៃ')}</span>` : ''}
+                ${suspicious ? `<span style="background:#e65100;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700" title="${tl('该合同7天内有多笔还款记录，请核实是否重复登记','This contract has multiple payments within 7 days, please verify','សូមផ្ទៀងផ្ទាត់')}">⚠️ ${tl('疑似重复','Possible duplicate','ប្រហែលដដែល')}</span>` : ''}
               </div>
               <div style="font-size:11px;color:#90a4ae">#${p.contractId} · ${tl('第','Period ','ខែ')}${p.period}${tl('期','','')}${p.shortfall>0?` · ${tl('差额','Shortfall','ខ្វះ')} <b style="color:var(--red)">${fmt(p.shortfall)}</b>`:''}</div>
             </div>
@@ -3646,10 +3702,11 @@ window.submitPayment = async function() {
   }
   if (advanceDays > 30) {
     const ok = confirm(
-      `⚠️ ${s.customer} 第${periodNo}期到期日是 ${sched.dueDate}，` +
-      `你填的还款日 ${pDate} 比到期日提前了 ${advanceDays} 天（超过1个月）。\n\n` +
-      `确认这是真实的提前还款吗？\n\n` +
-      `点"确定"继续登记，点"取消"返回核实。`
+      tl(
+        `⚠️ ${s.customer} 第${periodNo}期到期日是 ${sched.dueDate}，你填的还款日 ${pDate} 比到期日提前了 ${advanceDays} 天（超过1个月）。\n\n确认这是真实的提前还款吗？\n\n点"确定"继续登记，点"取消"返回核实。`,
+        `⚠️ ${s.customer}'s period ${periodNo} is due ${sched.dueDate}, but the payment date ${pDate} is ${advanceDays} days early (over 1 month).\n\nConfirm this is a real early payment?\n\nClick OK to continue, Cancel to verify.`,
+        `⚠️ ${s.customer} ដំណាក់កាលទី ${periodNo} ត្រូវផុតកំណត់ថ្ងៃទី ${sched.dueDate} ប៉ុន្តែថ្ងៃទូទាត់ ${pDate} គឺមុន ${advanceDays} ថ្ងៃ (លើសពី១ខែ)។\n\nតើអ្នកបញ្ជាក់ថានេះជាការទូទាត់មុនកំណត់ពិតប្រាកដមែនទេ?\n\nចុច "OK" ដើម្បីបន្ត ចុច "Cancel" ដើម្បីត្រួតពិនិត្យ។`
+      )
     );
     if (!ok) { return; }
   }
@@ -3660,13 +3717,19 @@ window.submitPayment = async function() {
     String(p.contractId) === String(contractId) && (p.date||'').slice(0,7) === monthPrefix
   );
   if (existingThisMonth.length > 0) {
-    const list = existingThisMonth.map(p => `第${p.period}期，${p.date}，${fmt((+p.principal||0)+(+p.interest||0))}（登记人未知，可在操作日志查询）`).join('\n');
+    const list = existingThisMonth.map(p =>
+      tl(`第${p.period}期，${p.date}，${fmt((+p.principal||0)+(+p.interest||0))}`,
+         `Period ${p.period}, ${p.date}, ${fmt((+p.principal||0)+(+p.interest||0))}`,
+         `ដំណាក់កាលទី ${p.period}, ${p.date}, ${fmt((+p.principal||0)+(+p.interest||0))}`)
+    ).join('\n');
     const ok2 = confirm(
-      `⚠️ ${s.customer} 这个合同本月（${monthPrefix}）已经有还款记录了：\n\n${list}\n\n` +
-      `是不是已经有其他催收员登记过了？请先跟同事核实，避免同一笔钱被重复登记。\n\n` +
-      `确认这是另外一笔真实的还款，要继续登记吗？`
+      tl(
+        `⚠️ ${s.customer} 这个合同本月（${monthPrefix}）已经有还款记录了：\n\n${list}\n\n是不是已经有其他催收员登记过了？请先跟同事核实，避免同一笔钱被重复登记。\n\n确认这是另外一笔真实的还款，要继续登记吗？`,
+        `⚠️ ${s.customer}'s contract already has a payment recorded this month (${monthPrefix}):\n\n${list}\n\nHas another collector already registered this? Please verify with colleagues first to avoid double-recording the same payment.\n\nConfirm this is a separate, real payment and continue?`,
+        `⚠️ កិច្ចសន្យារបស់ ${s.customer} មានកំណត់ត្រាទូទាត់រួចហើយក្នុងខែនេះ (${monthPrefix}):\n\n${list}\n\nតើអ្នកប្រមូលផ្សេងទៀតបានចុះឈ្មោះរួចហើយឬទេ? សូមផ្ទៀងផ្ទាត់ជាមួយសហការីមុននឹងបន្ត ដើម្បីជៀសវាងការកត់ត្រាការទូទាត់ដដែលពីរដង។\n\nតើអ្នកបញ្ជាក់ថានេះជាការទូទាត់ពិតប្រាកដដាច់ដោយឡែក ហើយចង់បន្តទេ?`
+      )
     );
-    if (!ok2) { showMsg('payMsg', tl('已取消登记，请先核实','Cancelled, please verify first','')); return; }
+    if (!ok2) { showMsg('payMsg', tl('已取消登记，请先核实','Cancelled, please verify first','បានលុបចោល សូមផ្ទៀងផ្ទាត់មុន')); return; }
   }
 
   let principal, interest, serviceFee = 0, actualReceived;
