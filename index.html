@@ -365,7 +365,7 @@ const I18N = {
     emergencyTitle: '🆘 紧急联系人',
     emgName: '姓名', emgPhone: '电话号码', emgRel: '关系',
     emgRelPlaceholder: '— 选择关系 —',
-    emgRel1: '父母', emgRel2: '配偶', emgRel3: '兄弟姐妹', emgRel4: '朋友',
+    emgRel1: '父母', emgRel2: '配偶', emgRel3: '兄弟姐妹', emgRel4: '朋友', emgRel5: '孩子',
     calcResultTitle: '📊 自动计算结果',
     loanAmt: '放款金额', monthlyPay: '每月还款', actualPeriods: '实际期数',
     monthlyIntLbl: '每期利息', rebateLbl: '店家返点', penaltyLbl: '每日滞纳金',
@@ -545,7 +545,7 @@ const I18N = {
     emergencyTitle: '🆘 Emergency Contacts',
     emgName: 'Name', emgPhone: 'Phone', emgRel: 'Relationship',
     emgRelPlaceholder: '— Select —',
-    emgRel1: 'Parents', emgRel2: 'Spouse', emgRel3: 'Siblings', emgRel4: 'Friend',
+    emgRel1: 'Parents', emgRel2: 'Spouse', emgRel3: 'Siblings', emgRel4: 'Friend', emgRel5: 'Child',
     calcResultTitle: '📊 Auto Calculation',
     loanAmt: 'Loan Amount', monthlyPay: 'Monthly Payment', actualPeriods: 'Actual Periods',
     monthlyIntLbl: 'Monthly Interest', rebateLbl: 'Store Rebate', penaltyLbl: 'Daily Late Fee',
@@ -831,7 +831,7 @@ const I18N = {
     emergencyTitle: '🆘 អ្នកទំនាក់ទំនងបន្ទាន់',
     emgName: 'ឈ្មោះ', emgPhone: 'លេខទូរស័ព្ទ', emgRel: 'ទំនាក់ទំនង',
     emgRelPlaceholder: '— ជ្រើសរើស —',
-    emgRel1: 'ឪពុកម្តាយ', emgRel2: 'គូស្រករ', emgRel3: 'បងប្អូន', emgRel4: 'មិត្តភក្តិ',
+    emgRel1: 'ឪពុកម្តាយ', emgRel2: 'គូស្រករ', emgRel3: 'បងប្អូន', emgRel4: 'មិត្តភក្តិ', emgRel5: 'កូន',
     calcResultTitle: '📊 លទ្ធផលគណនា',
     loanAmt: 'ចំនួនកម្ចី', monthlyPay: 'ការទូទាត់ប្រចាំខែ', actualPeriods: 'ចំនួនដំណាក់ពិតប្រាកដ',
     monthlyIntLbl: 'ការប្រាក់ប្រចាំខែ', rebateLbl: 'កម្រៃជើងសារ', penaltyLbl: 'ពិន័យប្រចាំថ្ងៃ',
@@ -1009,6 +1009,12 @@ function buildSidebar() {
       ${navItem('sale-list','🔍',t('saleList'))}
       ${navItem('payment-add','💳',t('paymentAdd'))}
       ${navItem('early-payment','⚡',t('earlyPayment'))}
+    </div>`:''}
+    ${show('my-performance')?`
+    <div class="nav-divider"></div>
+    <div style="padding:4px 0">
+      <div class="sb-label">${tl('业绩','Performance','សមិទ្ធិផល')}</div>
+      ${navItem('my-performance','📊', role==='sales' ? tl('我的业绩','My Performance','សមិទ្ធិផលរបស់ខ្ញុំ') : tl('业务员业绩','Sales Performance','សមិទ្ធិផលភ្នាក់ងារលក់'))}
     </div>`:''}
     ${(show('audit')||show('staff-stats'))?`
     <div class="nav-divider"></div>
@@ -1349,7 +1355,7 @@ const PAGES = {
   'reminder-overdue': renderReminderOverdue, 'payment-query': renderPaymentQuery,
   'phones': renderPhones, 'suppliers': renderSuppliers,
   'purchase-add': renderPurchaseAdd, 'inventory': renderInventory, 'company': renderCompany,
-  'audit': renderAudit, 'user-mgmt': renderUserMgmt, 'activity-log': renderActivityLog
+  'audit': renderAudit, 'user-mgmt': renderUserMgmt, 'activity-log': renderActivityLog, 'my-performance': renderMyPerformance
 };
 
 // Track last sync time
@@ -1595,9 +1601,9 @@ const ROLE_PAGES = {
   manager:   ['home','sale-add','sale-list','payment-add','early-payment',
                'stats-collection','stats-profit','finance-report','expenses',
                'store-stats','audit','staff-stats','fund-stats','reminder-tomorrow','reminder-overdue',
-               'payment-query','phones','suppliers','purchase-add','inventory','company'],
-  salesManager: ['home','sale-add','sale-list','reminder-tomorrow','reminder-overdue','payment-query'],
-  sales:     ['home','sale-add','sale-list','reminder-tomorrow','reminder-overdue','payment-query'],
+               'payment-query','phones','suppliers','purchase-add','inventory','company','my-performance'],
+  salesManager: ['home','sale-add','sale-list','reminder-tomorrow','reminder-overdue','payment-query','my-performance'],
+  sales:     ['home','sale-add','sale-list','reminder-tomorrow','reminder-overdue','payment-query','my-performance'],
   entry:     ['home','sale-add','sale-list','payment-add','early-payment',
                'reminder-tomorrow','reminder-overdue','payment-query'],
   collector: ['home','sale-list','payment-add','early-payment',
@@ -2009,6 +2015,7 @@ function renderSaleAdd() {
               <option value="${t('emgRel2')}">${t('emgRel2')}</option>
               <option value="${t('emgRel3')}">${t('emgRel3')}</option>
               <option value="${t('emgRel4')}">${t('emgRel4')}</option>
+              <option value="${t('emgRel5')}">${t('emgRel5')}</option>
             </select>
           </div>`).join('')}
         </div>
@@ -6178,6 +6185,137 @@ window.toggleDetailRow = function(rowId, arrowId) {
   const arrow = document.getElementById(arrowId);
   if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
 };
+
+// ══════════════════════════════════════════════════════
+// MY PERFORMANCE 我的业绩 / 业务员业绩（出单量：每日/每月）
+// 业务员(sales)只看自己；业务主管(salesManager)/主管(manager)/老板(boss)看全部团队
+// ══════════════════════════════════════════════════════
+function renderMyPerformance() {
+  const u = getCurrentUser();
+  const role = u?.role || '';
+  const canViewAll = ['salesManager','manager','boss'].includes(role);
+  const allSales = DB_get('sales') || [];
+  const td = today();
+  const norm = s => (s||'').trim().toLowerCase();
+
+  function statsFor(name) {
+    const list = allSales.filter(s => norm(s.salesperson) === norm(name));
+    const byDate = {}, byMonth = {};
+    list.forEach(s => {
+      const d = (s.date||'').replace(/\//g,'-');
+      const m = d.slice(0,7);
+      (byDate[d] = byDate[d] || []).push(s);
+      (byMonth[m] = byMonth[m] || []).push(s);
+    });
+    const dailyRows = Object.keys(byDate).sort().reverse().slice(0,30).map(d => ({
+      date: d, count: byDate[d].length, loan: byDate[d].reduce((a,s)=>a+(+s.installmentAmount||0),0)
+    }));
+    const monthlyRows = Object.keys(byMonth).sort().reverse().map(m => ({
+      month: m, count: byMonth[m].length, loan: byMonth[m].reduce((a,s)=>a+(+s.installmentAmount||0),0)
+    }));
+    return {
+      name, total: list.length,
+      todayCount: (byDate[td]||[]).length,
+      thisMonthCount: (byMonth[td.slice(0,7)]||[]).length,
+      dailyRows, monthlyRows
+    };
+  }
+
+  function kpiCardsHtml(items) {
+    return `<div style="display:grid;grid-template-columns:repeat(${items.length},1fr);gap:12px;margin-bottom:16px">
+      ${items.map(([icon,label,val,color])=>`
+        <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+          <div style="font-size:20px">${icon}</div>
+          <div style="font-size:11px;color:var(--muted);margin:4px 0">${label}</div>
+          <div style="font-size:24px;font-weight:800;color:${color}">${val}</div>
+        </div>`).join('')}
+    </div>`;
+  }
+
+  function detailTablesHtml(stats) {
+    return `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card" style="margin:0">
+        <div class="card-title" style="margin-bottom:10px">📅 ${tl('每日出单（近30天）','Daily (last 30 days)','ថ្ងៃ (30ថ្ងៃចុងក្រោយ)')}</div>
+        ${stats.dailyRows.length ? `<table style="width:100%;font-size:12px">
+          <tr><th>${tl('日期','Date','កាលបរិច្ឆេទ')}</th><th style="text-align:center">${tl('单量','Orders','ចំនួន')}</th><th style="text-align:right">${tl('放款额','Loan','ចំនួនប្រាក់')}</th></tr>
+          ${stats.dailyRows.map(r=>`<tr><td>${r.date}${r.date===td?` <span class="badge badge-blue" style="font-size:9px">${tl('今天','Today','ថ្ងៃនេះ')}</span>`:''}</td><td style="text-align:center;font-weight:700">${r.count}</td><td style="text-align:right">$${fmt(r.loan)}</td></tr>`).join('')}
+        </table>` : `<div style="color:var(--muted);font-size:12px;padding:10px">${tl('暂无数据','No data','គ្មានទិន្នន័យ')}</div>`}
+      </div>
+      <div class="card" style="margin:0">
+        <div class="card-title" style="margin-bottom:10px">🗓️ ${tl('每月出单','Monthly','ខែ')}</div>
+        ${stats.monthlyRows.length ? `<table style="width:100%;font-size:12px">
+          <tr><th>${tl('月份','Month','ខែ')}</th><th style="text-align:center">${tl('单量','Orders','ចំនួន')}</th><th style="text-align:right">${tl('放款额','Loan','ចំនួនប្រាក់')}</th></tr>
+          ${stats.monthlyRows.map(r=>`<tr><td>${r.month}${r.month===td.slice(0,7)?` <span class="badge badge-blue" style="font-size:9px">${tl('本月','Now','ខែនេះ')}</span>`:''}</td><td style="text-align:center;font-weight:700">${r.count}</td><td style="text-align:right">$${fmt(r.loan)}</td></tr>`).join('')}
+        </table>` : `<div style="color:var(--muted);font-size:12px;padding:10px">${tl('暂无数据','No data','គ្មានទិន្នន័យ')}</div>`}
+      </div>
+    </div>`;
+  }
+
+  if (!canViewAll) {
+    const myName = u?.displayName || u?.username || '';
+    const stats = statsFor(myName);
+    return `
+    <div class="page-header">
+      <div class="page-title">📊 ${tl('我的业绩','My Performance','សមិទ្ធិផលរបស់ខ្ញុំ')}</div>
+      <div class="page-sub">${tl('查看自己的出单量统计','Your order volume stats','ស្ថិតិចំនួនកិច្ចសន្យារបស់អ្នក')}</div>
+    </div>
+    ${kpiCardsHtml([
+      ['📅', tl('今日出单','Today','ថ្ងៃនេះ'), stats.todayCount, 'var(--sky)'],
+      ['📆', tl('本月出单','This Month','ខែនេះ'), stats.thisMonthCount, 'var(--green)'],
+      ['🏆', tl('累计出单','Total','សរុប'), stats.total, 'var(--navy)'],
+    ])}
+    ${detailTablesHtml(stats)}`;
+  }
+
+  // 业务主管 / 主管 / 老板：团队排行榜，点姓名展开看每人每日/每月明细
+  const names = [...new Set(allSales.map(s => (s.salesperson||'').trim()).filter(Boolean))];
+  const board = names.map(n => statsFor(n)).sort((a,b) => b.total - a.total);
+  const teamToday = board.reduce((a,d)=>a+d.todayCount,0);
+  const teamMonth = board.reduce((a,d)=>a+d.thisMonthCount,0);
+  const teamTotal = board.reduce((a,d)=>a+d.total,0);
+
+  if (!board.length) {
+    return `<div class="page-header">
+      <div class="page-title">📊 ${tl('业务员业绩','Sales Performance','សមិទ្ធិផលភ្នាក់ងារលក់')}</div>
+    </div>
+    <div class="card"><div class="empty-state"><div class="ei">📊</div><p>${tl('暂无数据（合同的「业务员」字段还没有人填写）','No data (no contract has the Salesperson field filled in yet)','')}</p></div></div>`;
+  }
+
+  return `
+  <div class="page-header">
+    <div class="page-title">📊 ${tl('业务员业绩','Sales Performance','សមិទ្ធិផលភ្នាក់ងារលក់')}</div>
+    <div class="page-sub">${tl('点击业务员姓名查看每日/每月出单明细','Click a name to see daily/monthly breakdown','ចុចឈ្មោះដើម្បីមើលព័ត៌មានលម្អិត')}</div>
+  </div>
+  ${kpiCardsHtml([
+    ['👥', tl('业务员数','Salespeople','ចំនួន'), board.length, 'var(--sky)'],
+    ['📅', tl('团队今日出单','Team Today','ថ្ងៃនេះ'), teamToday, 'var(--green)'],
+    ['📆', tl('团队本月出单','Team This Month','ខែនេះ'), teamMonth, 'var(--navy)'],
+    ['🏆', tl('团队累计出单','Team Total','សរុប'), teamTotal, 'var(--amber)'],
+  ])}
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+      <table>
+        <tr style="position:sticky;top:0;z-index:2">
+          <th style="min-width:120px">${tl('业务员','Salesperson','ភ្នាក់ងារ')}</th>
+          <th style="text-align:center">${tl('今日出单','Today','ថ្ងៃនេះ')}</th>
+          <th style="text-align:center">${tl('本月出单','This Month','ខែនេះ')}</th>
+          <th style="text-align:center">${tl('累计出单','Total','សរុប')}</th>
+        </tr>
+        ${board.map((d,i) => `
+        <tr style="cursor:pointer" onclick="toggleDetailRow('mp-${i}','mp-arrow-${i}')">
+          <td style="font-weight:600;color:var(--navy)"><span style="margin-right:6px;font-size:10px;color:var(--muted)" id="mp-arrow-${i}">▶</span>${esc(d.name)}</td>
+          <td style="text-align:center;color:var(--green);font-weight:700">${d.todayCount}</td>
+          <td style="text-align:center;font-weight:700">${d.thisMonthCount}</td>
+          <td style="text-align:center;font-weight:700">${d.total}</td>
+        </tr>
+        <tr id="mp-${i}" style="display:none;background:#f8fbff">
+          <td colspan="4" style="padding:16px">${detailTablesHtml(d)}</td>
+        </tr>`).join('')}
+      </table>
+    </div>
+  </div>`;
+}
 
 // ── 业务员 tab：按合同「业务员」字段分组 ──
 window._staffSalesMonth = ''; // '' = 全部月份（AUDIT_START_MONTH 起）
