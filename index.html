@@ -8343,7 +8343,8 @@ window.importExcel = function(input) {
         const normId = s => String(s || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
         const normName = s => String(s || '').toUpperCase().replace(/\s+/g, '');
 
-        // 建立系统里现有合同的查找索引（按身份证号 / 按姓名+日期）
+        // 建立系统里现有合同的查找索引（按身份证号 / 按姓名+日期，姓名这边柬文、英文两种都建索引，
+        // 因为业务员在系统里直接登记时，有的填的是柬文名，表格里用的是英文名，两边对不上就会重复导入）
         const existingByIdNum = new Map();
         const existingByNameDate = new Map();
         existingSales.forEach(s => {
@@ -8352,7 +8353,9 @@ window.importExcel = function(input) {
             if (!existingByIdNum.has(k)) existingByIdNum.set(k, []);
             existingByIdNum.get(k).push(s);
           }
-          existingByNameDate.set(normName(s.customer) + '_' + (s.date || ''), s);
+          const dateKey = s.date || '';
+          if (s.customer) existingByNameDate.set(normName(s.customer) + '_' + dateKey, s);
+          if (s.customerKhmer) existingByNameDate.set(normName(s.customerKhmer) + '_' + dateKey, s);
         });
 
         periodTableSheets.forEach(sheetName => {
@@ -8404,6 +8407,7 @@ window.importExcel = function(input) {
 
             const idKey = idNumRaw ? normId(idNumRaw) : '';
             const nameDateKey = normName(customer) + '_' + contractDate;
+            const nameDateKeyKh = custKh ? (normName(custKh) + '_' + contractDate) : '';
             const dedupKey = idKey ? ('ID_' + idKey + '_' + contractDate) : ('ND_' + nameDateKey);
 
             if (seenThisBatch.has(dedupKey)) {
@@ -8423,6 +8427,9 @@ window.importExcel = function(input) {
             }
             if (!matched && existingByNameDate.has(nameDateKey)) {
               matched = existingByNameDate.get(nameDateKey);
+            }
+            if (!matched && nameDateKeyKh && existingByNameDate.has(nameDateKeyKh)) {
+              matched = existingByNameDate.get(nameDateKeyKh);
             }
             if (matched) {
               alreadyExists.push({ excelId: cid, 系统合同号: matched.id, 客户: customer, 日期: contractDate });
@@ -8486,6 +8493,7 @@ window.importExcel = function(input) {
               existingByIdNum.get(idKey).push(contract);
             }
             existingByNameDate.set(nameDateKey, contract);
+            if (nameDateKeyKh) existingByNameDate.set(nameDateKeyKh, contract);
           });
         });
 
