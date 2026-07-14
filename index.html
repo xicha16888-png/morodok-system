@@ -8071,8 +8071,21 @@ window.importExcel = function(input) {
       const isNewFormat = wb.SheetNames.includes('合同基本信息') && wb.SheetNames.includes('每期还款明细');
       const isOldFormat = wb.SheetNames.includes('合同总表');
 
+      // 格式三：业务员直接维护的"按期数分表"原始表格（柬文+中文双语表头，含合同编号列）
+      const cnLabel = h => String(h || '').split('\n').pop().trim();
+      let periodTableSheets = [];
       if (!isNewFormat && !isOldFormat) {
-        alert('❌ 找不到合适的工作表。\n新格式需要「合同基本信息」+「每期还款明细」\n旧格式需要「合同总表」');
+        wb.SheetNames.forEach(name => {
+          const sh = wb.Sheets[name];
+          const headerRows = XLSX.utils.sheet_to_json(sh, { header: 1, range: 1, defval: '' });
+          const header = (headerRows[0] || []).map(cnLabel);
+          if (header.includes('合同编号')) periodTableSheets.push(name);
+        });
+      }
+      const isPeriodTableFormat = periodTableSheets.length > 0;
+
+      if (!isNewFormat && !isOldFormat && !isPeriodTableFormat) {
+        alert('❌ 找不到合适的工作表。\n新格式需要「合同基本信息」+「每期还款明细」\n旧格式需要「合同总表」\n或业务员原始表格式（需含"合同编号"列）');
         return;
       }
 
@@ -8199,7 +8212,7 @@ window.importExcel = function(input) {
           });
         }
 
-      } else {
+      } else if (isOldFormat) {
         // ══ 旧格式：合同总表（横向展开）══
         const rows = XLSX.utils.sheet_to_json(wb.Sheets['合同总表'], { header: 1, defval: '' });
         if (rows.length < 2) { alert('❌ 表格没有数据'); return; }
@@ -8299,6 +8312,151 @@ window.importExcel = function(input) {
           }
           allPeriodPayments.push(...periodPayments);
         }
+
+      } else if (isPeriodTableFormat) {
+        // ══ 格式三：业务员原始表（按期数分表，柬文+中文双语，old/new两种计算方式）══
+        const qaFlags = [];
+        const seenIdsThisBatch = new Set();
+
+        function parseMoney(s) {
+          if (s === '' || s == null) return 0;
+          const n = parseFloat(String(s).replace(/[^0-9.\-]/g, ''));
+          return isNaN(n) ? 0 : n;
+        }
+        function cellDateStr(ws, r, c) {
+          const addr = XLSX.utils.encode_cell({ r, c });
+          const cell = ws[addr];
+          if (!cell || cell.v == null || cell.v === '') return '';
+          if (typeof cell.v === 'number') {
+            try {
+              const d = XLSX.SSF.parse_date_code(cell.v);
+              if (d && d.y) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+            } catch(e) {}
+          }
+          return String(cell.w || cell.v || '').trim();
+        }
+
+        periodTableSheets.forEach(sheetName => {
+          const ws = wb.Sheets[sheetName];
+          const headerRowIdx = 1; // 0-based：表格第2行是表头
+          const headerRows = XLSX.utils.sheet_to_json(ws, { header: 1, range: 1, defval: '' });
+          const header = (headerRows[0] || []).map(cnLabel);
+          const idx = {};
+          header.forEach((h, i) => { if (h && !(h in idx)) idx[h] = i; });
+
+          const periodCols = [];
+          header.forEach((h, i) => {
+            const m = /^还款日（(\d+)期）$/.exec(h || '');
+            if (m) periodCols.push([parseInt(m[1], 10), i]);
+          });
+          periodCols.sort((a, b) => a[0] - b[0]);
+
+          const isOldCalc = ('首付' in idx);
+          const dataRows = XLSX.utils.sheet_to_json(ws, { header: 1, range: 2, defval: '', raw: false });
+
+          dataRows.forEach((trow, rOffset) => {
+            const dataRowIdx = headerRowIdx + 1 + rOffset;
+            const cidIdx = idx['合同编号'] != null ? idx['合同编号'] : 3;
+            const cidRaw = trow[cidIdx];
+            if (!cidRaw) return;
+            const cid = String(cidRaw).trim();
+
+            const moneyAt = label => idx[label] != null ? parseMoney(trow[idx[label]]) : 0;
+            const textAt  = label => idx[label] != null ? String(trow[idx[label]] ?? '').trim() : '';
+
+            const dateColIdx = idx['订单日期'] != null ? idx['订单日期'] : 1;
+            const contractDate = cellDateStr(ws, dataRowIdx, dateColIdx);
+            const shop = textAt('店铺编号');
+            const custKhIdx = idx['客户姓名'] != null ? idx['客户姓名'] : 5;
+            const custKh = String(trow[custKhIdx] ?? '').trim();
+            const custEn = String(trow[custKhIdx + 1] ?? '').trim();
+            const customer = custEn || custKh;
+            const model = textAt('手机型号');
+            const salePrice = moneyAt('售价');
+            const deposit = isOldCalc ? moneyAt('首付') : 0;
+            const loanAmt = moneyAt('分期金额');
+            const monthlySvcFee = isOldCalc ? moneyAt('每月手续费') : 0;
+            const monthlyPay = moneyAt('每期还款额');
+            const rebate = moneyAt('店家傭金');
+            const dailyLateFee = moneyAt('滞纳金收取标准');
+            const periodsDeclared = parseInt(textAt('租期'), 10) || periodCols.length;
+
+            if (seenIdsThisBatch.has(cid)) {
+              conflicted.push({ contractId: cid, 系统里的客户: '(本次导入表内部编号重复，已跳过后面这条)', Excel里的客户: customer });
+              return;
+            }
+            seenIdsThisBatch.add(cid);
+
+            if (model && !isNaN(Number(model))) {
+              qaFlags.push(`${cid}（${customer}）：手机型号字段是数字 "${model}"，原表这格可能没填对`);
+            }
+
+            const schedule = [];
+            let totalInterest = 0;
+            periodCols.forEach(([pnum, dcol]) => {
+              const dueDate = cellDateStr(ws, dataRowIdx, dcol);
+              const principalDue = parseMoney(trow[dcol + 1]);
+              const paidPrincipal = parseMoney(trow[dcol + 2]);
+              const interestDueRaw = parseMoney(trow[dcol + 3]);
+              const paidInterestRaw = parseMoney(trow[dcol + 4]);
+              const paidPenalty = parseMoney(trow[dcol + 5]);
+              const interestDue = interestDueRaw + (isOldCalc ? monthlySvcFee : 0);
+              const isPaid = paidPrincipal > 0 || paidInterestRaw > 0 || paidPenalty > 0;
+              const paidInterest = isPaid ? paidInterestRaw + (isOldCalc ? monthlySvcFee : 0) : 0;
+              totalInterest += interestDue;
+              schedule.push({
+                period: pnum, dueDate, principalDue, interestDue, serviceFeeDue: 0,
+                paid: isPaid, paidDate: isPaid ? dueDate : null,
+                paidPrincipal: isPaid ? paidPrincipal : 0,
+                paidInterest: isPaid ? paidInterest : 0,
+                paidServiceFee: 0, penalty: isPaid ? paidPenalty : 0,
+                paidStatus: isPaid ? 'paid' : ''
+              });
+              if (isPaid) {
+                allPeriodPayments.push({
+                  contractId: cid, customer, period: pnum,
+                  date: dueDate || contractDate,
+                  principal: paidPrincipal, interest: paidInterest,
+                  serviceFee: 0, penalty: paidPenalty, isEarlyPaid: false,
+                });
+              }
+            });
+
+            const firstP = schedule[0];
+            const interestRate = (loanAmt > 0 && firstP?.interestDue > 0)
+              ? parseFloat(((firstP.interestDue / loanAmt) * 100).toFixed(4)) : 7;
+
+            const contract = {
+              id: cid, date: contractDate, storeName: shop, shopName: shop,
+              salesperson: '', customer, customerKhmer: custKh, customerPhone: textAt('客户手机号码'),
+              emergencyContacts: [], modelId: '', modelName: model,
+              salePrice, deposit, installmentAmount: loanAmt,
+              periods: periodsDeclared, svcPeriods: 0, interestRate, serviceFeeRate: 0,
+              monthlyPayment: monthlyPay, storeRebate: rebate, dailyLateFee,
+              totalInterest: parseFloat(totalInterest.toFixed(2)), totalServiceFee: 0,
+              status: '进行中', note: '', schedule
+            };
+
+            if (existingIds.has(cid)) {
+              const exIdx = existingSales.findIndex(s => String(s.id) === cid);
+              const exRec = existingSales[exIdx];
+              if (exRec && !sameCustomer(exRec.customer, customer)) {
+                conflicted.push({ contractId: cid, 系统里的客户: exRec.customer, Excel里的客户: customer });
+              } else {
+                existingSales[exIdx] = contract;
+                updated.push(cid);
+              }
+            } else {
+              existingSales.push(contract);
+              imported.push(cid);
+            }
+          });
+        });
+
+        if (qaFlags.length) {
+          window._lastImportQaFlags = qaFlags;
+          console.log('导入QA提醒：\n' + qaFlags.join('\n'));
+        }
       }
 
       DB_set('sales', existingSales);
@@ -8311,7 +8469,8 @@ window.importExcel = function(input) {
       newPays.forEach(p => { p.id = payIdBase++; });
       DB_set('payments', [...existingPays, ...newPays]);
 
-      const fmt_name = isNewFormat ? '新格式（三张表）' : '旧格式（合同总表）';
+      const fmt_name = isNewFormat ? '新格式（三张表）' : isOldFormat ? '旧格式（合同总表）' : '业务员原始表（按期数分表）';
+      const qaFlagsList = window._lastImportQaFlags || [];
       const msg = [
         `📄 识别为${fmt_name}`,
         imported.length ? `✅ 新增 ${imported.length} 笔合同` : '',
@@ -8330,6 +8489,12 @@ window.importExcel = function(input) {
           ${conflicted.slice(0,20).map(c => `<div style="font-size:12px;color:#795548;margin-bottom:3px">「${esc(c.contractId)}」系统里是 <b>${esc(c.系统里的客户)}</b>，Excel里是 <b>${esc(c.Excel里的客户)}</b></div>`).join('')}
           ${conflicted.length>20 ? `<div style="font-size:12px;color:#795548">...还有${conflicted.length-20}条，未全部列出</div>` : ''}
           <div style="font-size:11px;color:#a1887f;margin-top:6px">请检查Excel里这些合同号是否编错了（比如复制上月数据忘记改年月），改好合同号后重新导入这几条。</div>
+        </div>` : ''}
+        ${qaFlagsList.length ? `
+        <div style="background:#fff8e1;border-left:4px solid #fbc02d;border-radius:8px;padding:10px 12px;margin-top:10px">
+          <div style="font-size:12px;font-weight:700;color:#8d6e00;margin-bottom:6px">🔍 数据质量提醒（不影响导入，建议核对）：</div>
+          ${qaFlagsList.slice(0,20).map(f => `<div style="font-size:12px;color:#795548;margin-bottom:3px">${esc(f)}</div>`).join('')}
+          ${qaFlagsList.length>20 ? `<div style="font-size:12px;color:#795548">...还有${qaFlagsList.length-20}条，未全部列出</div>` : ''}
         </div>` : ''}
         <div style="margin-top:12px;font-size:12px;color:#90a4ae">数据已同步，刷新页面查看最新数据。</div>
         <button class="btn btn-primary" style="margin-top:12px" onclick="closeModal();nav('sale-list')">查看合同列表</button>
