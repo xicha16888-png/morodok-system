@@ -6190,16 +6190,39 @@ window.toggleDetailRow = function(rowId, arrowId) {
 // MY PERFORMANCE 我的业绩 / 业务员业绩（出单量：每日/每月）
 // 业务员(sales)只看自己；业务主管(salesManager)/主管(manager)/老板(boss)看全部团队
 // ══════════════════════════════════════════════════════
+// 已知员工的「所有叫法」分组：昵称 + 英文名（销售登记时业务员栏是手动打字的，
+// 同一个人可能被打成英文名、昵称、大小写不同、有无空格等各种写法，这里统一收编）
+// 有新员工入职、或者发现某人还有别的叫法没被识别到，往对应数组里加一项字符串即可
+const STAFF_ALIAS_GROUPS = [
+  ['希哈', 'Nea Seyha'],
+  ['小B', 'SUN VITA'],
+  ['碧色', 'Som Piseth'],
+  ['李冲', 'Ly Chong'],
+  ['普提', 'KEO PUTHI'],
+  ['娟娟', 'SOK CHANNA'],
+  ['谢海', 'Sea Seanghai', 'Sea Seanghal'], // 正确拼写是 Seanghai；Seanghal 是之前打错的，保留以防旧合同用了错拼写
+  ['阿说', 'Thuon Chansreychess'],
+  ['利莎', 'You Doliza'],
+  ['Ny Sokminea'], // 新人，昵称还不知道，先用英文名
+];
+
 function renderMyPerformance() {
   const u = getCurrentUser();
   const role = u?.role || '';
   const canViewAll = ['salesManager','manager','boss'].includes(role);
   const allSales = DB_get('sales') || [];
   const td = today();
-  const norm = s => (s||'').trim().toLowerCase();
+  // 去空格（不只是首尾，是全部空格都去掉）+ 转小写，"Thuon Chansreychess" 和 "Thuonchansreychess" 会被认成同一个人
+  const norm = s => (s||'').replace(/\s+/g,'').toLowerCase();
+
+  function findAliasGroup(name) {
+    const n = norm(name);
+    if (!n) return null;
+    return STAFF_ALIAS_GROUPS.find(g => g.some(alias => norm(alias) === n)) || null;
+  }
 
   function statsFor(nameOrNames) {
-    // 支持传单个名字，或多个候选名字（比如登录用户名 + 显示姓名，命中任意一个就算）
+    // 支持传单个名字，或多个候选名字（比如登录用户名、显示姓名、花名册里的各种叫法），命中任意一个就算
     const candidates = (Array.isArray(nameOrNames) ? nameOrNames : [nameOrNames]).map(norm).filter(Boolean);
     const list = allSales.filter(s => candidates.includes(norm(s.salesperson)));
     const name = Array.isArray(nameOrNames) ? (nameOrNames.find(Boolean) || '') : nameOrNames;
@@ -6256,8 +6279,9 @@ function renderMyPerformance() {
   }
 
   if (!canViewAll) {
-    // 同时尝试「显示姓名」和「登录用户名」两种可能，合同里业务员字段填的是哪个都能识别到
-    const stats = statsFor([u?.displayName, u?.username]);
+    // 先按登录名/显示名找到花名册里对应的那一组，把组里所有叫法都拿来匹配合同
+    const group = findAliasGroup(u?.displayName) || findAliasGroup(u?.username) || [];
+    const stats = statsFor([u?.displayName, u?.username, ...group]);
     return `
     <div class="page-header">
       <div class="page-title">📊 ${tl('我的业绩','My Performance','សមិទ្ធិផលរបស់ខ្ញុំ')}</div>
@@ -6271,9 +6295,39 @@ function renderMyPerformance() {
     ${detailTablesHtml(stats)}`;
   }
 
-  // 业务主管 / 主管 / 老板：团队排行榜，点姓名展开看每人每日/每月明细
-  const names = [...new Set(allSales.map(s => (s.salesperson||'').trim()).filter(Boolean))];
-  const board = names.map(n => statsFor(n)).sort((a,b) => b.total - a.total);
+  // 业务主管 / 主管 / 老板：团队排行榜
+  // 先按花名册分组统计（同一个人多种叫法自动合并），花名册以外的叫法各自单独一行，
+  // 完全没填「业务员」的合同单独归到"未填写"，固定放最后一行，不参与排行
+  const usedRaw = new Set();
+  const board = STAFF_ALIAS_GROUPS.map(group => {
+    const s = statsFor(group);
+    s.name = group[0]; // 显示昵称（组里第一项）
+    return s;
+  }).filter(s => s.total > 0);
+  STAFF_ALIAS_GROUPS.forEach(group => group.forEach(a => usedRaw.add(norm(a))));
+
+  const otherNames = [...new Set(allSales.map(s => (s.salesperson||'').trim()).filter(Boolean))]
+    .filter(n => !usedRaw.has(norm(n)));
+  otherNames.forEach(n => board.push(statsFor(n)));
+  board.sort((a,b) => b.total - a.total);
+
+  const unfilledList = allSales.filter(s => !((s.salesperson||'').trim()));
+  const unfilledByDate = {}, unfilledByMonth = {};
+  unfilledList.forEach(s => {
+    const d = (s.date||'').replace(/\//g,'-'); const m = d.slice(0,7);
+    (unfilledByDate[d]=unfilledByDate[d]||[]).push(s);
+    (unfilledByMonth[m]=unfilledByMonth[m]||[]).push(s);
+  });
+  const unfilledStats = {
+    name: tl('未填写','Unassigned','មិន​បាន​បញ្ជាក់'),
+    total: unfilledList.length,
+    todayCount: (unfilledByDate[td]||[]).length,
+    thisMonthCount: (unfilledByMonth[td.slice(0,7)]||[]).length,
+    dailyRows: Object.keys(unfilledByDate).sort().reverse().slice(0,30).map(d=>({date:d,count:unfilledByDate[d].length,loan:unfilledByDate[d].reduce((a,s)=>a+(+s.installmentAmount||0),0)})),
+    monthlyRows: Object.keys(unfilledByMonth).sort().reverse().map(m=>({month:m,count:unfilledByMonth[m].length,loan:unfilledByMonth[m].reduce((a,s)=>a+(+s.installmentAmount||0),0)}))
+  };
+  if (unfilledStats.total > 0) board.push(unfilledStats);
+
   const teamToday = board.reduce((a,d)=>a+d.todayCount,0);
   const teamMonth = board.reduce((a,d)=>a+d.thisMonthCount,0);
   const teamTotal = board.reduce((a,d)=>a+d.total,0);
@@ -6282,7 +6336,7 @@ function renderMyPerformance() {
     return `<div class="page-header">
       <div class="page-title">📊 ${tl('业务员业绩','Sales Performance','សមិទ្ធិផលភ្នាក់ងារលក់')}</div>
     </div>
-    <div class="card"><div class="empty-state"><div class="ei">📊</div><p>${tl('暂无数据（合同的「业务员」字段还没有人填写）','No data (no contract has the Salesperson field filled in yet)','')}</p></div></div>`;
+    <div class="card"><div class="empty-state"><div class="ei">📊</div><p>${tl('暂无数据','No data','គ្មានទិន្នន័យ')}</p></div></div>`;
   }
 
   return `
@@ -6305,20 +6359,27 @@ function renderMyPerformance() {
           <th style="text-align:center">${tl('本月出单','This Month','ខែនេះ')}</th>
           <th style="text-align:center">${tl('累计出单','Total','សរុប')}</th>
         </tr>
-        ${board.map((d,i) => `
-        <tr style="cursor:pointer" onclick="toggleDetailRow('mp-${i}','mp-arrow-${i}')">
-          <td style="font-weight:600;color:var(--navy)"><span style="margin-right:6px;font-size:10px;color:var(--muted)" id="mp-arrow-${i}">▶</span>${esc(d.name)}</td>
-          <td style="text-align:center;color:var(--green);font-weight:700">${d.todayCount}</td>
+        ${board.map((d,i) => {
+          const isUnfilled = d.name === tl('未填写','Unassigned','មិន​បាន​បញ្ជាក់');
+          return `
+        <tr style="cursor:pointer;${isUnfilled?'background:#fafafa;color:#90a4ae':''}" onclick="toggleDetailRow('mp-${i}','mp-arrow-${i}')">
+          <td style="font-weight:600;${isUnfilled?'color:#90a4ae':'color:var(--navy)'}"><span style="margin-right:6px;font-size:10px;color:var(--muted)" id="mp-arrow-${i}">▶</span>${esc(d.name)}</td>
+          <td style="text-align:center;font-weight:700;${isUnfilled?'':'color:var(--green)'}">${d.todayCount}</td>
           <td style="text-align:center;font-weight:700">${d.thisMonthCount}</td>
           <td style="text-align:center;font-weight:700">${d.total}</td>
         </tr>
         <tr id="mp-${i}" style="display:none;background:#f8fbff">
           <td colspan="4" style="padding:16px">${detailTablesHtml(d)}</td>
-        </tr>`).join('')}
+        </tr>`;
+        }).join('')}
       </table>
     </div>
+  </div>
+  <div style="margin-top:10px;font-size:11px;color:var(--muted)">
+    ${tl('同一个人的不同写法（英文名/昵称/大小写/空格）已自动合并统计；"未填写"是签单时业务员栏没有填写的合同，不计入个人排行','Different spellings of the same person are merged automatically; "Unassigned" contracts had no salesperson recorded at signing','')}
   </div>`;
 }
+
 
 // ── 业务员 tab：按合同「业务员」字段分组 ──
 window._staffSalesMonth = ''; // '' = 全部月份（AUDIT_START_MONTH 起）
