@@ -8315,8 +8315,13 @@ window.importExcel = function(input) {
 
       } else if (isPeriodTableFormat) {
         // ══ 格式三：业务员原始表（按期数分表，柬文+中文双语，old/new两种计算方式）══
+        // 注意：不按Excel自带的"合同编号"做匹配 —— 业务员表格里的编号和系统里直接登记的编号是
+        // 两套独立流水号，对不上会导致大量假冲突。改为按"客户姓名+身份证号"判断这单是否已经录入过；
+        // 已经存在的不做任何改动，只把系统里还没有的新单子导进来，新合同号用系统自己的规则生成。
         const qaFlags = [];
-        const seenIdsThisBatch = new Set();
+        const alreadyExists = [];
+        const batchDuplicates = [];
+        const seenThisBatch = new Set();
 
         function parseMoney(s) {
           if (s === '' || s == null) return 0;
@@ -8335,6 +8340,20 @@ window.importExcel = function(input) {
           }
           return String(cell.w || cell.v || '').trim();
         }
+        const normId = s => String(s || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+        const normName = s => String(s || '').toUpperCase().replace(/\s+/g, '');
+
+        // 建立系统里现有合同的查找索引（按身份证号 / 按姓名+日期）
+        const existingByIdNum = new Map();
+        const existingByNameDate = new Map();
+        existingSales.forEach(s => {
+          if (s.idNumber) {
+            const k = normId(s.idNumber);
+            if (!existingByIdNum.has(k)) existingByIdNum.set(k, []);
+            existingByIdNum.get(k).push(s);
+          }
+          existingByNameDate.set(normName(s.customer) + '_' + (s.date || ''), s);
+        });
 
         periodTableSheets.forEach(sheetName => {
           const ws = wb.Sheets[sheetName];
@@ -8359,7 +8378,7 @@ window.importExcel = function(input) {
             const cidIdx = idx['合同编号'] != null ? idx['合同编号'] : 3;
             const cidRaw = trow[cidIdx];
             if (!cidRaw) return;
-            const cid = String(cidRaw).trim();
+            const cid = String(cidRaw).trim(); // 只作为参考记录，不用来匹配
 
             const moneyAt = label => idx[label] != null ? parseMoney(trow[idx[label]]) : 0;
             const textAt  = label => idx[label] != null ? String(trow[idx[label]] ?? '').trim() : '';
@@ -8371,6 +8390,7 @@ window.importExcel = function(input) {
             const custKh = String(trow[custKhIdx] ?? '').trim();
             const custEn = String(trow[custKhIdx + 1] ?? '').trim();
             const customer = custEn || custKh;
+            const idNumRaw = textAt('身份证号');
             const model = textAt('手机型号');
             const salePrice = moneyAt('售价');
             const deposit = isOldCalc ? moneyAt('首付') : 0;
@@ -8381,15 +8401,35 @@ window.importExcel = function(input) {
             const dailyLateFee = moneyAt('滞纳金收取标准');
             const periodsDeclared = parseInt(textAt('租期'), 10) || periodCols.length;
 
-            if (seenIdsThisBatch.has(cid)) {
-              conflicted.push({ contractId: cid, 系统里的客户: '(本次导入表内部编号重复，已跳过后面这条)', Excel里的客户: customer });
+            const idKey = idNumRaw ? normId(idNumRaw) : '';
+            const nameDateKey = normName(customer) + '_' + contractDate;
+            const dedupKey = idKey ? ('ID_' + idKey + '_' + contractDate) : ('ND_' + nameDateKey);
+
+            if (seenThisBatch.has(dedupKey)) {
+              batchDuplicates.push({ excelId: cid, 客户: customer, 日期: contractDate });
               return;
             }
-            seenIdsThisBatch.add(cid);
+            seenThisBatch.add(dedupKey);
 
             if (model && !isNaN(Number(model))) {
               qaFlags.push(`${cid}（${customer}）：手机型号字段是数字 "${model}"，原表这格可能没填对`);
             }
+
+            // 判断系统里是否已经录入过这一单
+            let matched = null;
+            if (idKey && existingByIdNum.has(idKey)) {
+              matched = existingByIdNum.get(idKey).find(s => s.date === contractDate) || null;
+            }
+            if (!matched && existingByNameDate.has(nameDateKey)) {
+              matched = existingByNameDate.get(nameDateKey);
+            }
+            if (matched) {
+              alreadyExists.push({ excelId: cid, 系统合同号: matched.id, 客户: customer, 日期: contractDate });
+              return;
+            }
+
+            // 系统里没有 —— 新单子，用系统自己的规则生成合同号
+            const newSysId = newContractId(periodsDeclared);
 
             const schedule = [];
             let totalInterest = 0;
@@ -8414,7 +8454,7 @@ window.importExcel = function(input) {
               });
               if (isPaid) {
                 allPeriodPayments.push({
-                  contractId: cid, customer, period: pnum,
+                  contractId: newSysId, customer, period: pnum,
                   date: dueDate || contractDate,
                   principal: paidPrincipal, interest: paidInterest,
                   serviceFee: 0, penalty: paidPenalty, isEarlyPaid: false,
@@ -8427,36 +8467,30 @@ window.importExcel = function(input) {
               ? parseFloat(((firstP.interestDue / loanAmt) * 100).toFixed(4)) : 7;
 
             const contract = {
-              id: cid, date: contractDate, storeName: shop, shopName: shop,
+              id: newSysId, date: contractDate, storeName: shop, shopName: shop,
               salesperson: '', customer, customerKhmer: custKh, customerPhone: textAt('客户手机号码'),
+              idNumber: idNumRaw,
               emergencyContacts: [], modelId: '', modelName: model,
               salePrice, deposit, installmentAmount: loanAmt,
               periods: periodsDeclared, svcPeriods: 0, interestRate, serviceFeeRate: 0,
               monthlyPayment: monthlyPay, storeRebate: rebate, dailyLateFee,
               totalInterest: parseFloat(totalInterest.toFixed(2)), totalServiceFee: 0,
-              status: '进行中', note: '', schedule
+              status: '进行中', note: `原表合同号：${cid}`, schedule
             };
 
-            if (existingIds.has(cid)) {
-              const exIdx = existingSales.findIndex(s => String(s.id) === cid);
-              const exRec = existingSales[exIdx];
-              if (exRec && !sameCustomer(exRec.customer, customer)) {
-                conflicted.push({ contractId: cid, 系统里的客户: exRec.customer, Excel里的客户: customer });
-              } else {
-                existingSales[exIdx] = contract;
-                updated.push(cid);
-              }
-            } else {
-              existingSales.push(contract);
-              imported.push(cid);
+            existingSales.push(contract);
+            imported.push(newSysId);
+            if (idKey) {
+              if (!existingByIdNum.has(idKey)) existingByIdNum.set(idKey, []);
+              existingByIdNum.get(idKey).push(contract);
             }
+            existingByNameDate.set(nameDateKey, contract);
           });
         });
 
-        if (qaFlags.length) {
-          window._lastImportQaFlags = qaFlags;
-          console.log('导入QA提醒：\n' + qaFlags.join('\n'));
-        }
+        if (qaFlags.length) window._lastImportQaFlags = qaFlags;
+        if (alreadyExists.length) window._lastImportAlreadyExists = alreadyExists;
+        if (batchDuplicates.length) window._lastImportBatchDuplicates = batchDuplicates;
       }
 
       DB_set('sales', existingSales);
@@ -8469,14 +8503,18 @@ window.importExcel = function(input) {
       newPays.forEach(p => { p.id = payIdBase++; });
       DB_set('payments', [...existingPays, ...newPays]);
 
-      const fmt_name = isNewFormat ? '新格式（三张表）' : isOldFormat ? '旧格式（合同总表）' : '业务员原始表（按期数分表）';
+      const fmt_name = isNewFormat ? '新格式（三张表）' : isOldFormat ? '旧格式（合同总表）' : '业务员原始表（按期数分表，按客户+身份证核对）';
       const qaFlagsList = window._lastImportQaFlags || [];
+      const alreadyExistsList = window._lastImportAlreadyExists || [];
+      const batchDupList = window._lastImportBatchDuplicates || [];
       const msg = [
         `📄 识别为${fmt_name}`,
         imported.length ? `✅ 新增 ${imported.length} 笔合同` : '',
         updated.length  ? `🔄 更新 ${updated.length} 笔合同` : '',
         newPays.length  ? `💳 同步 ${newPays.length} 条收款记录` : '',
         conflicted.length ? `⚠️ 发现 ${conflicted.length} 笔合同号冲突，已跳过未导入` : '',
+        alreadyExistsList.length ? `✔️ ${alreadyExistsList.length} 笔系统里已经录入过（按客户+身份证核对确认，未改动）` : '',
+        batchDupList.length ? `🔁 ${batchDupList.length} 笔在你这份表格内部本身就重复了，只按第一次出现导入` : '',
       ].filter(Boolean).join('<br>');
 
       showModal('📥 导入完成', `
@@ -8489,6 +8527,18 @@ window.importExcel = function(input) {
           ${conflicted.slice(0,20).map(c => `<div style="font-size:12px;color:#795548;margin-bottom:3px">「${esc(c.contractId)}」系统里是 <b>${esc(c.系统里的客户)}</b>，Excel里是 <b>${esc(c.Excel里的客户)}</b></div>`).join('')}
           ${conflicted.length>20 ? `<div style="font-size:12px;color:#795548">...还有${conflicted.length-20}条，未全部列出</div>` : ''}
           <div style="font-size:11px;color:#a1887f;margin-top:6px">请检查Excel里这些合同号是否编错了（比如复制上月数据忘记改年月），改好合同号后重新导入这几条。</div>
+        </div>` : ''}
+        ${alreadyExistsList.length ? `
+        <div style="background:#e8f5e9;border-left:4px solid #43a047;border-radius:8px;padding:10px 12px;margin-top:10px">
+          <div style="font-size:12px;font-weight:700;color:#2e7d32;margin-bottom:6px">✔️ 以下客户系统里已经有记录了（按姓名+身份证核对确认是同一笔），跳过未重复导入：</div>
+          ${alreadyExistsList.slice(0,20).map(c => `<div style="font-size:12px;color:#558b2f;margin-bottom:3px">${esc(c.客户)}（${esc(c.日期)}）系统合同号 <b>${esc(c.系统合同号)}</b>，原表编号「${esc(c.excelId)}」</div>`).join('')}
+          ${alreadyExistsList.length>20 ? `<div style="font-size:12px;color:#558b2f">...还有${alreadyExistsList.length-20}条，未全部列出</div>` : ''}
+        </div>` : ''}
+        ${batchDupList.length ? `
+        <div style="background:#fce4ec;border-left:4px solid #ec407a;border-radius:8px;padding:10px 12px;margin-top:10px">
+          <div style="font-size:12px;font-weight:700;color:#ad1457;margin-bottom:6px">🔁 你这份表格内部同一个客户+日期出现了不止一次（比如同时出现在old和New两个表里），只按第一次出现的导入：</div>
+          ${batchDupList.slice(0,20).map(c => `<div style="font-size:12px;color:#880e4f;margin-bottom:3px">${esc(c.客户)}（${esc(c.日期)}）原表编号「${esc(c.excelId)}」</div>`).join('')}
+          ${batchDupList.length>20 ? `<div style="font-size:12px;color:#880e4f">...还有${batchDupList.length-20}条，未全部列出</div>` : ''}
         </div>` : ''}
         ${qaFlagsList.length ? `
         <div style="background:#fff8e1;border-left:4px solid #fbc02d;border-radius:8px;padding:10px 12px;margin-top:10px">
