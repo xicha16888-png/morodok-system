@@ -8377,8 +8377,7 @@ window.importExcel = function(input) {
             const dataRowIdx = headerRowIdx + 1 + rOffset;
             const cidIdx = idx['合同编号'] != null ? idx['合同编号'] : 3;
             const cidRaw = trow[cidIdx];
-            if (!cidRaw) return;
-            const cid = String(cidRaw).trim(); // 只作为参考记录，不用来匹配
+            const cid = cidRaw ? String(cidRaw).trim() : ''; // 只作为参考记录，不用来匹配；允许为空（有的单还没编号）
 
             const moneyAt = label => idx[label] != null ? parseMoney(trow[idx[label]]) : 0;
             const textAt  = label => idx[label] != null ? String(trow[idx[label]] ?? '').trim() : '';
@@ -8390,6 +8389,8 @@ window.importExcel = function(input) {
             const custKh = String(trow[custKhIdx] ?? '').trim();
             const custEn = String(trow[custKhIdx + 1] ?? '').trim();
             const customer = custEn || custKh;
+            // 判断这一行是不是真的有单子（不是空行）：得有客户姓名，合同编号可以没填
+            if (!customer) return;
             const idNumRaw = textAt('身份证号');
             const model = textAt('手机型号');
             const salePrice = moneyAt('售价');
@@ -8475,7 +8476,7 @@ window.importExcel = function(input) {
               periods: periodsDeclared, svcPeriods: 0, interestRate, serviceFeeRate: 0,
               monthlyPayment: monthlyPay, storeRebate: rebate, dailyLateFee,
               totalInterest: parseFloat(totalInterest.toFixed(2)), totalServiceFee: 0,
-              status: '进行中', note: `原表合同号：${cid}`, schedule
+              status: '进行中', note: cid ? `原表合同号：${cid}` : '原表未填合同编号', schedule
             };
 
             existingSales.push(contract);
