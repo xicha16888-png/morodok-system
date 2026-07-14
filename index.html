@@ -6198,8 +6198,11 @@ function renderMyPerformance() {
   const td = today();
   const norm = s => (s||'').trim().toLowerCase();
 
-  function statsFor(name) {
-    const list = allSales.filter(s => norm(s.salesperson) === norm(name));
+  function statsFor(nameOrNames) {
+    // 支持传单个名字，或多个候选名字（比如登录用户名 + 显示姓名，命中任意一个就算）
+    const candidates = (Array.isArray(nameOrNames) ? nameOrNames : [nameOrNames]).map(norm).filter(Boolean);
+    const list = allSales.filter(s => candidates.includes(norm(s.salesperson)));
+    const name = Array.isArray(nameOrNames) ? (nameOrNames.find(Boolean) || '') : nameOrNames;
     const byDate = {}, byMonth = {};
     list.forEach(s => {
       const d = (s.date||'').replace(/\//g,'-');
@@ -6253,8 +6256,8 @@ function renderMyPerformance() {
   }
 
   if (!canViewAll) {
-    const myName = u?.displayName || u?.username || '';
-    const stats = statsFor(myName);
+    // 同时尝试「显示姓名」和「登录用户名」两种可能，合同里业务员字段填的是哪个都能识别到
+    const stats = statsFor([u?.displayName, u?.username]);
     return `
     <div class="page-header">
       <div class="page-title">📊 ${tl('我的业绩','My Performance','សមិទ្ធិផលរបស់ខ្ញុំ')}</div>
