@@ -2500,7 +2500,8 @@ window.filterStoreOptions = function() {
   if (!input || !dropdown) return;
   if (codeInput) codeInput.value = ''; // 只要还在手打/没重新选，先清空命中标记
   const q = input.value.trim().toLowerCase();
-  const stores = DB_get('stores') || [];
+  // 只显示有正式编号的店铺（编号+名字成对），过滤掉以前"自动从合同里学来的"纯文字店名（那些没有编号，会显示成空白/只有编号没名字）
+  const stores = (DB_get('stores') || []).filter(s => s.code);
   const list = q ? stores.filter(s =>
     (s.code||'').toLowerCase().includes(q) ||
     (s.nameKm||'').toLowerCase().includes(q) ||
