@@ -1983,11 +1983,7 @@ window.uploadExtraImages = async function(input, contractId) {
 function renderSaleAdd() {
   const phones = DB_get('phones') || [];
   const opts = phones.map(p => `<option value="${p.id}">${esc(p.brand)} ${esc(p.model)} ${esc(p.storage||'')} — ${tl('库存','Stock','ស្តុក')}${p.stock}${tl('台','pcs','គ្រឿង')} (${tl('建议','Suggested','ណែនាំ')}${fmt(p.price)})</option>`).join('');
-  // 店铺选项：从 stores 数据 + 历史合同中提取
-  const stores = DB_get('stores') || [];
   const allSales = DB_get('sales') || [];
-  const shopNames = [...new Set([...stores.map(s=>s.name), ...allSales.map(s=>s.shopName||'').filter(Boolean)])].sort();
-  const shopOpts = shopNames.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
   // 业务员选项：从历史合同中提取
   const staffNames = [...new Set(allSales.map(s=>s.salesperson||'').filter(Boolean))].sort();
   const staffOpts = staffNames.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
@@ -2006,9 +2002,12 @@ function renderSaleAdd() {
         <div class="form-group"><label>${t('contractDate')}</label><input type="date" id="sDate" value="${today()}"></div>
         <div class="form-group"><label>${t('customerName')} *</label><input id="sCust" placeholder="${t('customerName')}"></div>
         <div class="form-group"><label>${t('customerPhone')}</label><input id="sCustPhone" placeholder="${t('customerPhone')}" oninput="checkPhoneDup()"></div>
-        <div class="form-group"><label>${t('shopName')}</label>
-          <input id="sShopName" list="shopList" placeholder="${t('shopName')}" autocomplete="off">
-          <datalist id="shopList">${shopOpts}</datalist>
+        <div class="form-group" style="position:relative">
+          <label>${t('shopName')}</label>
+          <input id="sShopName" placeholder="${tl('输入店铺编号或名称搜索','Search store code or name','ស្វែងរកលេខកូដ ឬ ឈ្មោះហាង')}" autocomplete="off"
+            oninput="filterStoreOptions()" onfocus="filterStoreOptions()">
+          <input type="hidden" id="sShopCode" value="">
+          <div id="storeDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:8px;max-height:220px;overflow-y:auto;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,.15)"></div>
         </div>
         <div class="form-group"><label>${t('salesperson')}</label>
           <input id="sSalesperson" list="staffList" placeholder="${t('salesperson')}" autocomplete="off">
@@ -2493,12 +2492,61 @@ window.onLoanInputChange = function() {
 window._calcInstall_old = function() {
 };
 
+// 店铺搜索选择器：按编号/高棉语名/英语名过滤，选中就把编号写进隐藏字段 sShopCode（提交时用来判断是否命中官方店铺列表）
+window.filterStoreOptions = function() {
+  const input = document.getElementById('sShopName');
+  const dropdown = document.getElementById('storeDropdown');
+  const codeInput = document.getElementById('sShopCode');
+  if (!input || !dropdown) return;
+  if (codeInput) codeInput.value = ''; // 只要还在手打/没重新选，先清空命中标记
+  const q = input.value.trim().toLowerCase();
+  const stores = DB_get('stores') || [];
+  const list = q ? stores.filter(s =>
+    (s.code||'').toLowerCase().includes(q) ||
+    (s.nameKm||'').toLowerCase().includes(q) ||
+    (s.nameEn||'').toLowerCase().includes(q)
+  ) : stores;
+  if (!list.length) {
+    dropdown.innerHTML = `<div style="padding:8px 12px;font-size:12px;color:var(--muted)">${tl('没有匹配的店铺，可直接手打（会标记为未匹配，方便后续核对）','No matching store — you can still type it in (will be flagged as unmatched)','មិនមានហាងដូចនេះ អាចវាយផ្ទាល់បាន (នឹងសម្គាល់ថាមិនត្រូវគ្នា)')}</div>`;
+    dropdown.style.display = 'block';
+    return;
+  }
+  dropdown.innerHTML = list.slice(0, 50).map(s => `
+    <div class="store-opt" data-code="${esc(s.code||'')}" data-name="${esc(s.name||'')}"
+      style="padding:7px 10px;cursor:pointer;font-size:12px;display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #f0f0f0">
+      <span><b style="color:var(--blue)">${esc(s.code||'')}</b> ${esc(s.nameKm||'')}</span>
+      <span style="color:var(--muted)">${esc(s.nameEn||'')}</span>
+    </div>`).join('');
+  dropdown.style.display = 'block';
+  dropdown.querySelectorAll('.store-opt').forEach(el => {
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // 防止点击前 input 的 blur 把下拉框先关掉
+      document.getElementById('sShopName').value = el.dataset.name;
+      if (codeInput) codeInput.value = el.dataset.code;
+      dropdown.style.display = 'none';
+    });
+  });
+};
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#sShopName') && !e.target.closest('#storeDropdown')) {
+    const dd = document.getElementById('storeDropdown');
+    if (dd) dd.style.display = 'none';
+  }
+});
+
 window.submitSale = function() {
   const isOld = window._loanMethod === 'old';
   const cust        = document.getElementById('sCust')?.value?.trim();
   const custPhone   = document.getElementById('sCustPhone')?.value?.trim() || '';
   const shopName    = document.getElementById('sShopName')?.value?.trim() || '';
+  const shopCodeSel = document.getElementById('sShopCode')?.value?.trim() || '';
   const salesperson = document.getElementById('sSalesperson')?.value?.trim() || '';
+
+  // 店铺是否命中官方编号列表：选了下拉项才算命中；手打的即使凑巧打对名字，也要求选中才算数（更严谨），
+  // 命中就带上店铺编号，没命中不阻止提交，但标记 shopMatched:false 方便以后核对
+  const storesForMatch = DB_get('stores') || [];
+  const shopMatched = !!(shopCodeSel && storesForMatch.some(s => s.code === shopCodeSel));
+  const shopCode = shopMatched ? shopCodeSel : '';
 
   let principal, retailPrice, brand, modelName, storage, condition, periods, firstDue, deposit;
   let monthlyInt, monthlySvc, rebate, dailyFee;
@@ -2590,7 +2638,7 @@ window.submitSale = function() {
 
   const sale = {
     id: newContractId(periods), date: sDate, customer: cust, customerPhone: custPhone,
-    shopName, salesperson,
+    shopName, shopCode, shopMatched, salesperson,
     emergencyContacts,
     modelName: `${brand === 'Apple' ? 'iPhone' : brand} ${modelName} ${storage}`.trim(),
     brand, phoneModel: modelName, storage, condition,
@@ -2608,6 +2656,9 @@ window.submitSale = function() {
   sales.push(sale);
   DB_set('sales', sales);
   logActivity('新建合同', `#${sale.id} ${cust}`, `贷款金额$${principal}，${periods}期，型号${sale.modelName||''}`);
+  if (shopName && !shopMatched) {
+    logActivity('店铺未匹配官方列表', `#${sale.id} ${cust}`, `业务员手打了"${shopName}"，未从店铺列表选中，请核对是否需要补充到官方店铺列表`);
+  }
   showMsg('saleMsg', `✅ ${t('saved')} #${sale.id} — ${cust}，${periods}${t('period')}，${fmt(monthly)}/${t('period')}`, 'green');
   ['sCust','sCustPhone','sSalePrice','sRetailPrice','sNote','oSalePrice','oDeposit','oMonthlyIntFee','oDailyFee','oRebate'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const rc = document.getElementById('calcResultCard');
@@ -2745,7 +2796,7 @@ function buildSalesTable(sales) {
       html += `<tr>
         <td class="fw700 text-blue">#${s.id}</td><td>${s.date}</td>
         <td><div class="fw700">${esc(s.customer)}</div><div class="text-muted" style="font-size:11px">${esc(s.customerPhone||'')}</div></td>
-        <td><span style="font-size:12px;background:#e3f2fd;color:var(--navy);padding:2px 8px;border-radius:12px;white-space:nowrap;cursor:pointer" onclick="document.getElementById('saleShopFilter').value='${esc(s.shopName||'')}';filterSales()">${esc(s.shopName||'-')}</span></td>
+        <td><span style="font-size:12px;background:#e3f2fd;color:var(--navy);padding:2px 8px;border-radius:12px;white-space:nowrap;cursor:pointer" onclick="document.getElementById('saleShopFilter').value='${esc(s.shopName||'')}';filterSales()">${esc(s.shopName||'-')}</span>${s.shopName && s.shopMatched===false ? ` <span title="${tl('未从官方店铺列表选中，可能是手打的店名','Not selected from the official store list — may be a manually typed name','មិនបានជ្រើសរើសពីបញ្ជីហាងផ្លូវការទេ')}" style="color:var(--red);cursor:help">⚠️</span>` : ''}</td>
         <td>${esc(s.modelName||'-')}</td><td>${fmt(s.salePrice)}</td><td>${fmt(s.deposit)}</td>
         <td class="fw700">${fmt(s.installmentAmount)}</td>
         <td><span class="${ptc[s.periods]||'pt6'}">${s.periods}${t('period')}</span></td>
