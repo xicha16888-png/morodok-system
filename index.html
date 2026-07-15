@@ -2504,8 +2504,14 @@ window.filterStoreOptions = function() {
   const list = q ? stores.filter(s =>
     (s.code||'').toLowerCase().includes(q) ||
     (s.nameKm||'').toLowerCase().includes(q) ||
-    (s.nameEn||'').toLowerCase().includes(q)
+    (s.nameEn||'').toLowerCase().includes(q) ||
+    (s.name||'').toLowerCase().includes(q)
   ) : stores;
+  if (!stores.length) {
+    dropdown.innerHTML = `<div style="padding:8px 12px;font-size:12px;color:var(--muted)">${tl('店铺列表还是空的，还没导入店铺编号（或者手打新店铺，会标记为未匹配）','Store list is empty — official store codes haven’t been imported yet (you can still type a new one, it’ll be flagged as unmatched)','មិនទាន់មានបញ្ជីហាងទេ (អាចវាយថ្មីបាន នឹងសម្គាល់ថាមិនត្រូវគ្នា)')}</div>`;
+    dropdown.style.display = 'block';
+    return;
+  }
   if (!list.length) {
     dropdown.innerHTML = `<div style="padding:8px 12px;font-size:12px;color:var(--muted)">${tl('没有匹配的店铺，可直接手打（会标记为未匹配，方便后续核对）','No matching store — you can still type it in (will be flagged as unmatched)','មិនមានហាងដូចនេះ អាចវាយផ្ទាល់បាន (នឹងសម្គាល់ថាមិនត្រូវគ្នា)')}</div>`;
     dropdown.style.display = 'block';
@@ -2514,7 +2520,7 @@ window.filterStoreOptions = function() {
   dropdown.innerHTML = list.slice(0, 50).map(s => `
     <div class="store-opt" data-code="${esc(s.code||'')}" data-name="${esc(s.name||'')}"
       style="padding:7px 10px;cursor:pointer;font-size:12px;display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #f0f0f0">
-      <span><b style="color:var(--blue)">${esc(s.code||'')}</b> ${esc(s.nameKm||'')}</span>
+      <span>${s.code ? `<b style="color:var(--blue)">${esc(s.code)}</b> ${esc(s.nameKm||'')}` : esc(s.name||'')}</span>
       <span style="color:var(--muted)">${esc(s.nameEn||'')}</span>
     </div>`).join('');
   dropdown.style.display = 'block';
