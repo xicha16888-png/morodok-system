@@ -8694,28 +8694,35 @@ window.renderAuditList = async function() {
     '待补充': 'background:#e3f2fd;color:#1565c0'
   };
 
-  // 按月分组（倒序）
+  // 按天分组（倒序），方便逐日对账
   const sorted = filtered.slice().sort((a,b) => (b.date||'').localeCompare(a.date||''));
   const groups = {};
   const groupOrder = [];
   sorted.forEach(s => {
-    const m = (s.date||'').replace(/\//g,'-').slice(0,7);
-    if (!groups[m]) { groups[m] = []; groupOrder.push(m); }
-    groups[m].push(s);
+    const d = (s.date||'').replace(/\//g,'-').slice(0,10);
+    if (!groups[d]) { groups[d] = []; groupOrder.push(d); }
+    groups[d].push(s);
   });
 
   wrap.innerHTML = `<div class="table-wrap"><table>
     <tr>
-      <th>${tl('合同号','Contract No.','លេខកិច្ចសន្យា')}</th><th>${tl('客户','Customer','អតិថិជន')}</th><th>${tl('电话','Phone','ទូរស័ព្ទ')}</th><th>${tl('型号','Model','ម៉ូដែល')}</th>
-      <th>${tl('签约日期','Sign Date','ថ្ងៃចុះកិច្ចសន្យា')}</th><th>${tl('期数','Periods','ចំនួនខែ')}</th><th>${tl('审核状态','Review Status','ស្ថានភាពត្រួតពិនិត្យ')}</th><th>${tl('审核人','Reviewer','អ្នកត្រួតពិនិត្យ')}</th><th>${tl('操作','Action','សកម្មភាព')}</th>
+      <th>${tl('合同号','Contract No.','លេខកិច្ចសន្យា')}</th><th>${tl('客户','Customer','អតិថិជន')}</th><th>${tl('电话','Phone','ទូរស័ព្ទ')}</th><th>${tl('身份证号','ID Number','លេខអត្តសញ្ញាណប័ណ្ណ')}</th><th>${tl('型号','Model','ម៉ូដែល')}</th>
+      <th>${tl('签约日期','Sign Date','ថ្ងៃចុះកិច្ចសន្យា')}</th><th>${tl('期数','Periods','ចំនួនខែ')}</th><th>${tl('材料','Docs','ឯកសារ')}</th><th>${tl('审核状态','Review Status','ស្ថានភាពត្រួតពិនិត្យ')}</th><th>${tl('审核人','Reviewer','អ្នកត្រួតពិនិត្យ')}</th><th>${tl('操作','Action','សកម្មភាព')}</th>
     </tr>
-    ${groupOrder.map(m => {
-      const rows = groups[m];
-      const groupId = 'ag_' + m.replace(/-/g,'');
+    ${groupOrder.map(d => {
+      const rows = groups[d];
+      const groupId = 'ag_' + d.replace(/-/g,'');
+      const dayTotal = rows.reduce((sum, s) => sum + (+s.installmentAmount || 0), 0);
+      const dupIds = computeAuditDupIds(rows);
+      const idsJson = JSON.stringify(rows.map(s => s.id));
       return `<tr style="background:var(--navy);cursor:pointer" onclick="toggleDateGroup('${groupId}')">
-        <td colspan="9" style="color:#fff;font-weight:700;padding:8px 12px;font-size:13px">
-          📅 ${m} &nbsp;
+        <td colspan="11" style="color:#fff;font-weight:700;padding:8px 12px;font-size:13px">
+          📅 ${d} &nbsp;
           <span style="background:rgba(255,255,255,0.2);border-radius:12px;padding:2px 10px;font-size:12px">${tl(rows.length+' 单', rows.length+' contracts', rows.length+' កិច្ចសន្យា')}</span>
+          <span style="background:rgba(255,255,255,0.2);border-radius:12px;padding:2px 10px;font-size:12px;margin-left:6px">${tl('合计 $'+fmt(dayTotal)+'/期','Total $'+fmt(dayTotal)+'/period','សរុប $'+fmt(dayTotal)+'/ខែ')}</span>
+          ${dupIds.size ? `<span style="background:#ffcdd2;color:#c62828;border-radius:12px;padding:2px 10px;font-size:12px;margin-left:6px">⚠️ ${tl(dupIds.size+' 笔疑似重复', dupIds.size+' possible duplicates', dupIds.size+' សង្ស័យស្ទួន')}</span>` : ''}
+          <button type="button" onclick='event.stopPropagation();checkGroupMaterials(${JSON.stringify(groupId)}, ${idsJson}, this)'
+            style="margin-left:6px;background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:12px;padding:2px 10px;font-size:12px;cursor:pointer;font-family:inherit">🔍 ${tl('检查材料','Check Docs','ពិនិត្យឯកសារ')}</button>
           <span id="${groupId}_icon" style="float:right;font-size:16px">▼</span>
         </td>
       </tr>
@@ -8724,13 +8731,16 @@ window.renderAuditList = async function() {
         const audit = auditMap[s.id];
         const status = audit?.status || '待审核';
         const sty = statusStyle[status] || '';
-        return `<tr>
+        const isDup = dupIds.has(s.id);
+        return `<tr${isDup ? ' style="background:#fff5f5"' : ''}>
           <td class="fw700 text-blue">#${s.id}</td>
-          <td class="fw700">${esc(s.customer||'')}</td>
+          <td class="fw700">${esc(s.customer||'')}${isDup ? ` <span title="${tl('同一天有电话/姓名/身份证号相同的记录，请核对是否重复','Same phone/name/ID number appears elsewhere this day — check for duplicates','មានលេខទូរស័ព្ទ/ឈ្មោះ/អត្តសញ្ញាណប័ណ្ណដូចគ្នានៅថ្ងៃដដែល')}" style="color:#c62828">⚠️</span>` : ''}</td>
           <td>${esc(s.customerPhone||'')}</td>
+          <td style="font-size:12px">${esc(s.idNumber||'—')}</td>
           <td style="font-size:12px">${esc(s.modelName||'-')}</td>
           <td>${s.date||''}</td>
           <td>${tl(s.periods+'期', s.periods+' periods', s.periods+' ខែ')}</td>
+          <td id="matBadge_${s.id}" style="text-align:center;font-size:13px;color:#c0c8d0" title="${tl('点上面的检查材料按钮查看','Click Check Docs above to check','ចុចប៊ូតុងពិនិត្យឯកសារខាងលើ')}">❔</td>
           <td><span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;${sty}">${auditStatusLabel(status)}</span></td>
           <td>${renderAuditorBadge(s.id)}</td>
           <td><button onclick="openAuditDetail('${s.id}')" class="btn btn-primary btn-sm">${tl('审核','Review','ត្រួតពិនិត្យ')}</button></td>
@@ -8739,6 +8749,111 @@ window.renderAuditList = async function() {
       </tbody>`;
     }).join('')}
   </table></div>`;
+};
+
+// 同一天内，电话号/身份证号/客户姓名（去空格大小写）三选一相同就算疑似重复，返回涉及的合同id集合
+function computeAuditDupIds(rows) {
+  const normName = s => String(s||'').replace(/\s+/g,'').toUpperCase();
+  const normDigits = s => String(s||'').replace(/[^0-9]/g,'');
+  const dupIds = new Set();
+  const buildGroups = keyFn => {
+    const map = {};
+    rows.forEach(s => {
+      const k = keyFn(s);
+      if (!k) return;
+      (map[k] = map[k] || []).push(s);
+    });
+    Object.values(map).forEach(arr => { if (arr.length > 1) arr.forEach(s => dupIds.add(s.id)); });
+  };
+  buildGroups(s => normDigits(s.idNumber));
+  buildGroups(s => normDigits(s.customerPhone));
+  buildGroups(s => normName(s.customer));
+  return dupIds;
+}
+
+// 材料检查全部改成手动触发（点"🔍 检查材料"按钮才查），不再自动查，见 checkGroupMaterials() 和 loadAuditImages()
+window._auditMaterialsCache = window._auditMaterialsCache || {};
+
+async function checkAuditMaterials(contractId) {
+  if (window._auditMaterialsCache[contractId] !== undefined) return window._auditMaterialsCache[contractId];
+  const headers = { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } };
+  try {
+    const baseRes = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${STORAGE_BUCKET}/contracts/${contractId}`, headers);
+    const baseFiles = await baseRes.json();
+    if (Array.isArray(baseFiles) && baseFiles.length > 0) { window._auditMaterialsCache[contractId] = true; return true; }
+    const folders = ['身份证正面', '身份证背面', 'FB', '银行流水', '收款码', '其他'];
+    const results = await Promise.allSettled(
+      folders.map(f => fetch(`${SUPABASE_URL}/storage/v1/object/list/${STORAGE_BUCKET}/contracts/${contractId}/${f}`, headers).then(r => r.json()))
+    );
+    const has = results.some(r => r.status === 'fulfilled' && Array.isArray(r.value) && r.value.length > 0);
+    window._auditMaterialsCache[contractId] = has;
+    return has;
+  } catch(e) {
+    window._auditMaterialsCache[contractId] = false;
+    return false;
+  }
+}
+
+// 列表里"批量检查这天材料"按钮：点了才查，不再一展开就自动查
+window.checkGroupMaterials = function(groupId, contractIds, btnEl) {
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = tl('检查中...','Checking...','កំពុងពិនិត្យ...'); }
+  contractIds.forEach(cid => {
+    const badge = document.getElementById(`matBadge_${cid}`);
+    if (badge) badge.textContent = '⏳';
+    checkAuditMaterials(cid).then(has => {
+      if (!badge) return;
+      badge.textContent = has ? '📎' : '⚠️';
+      badge.title = has ? tl('已上传材料','Has documents','មានឯកសារ') : tl('未上传材料','No documents uploaded','មិនទាន់មានឯកសារ');
+      badge.style.color = has ? 'var(--green)' : 'var(--red)';
+    });
+  });
+  if (btnEl) { btnEl.textContent = '✓ ' + tl('已检查','Checked','បានពិនិត្យ'); }
+};
+
+// 详情弹窗里"检查材料"按钮：点了才去查6个文件夹，查完把图片区渲染出来
+window.loadAuditImages = async function(contractId) {
+  const area = document.getElementById(`auditImagesArea_${contractId}`);
+  if (!area) return;
+  area.innerHTML = `<div style="color:#90a4ae;font-size:13px">${tl('检查中...','Checking...','កំពុងពិនិត្យ...')}</div>`;
+
+  const headers = { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } };
+  let images = [];
+  try {
+    const baseFiles = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${STORAGE_BUCKET}/contracts/${contractId}`, headers).then(r => r.json());
+    if (Array.isArray(baseFiles)) {
+      images = baseFiles.map(f => ({
+        name: f.name,
+        url: `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/contracts/${contractId}/${f.name}`
+      }));
+    }
+    if (images.length === 0) {
+      const folders = ['身份证正面', '身份证背面', 'FB', '银行流水', '收款码', '其他'];
+      const folderResults = await Promise.allSettled(
+        folders.map(f => fetch(`${SUPABASE_URL}/storage/v1/object/list/${STORAGE_BUCKET}/contracts/${contractId}/${f}`, headers).then(r => r.json()))
+      );
+      folderResults.forEach((result, i) => {
+        const folder = folders[i];
+        if (result.status === 'fulfilled' && Array.isArray(result.value)) {
+          result.value.forEach(f => images.push({
+            name: `${folder}/${f.name}`,
+            url: `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/contracts/${contractId}/${folder}/${f.name}`,
+            cat: folder
+          }));
+        }
+      });
+    }
+  } catch(e) {}
+
+  area.innerHTML = images.length ? `
+    <div style="font-size:12px;color:#90a4ae;margin-bottom:8px">${tl(`共${images.length}张`,`${images.length} files`,`សរុប ${images.length}`)}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
+      ${images.map(img=>`
+      <div style="border-radius:10px;overflow:hidden;border:1px solid #e0e0e0;cursor:pointer" onclick="window.open('${img.url}','_blank')">
+        <img src="${img.url}" style="width:100%;height:100px;object-fit:cover;display:block" onerror="this.style.display='none';this.nextSibling.style.display='flex'">
+        <div style="display:none;height:100px;align-items:center;justify-content:center;background:#f5f5f5;font-size:11px;color:#90a4ae">📄 ${img.name.split('/').pop()}</div>
+        <div style="padding:4px 6px;font-size:10px;color:#78909c;background:#fafafa">${auditFolderLabel(img.cat||'')} ${img.name.split('/').pop()}</div>
+      </div>`).join('')}
+    </div>` : `<div style="color:#90a4ae;font-size:13px;padding:10px">${tl('暂无上传图片','No documents uploaded','មិនទាន់មានឯកសារបញ្ចូល')}</div>`;
 };
 
 window.openAuditDetail = async function(contractId) {
@@ -8751,45 +8866,14 @@ window.openAuditDetail = async function(contractId) {
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(contractId));
   if (!s) { content.innerHTML = `<div style="color:red">${tl('合同不存在','Contract not found','រកមិនឃើញកិច្ចសន្យានេះទេ')}</div>`; return; }
 
-  // 🚀 审核记录 + 根目录图片列表：并行请求，不要一个等一个（这是之前加载慢的主因）
+  // 现在还没人上传合同照片，不再自动去查6个文件夹（这是之前打开慢的主因）。
+  // 材料区改成手动点"📷 检查材料"按钮才去查，见 loadAuditImages()；这里只拉审核记录，一趟请求，很快。
   const auditHeaders = { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } };
-  const [auditResult, baseImagesResult] = await Promise.allSettled([
-    fetch(`${SUPABASE_URL}/rest/v1/morodok_audits?contract_id=eq.${contractId}&select=*`, auditHeaders).then(r => r.json()),
-    fetch(`${SUPABASE_URL}/storage/v1/object/list/${STORAGE_BUCKET}/contracts/${contractId}`, auditHeaders).then(r => r.json())
-  ]);
-
   let audit = null;
-  if (auditResult.status === 'fulfilled' && Array.isArray(auditResult.value) && auditResult.value.length) {
-    audit = auditResult.value[0];
-  }
-
-  let images = [];
-  if (baseImagesResult.status === 'fulfilled' && Array.isArray(baseImagesResult.value)) {
-    images = baseImagesResult.value.map(f => ({
-      name: f.name,
-      url: `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/contracts/${contractId}/${f.name}`
-    }));
-  }
-
-  // 🚀 子文件夹图片：6个文件夹一起并行请求，而不是一个等一个（原来是for循环里await，最多要等6趟网络往返）
-  if (images.length === 0) {
-    const folders = ['身份证正面', '身份证背面', 'FB', '银行流水', '收款码', '其他'];
-    const folderResults = await Promise.allSettled(
-      folders.map(folder =>
-        fetch(`${SUPABASE_URL}/storage/v1/object/list/${STORAGE_BUCKET}/contracts/${contractId}/${folder}`, auditHeaders).then(r => r.json())
-      )
-    );
-    folderResults.forEach((result, i) => {
-      const folder = folders[i];
-      if (result.status === 'fulfilled' && Array.isArray(result.value)) {
-        result.value.forEach(f => images.push({
-          name: `${folder}/${f.name}`,
-          url: `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/contracts/${contractId}/${folder}/${f.name}`,
-          cat: folder
-        }));
-      }
-    });
-  }
+  try {
+    const auditRows = await fetch(`${SUPABASE_URL}/rest/v1/morodok_audits?contract_id=eq.${contractId}&select=*`, auditHeaders).then(r => r.json());
+    if (Array.isArray(auditRows) && auditRows.length) audit = auditRows[0];
+  } catch(e) {}
 
   const curStatus = audit?.status || '待审核';
   const curNotes = audit?.notes || '';
@@ -8872,18 +8956,12 @@ window.openAuditDetail = async function(contractId) {
       </table></div>
     </div>
 
-    <!-- 图片区 -->
+    <!-- 图片区：不再自动查，点按钮才去查（现在还没人上传照片，自动查只会白等） -->
     <div style="margin-bottom:20px">
-      <div style="font-weight:700;color:#0d2137;margin-bottom:8px;font-size:13px">📎 ${tl(`客户材料（共${images.length}张）`,`Customer Documents (${images.length})`,`ឯកសារអតិថិជន (សរុប ${images.length})`)}</div>
-      ${images.length ? `
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
-        ${images.map(img=>`
-        <div style="border-radius:10px;overflow:hidden;border:1px solid #e0e0e0;cursor:pointer" onclick="window.open('${img.url}','_blank')">
-          <img src="${img.url}" style="width:100%;height:100px;object-fit:cover;display:block" onerror="this.style.display='none';this.nextSibling.style.display='flex'">
-          <div style="display:none;height:100px;align-items:center;justify-content:center;background:#f5f5f5;font-size:11px;color:#90a4ae">📄 ${img.name.split('/').pop()}</div>
-          <div style="padding:4px 6px;font-size:10px;color:#78909c;background:#fafafa">${auditFolderLabel(img.cat||'')} ${img.name.split('/').pop()}</div>
-        </div>`).join('')}
-      </div>` : `<div style="color:#90a4ae;font-size:13px;padding:10px">${tl('暂无上传图片','No documents uploaded','មិនទាន់មានឯកសារបញ្ចូល')}</div>`}
+      <div style="font-weight:700;color:#0d2137;margin-bottom:8px;font-size:13px">📎 ${tl('客户材料','Customer Documents','ឯកសារអតិថិជន')}</div>
+      <div id="auditImagesArea_${contractId}">
+        <button type="button" onclick="loadAuditImages('${contractId}')" class="btn btn-outline btn-sm" style="font-size:12px">📷 ${tl('检查材料','Check Documents','ពិនិត្យឯកសារ')}</button>
+      </div>
     </div>
 
     <!-- 审核操作 -->
