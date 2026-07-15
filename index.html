@@ -1212,6 +1212,15 @@ function markDirty() {
   _syncTimer = setTimeout(() => { if (_dirty) saveDB(); }, 800);
 }
 
+// 🔒 如果有还没存到服务器的本地改动（_dirty=true），先把它存完，
+// 再做任何"重新从服务器拉数据覆盖本地"的操作，避免刚登记的收款/改动被冲掉
+async function flushPendingSave() {
+  if (_dirty) {
+    clearTimeout(_syncTimer);
+    await saveDB();
+  }
+}
+
 function setSyncStatus(state) {
   const el = document.getElementById('syncStatus');
   const dot = el?.querySelector('.sync-dot');
@@ -1374,6 +1383,7 @@ window.manualRefresh = async function() {
   const btn = document.getElementById('refreshBtn');
   if (btn) btn.style.opacity = '0.5';
   setSyncStatus('syncing');
+  await flushPendingSave(); // 🔒 先把还没存上的本地改动存完，再去拉服务器最新数据，避免冲掉刚做的操作
   const ok = await loadDB();
   if (ok) {
     _lastSyncTime = Date.now();
@@ -3905,8 +3915,9 @@ window.submitPayment = async function() {
 
   if (!contractId) { showMsg('payMsg', t('msgFillContract'), 'red'); return; }
 
-  // 🔒 提交前先向服务器重新核实最新数据，不信任本地可能过期的缓存
+  // 🔒 提交前先把本地还没存上的改动存完，再向服务器重新核实最新数据，不信任本地可能过期的缓存
   showMsg('payMsg', tl('正在核对最新数据...','Checking latest data...','កំពុង​ត្រួតពិនិត្យ'), 'blue');
+  await flushPendingSave(); // 避免刚做的其他操作（比如上一笔收款登记）还没存上就被这里的最新数据覆盖掉
   let freshData;
   try {
     const freshRes = await fetch('/api/data', {cache:'no-store'});
