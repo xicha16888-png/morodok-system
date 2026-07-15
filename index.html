@@ -978,11 +978,11 @@ function buildSidebar() {
   if (role === 'auditor') {
     sidebar.innerHTML = `
       <div class="sb-logo">
-        <div class="sb-logo-sub">内审系统</div>
+        <div class="sb-logo-sub">${tl('内审系统','Audit System','ប្រព័ន្ធសវនកម្ម')}</div>
         <div class="sb-logo-name">MORODOK</div>
       </div>
       <div style="padding:4px 0">
-        <div class="nav-item" data-page="audit"><span class="nav-icon">📋</span>合同审核</div>
+        <div class="nav-item" data-page="audit"><span class="nav-icon">📋</span>${tl('合同审核','Contract Audit','ត្រួតពិនិត្យកិច្ចសន្យា')}</div>
       </div>
       <div style="height:16px"></div>`;
     sidebar.querySelectorAll('.nav-item[data-page]').forEach(el => {
@@ -1710,7 +1710,10 @@ window.doLogout = function() {
 function showUserHeader(user) {
   const chip = document.getElementById('userChip');
   const btn = document.getElementById('logoutBtn');
-  if(chip) { chip.textContent = `${user.display_name||user.username} · ${ROLE_LABEL[user.role]||user.role}`; chip.style.display='inline-flex'; }
+  if(chip) {
+    const roleLabel = user.role === 'auditor' ? tl('内审员','Auditor','សវនករ') : (ROLE_LABEL[user.role]||user.role);
+    chip.textContent = `${user.display_name||user.username} · ${roleLabel}`; chip.style.display='inline-flex';
+  }
   if(btn) btn.style.display='inline-block';
 }
 
@@ -1720,6 +1723,8 @@ async function startApp() {
   if (!u) return;
   // 内审员直接进审核页，不需要DB
   if (u.role === 'auditor') {
+    // 内审员都是柬埔寨人，界面固定用高棉语，不用他们自己去找语言切换按钮
+    if (_lang !== 'km') { _lang = 'km'; localStorage.setItem('pms_lang', 'km'); }
     hideLoading();
     buildSidebar();
     buildMobileNav('audit');
@@ -8586,25 +8591,25 @@ function renderAudit() {
   const monthOpts = months.map(m => `<option value="${m}">${m}</option>`).join('');
   return `
   <div class="page-header">
-    <div class="page-title">📋 合同审核</div>
-    <div class="page-sub">${tl('查看合同详情 · 审核材料图片 · 标记审核状态（仅'+AUDIT_START_MONTH+'起的合同）','View contract details · Review documents · Mark review status (from '+AUDIT_START_MONTH+' onward)','មើលព័ត៌មានលម្អិត · ត្រួតពិនិត្យរូបភាព · សម្គាល់ស្ថានភាព')}</div>
+    <div class="page-title">📋 ${tl('合同审核','Contract Audit','ត្រួតពិនិត្យកិច្ចសន្យា')}</div>
+    <div class="page-sub">${tl('查看合同详情 · 审核材料图片 · 标记审核状态（仅'+AUDIT_START_MONTH+'起的合同）','View contract details · Review documents · Mark review status (from '+AUDIT_START_MONTH+' onward)','មើលព័ត៌មានលម្អិត · ត្រួតពិនិត្យរូបភាព · សម្គាល់ស្ថានភាព (ចាប់ពី '+AUDIT_START_MONTH+' តទៅ)')}</div>
   </div>
   <div class="card">
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
-      <input id="auditSearch" type="text" placeholder="搜索客户姓名 / 合同号" oninput="renderAuditList()"
+      <input id="auditSearch" type="text" placeholder="${tl('搜索客户姓名 / 合同号','Search customer name / contract no.','ស្វែងរកឈ្មោះអតិថិជន / លេខកិច្ចសន្យា')}" oninput="renderAuditList()"
         style="flex:1;min-width:180px;padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit">
       <select id="auditMonthFilter" onchange="renderAuditList()"
         style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit">
-        <option value="">${tl('全部月份('+AUDIT_START_MONTH+'起)','All Months (from '+AUDIT_START_MONTH+')','')}</option>
+        <option value="">${tl('全部月份('+AUDIT_START_MONTH+'起)','All Months (from '+AUDIT_START_MONTH+')','គ្រប់ខែ (ចាប់ពី '+AUDIT_START_MONTH+')')}</option>
         ${monthOpts}
       </select>
       <select id="auditStatus" onchange="renderAuditList()"
         style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit">
-        <option value="">全部状态</option>
-        <option value="待审核">⏳ 待审核</option>
-        <option value="已通过">✅ 已通过</option>
-        <option value="有问题">⚠️ 有问题</option>
-        <option value="待补充">📌 待补充</option>
+        <option value="">${tl('全部状态','All Status','គ្រប់ស្ថានភាព')}</option>
+        <option value="待审核">⏳ ${auditStatusLabel('待审核')}</option>
+        <option value="已通过">✅ ${auditStatusLabel('已通过')}</option>
+        <option value="有问题">⚠️ ${auditStatusLabel('有问题')}</option>
+        <option value="待补充">📌 ${auditStatusLabel('待补充')}</option>
       </select>
     </div>
     <div id="auditListWrap"></div>
@@ -8619,10 +8624,32 @@ function renderAudit() {
   </div>`;
 }
 
+// 审核状态 / 图片分类的三语标签，供本页多处复用
+function auditStatusLabel(status) {
+  const map = {
+    '待审核': tl('待审核','Pending Review','រង់ចាំត្រួតពិនិត្យ'),
+    '已通过': tl('已通过','Approved','អនុម័តហើយ'),
+    '有问题': tl('有问题','Issue Found','មានបញ្ហា'),
+    '待补充': tl('待补充','Needs More Info','ត្រូវបំពេញបន្ថែម')
+  };
+  return map[status] || status;
+}
+function auditFolderLabel(folder) {
+  const map = {
+    '身份证正面': tl('身份证正面','ID Front','អត្តសញ្ញាណប័ណ្ណ (មុខ)'),
+    '身份证背面': tl('身份证背面','ID Back','អត្តសញ្ញាណប័ណ្ណ (ក្រោយ)'),
+    'FB': 'FB',
+    '银行流水': tl('银行流水','Bank Statement','របាយការណ៍ធនាគារ'),
+    '收款码': tl('收款码','Payment QR','QR ទទួលប្រាក់'),
+    '其他': tl('其他','Other','ផ្សេងៗ')
+  };
+  return map[folder] || folder;
+}
+
 window.renderAuditList = async function() {
   const wrap = document.getElementById('auditListWrap');
   if (!wrap) return;
-  wrap.innerHTML = '<div style="text-align:center;padding:20px;color:#90a4ae">加载中...</div>';
+  wrap.innerHTML = `<div style="text-align:center;padding:20px;color:#90a4ae">${tl('加载中...','Loading...','កំពុងផ្ទុក...')}</div>`;
 
   const q = (document.getElementById('auditSearch')?.value||'').toLowerCase();
   const st = document.getElementById('auditStatus')?.value||'';
@@ -8656,7 +8683,7 @@ window.renderAuditList = async function() {
   });
 
   if (!filtered.length) {
-    wrap.innerHTML = '<div style="text-align:center;padding:30px;color:#90a4ae">暂无合同</div>';
+    wrap.innerHTML = `<div style="text-align:center;padding:30px;color:#90a4ae">${tl('暂无合同','No contracts','មិនមានកិច្ចសន្យា')}</div>`;
     return;
   }
 
@@ -8679,8 +8706,8 @@ window.renderAuditList = async function() {
 
   wrap.innerHTML = `<div class="table-wrap"><table>
     <tr>
-      <th>合同号</th><th>客户</th><th>电话</th><th>型号</th>
-      <th>签约日期</th><th>期数</th><th>审核状态</th><th>审核人</th><th>操作</th>
+      <th>${tl('合同号','Contract No.','លេខកិច្ចសន្យា')}</th><th>${tl('客户','Customer','អតិថិជន')}</th><th>${tl('电话','Phone','ទូរស័ព្ទ')}</th><th>${tl('型号','Model','ម៉ូដែល')}</th>
+      <th>${tl('签约日期','Sign Date','ថ្ងៃចុះកិច្ចសន្យា')}</th><th>${tl('期数','Periods','ចំនួនខែ')}</th><th>${tl('审核状态','Review Status','ស្ថានភាពត្រួតពិនិត្យ')}</th><th>${tl('审核人','Reviewer','អ្នកត្រួតពិនិត្យ')}</th><th>${tl('操作','Action','សកម្មភាព')}</th>
     </tr>
     ${groupOrder.map(m => {
       const rows = groups[m];
@@ -8688,7 +8715,7 @@ window.renderAuditList = async function() {
       return `<tr style="background:var(--navy);cursor:pointer" onclick="toggleDateGroup('${groupId}')">
         <td colspan="9" style="color:#fff;font-weight:700;padding:8px 12px;font-size:13px">
           📅 ${m} &nbsp;
-          <span style="background:rgba(255,255,255,0.2);border-radius:12px;padding:2px 10px;font-size:12px">${rows.length} 单</span>
+          <span style="background:rgba(255,255,255,0.2);border-radius:12px;padding:2px 10px;font-size:12px">${tl(rows.length+' 单', rows.length+' contracts', rows.length+' កិច្ចសន្យា')}</span>
           <span id="${groupId}_icon" style="float:right;font-size:16px">▼</span>
         </td>
       </tr>
@@ -8703,10 +8730,10 @@ window.renderAuditList = async function() {
           <td>${esc(s.customerPhone||'')}</td>
           <td style="font-size:12px">${esc(s.modelName||'-')}</td>
           <td>${s.date||''}</td>
-          <td>${s.periods||'-'}期</td>
-          <td><span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;${sty}">${status}</span></td>
+          <td>${tl(s.periods+'期', s.periods+' periods', s.periods+' ខែ')}</td>
+          <td><span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;${sty}">${auditStatusLabel(status)}</span></td>
           <td>${renderAuditorBadge(s.id)}</td>
-          <td><button onclick="openAuditDetail('${s.id}')" class="btn btn-primary btn-sm">审核</button></td>
+          <td><button onclick="openAuditDetail('${s.id}')" class="btn btn-primary btn-sm">${tl('审核','Review','ត្រួតពិនិត្យ')}</button></td>
         </tr>`;
       }).join('')}
       </tbody>`;
@@ -8719,10 +8746,10 @@ window.openAuditDetail = async function(contractId) {
   const content = document.getElementById('auditDetailContent');
   if (!modal || !content) return;
   modal.style.display = 'block';
-  content.innerHTML = '<div style="text-align:center;padding:30px;color:#90a4ae">加载合同数据...</div>';
+  content.innerHTML = `<div style="text-align:center;padding:30px;color:#90a4ae">${tl('加载合同数据...','Loading contract data...','កំពុងផ្ទុកទិន្នន័យកិច្ចសន្យា...')}</div>`;
 
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(contractId));
-  if (!s) { content.innerHTML = '<div style="color:red">合同不存在</div>'; return; }
+  if (!s) { content.innerHTML = `<div style="color:red">${tl('合同不存在','Contract not found','រកមិនឃើញកិច្ចសន្យានេះទេ')}</div>`; return; }
 
   // 获取审核记录
   let audit = null;
@@ -8774,32 +8801,72 @@ window.openAuditDetail = async function(contractId) {
   const statusStyle = {'待审核':'#e65100','已通过':'#2e7d32','有问题':'#c62828','待补充':'#1565c0'};
 
   content.innerHTML = `
-    <h3 style="margin:0 0 8px;color:#0d2137">合同审核 — #${s.id}</h3>
+    <h3 style="margin:0 0 8px;color:#0d2137">${tl('合同审核','Contract Audit','ត្រួតពិនិត្យកិច្ចសន្យា')} — #${s.id}</h3>
     ${audit?.auditor_name ? `
     <div style="display:inline-flex;align-items:center;gap:6px;background:#e3f2fd;color:#1565c0;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:16px">
-      🕵️ 当前审核人：${esc(audit.auditor_name)}${audit.updated_at ? `（${new Date(audit.updated_at).toLocaleString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})} 更新）` : ''}
+      🕵️ ${tl('当前审核人：','Current Reviewer: ','អ្នកត្រួតពិនិត្យបច្ចុប្បន្ន៖ ')}${esc(audit.auditor_name)}${audit.updated_at ? `（${new Date(audit.updated_at).toLocaleString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})} ${tl('更新','updated','បានធ្វើបច្ចុប្បន្នភាព')}）` : ''}
     </div>` : `
     <div style="display:inline-flex;align-items:center;gap:6px;background:#f5f5f5;color:#90a4ae;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:16px">
-      🕵️ 尚未有人审核过这份合同
+      🕵️ ${tl('尚未有人审核过这份合同','Not reviewed yet','មិនទាន់មានអ្នកត្រួតពិនិត្យកិច្ចសន្យានេះទេ')}
     </div>`}
     <!-- 基本信息 -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px">
-      ${[['客户姓名',s.customer],['手机号',s.customerPhone||'—'],['型号',s.modelName||'—'],
-         ['签约日期',s.date],['期数',`${s.periods}期`],['合同金额',`$${fmt(s.installmentAmount||0)}/期`],
-         ['店铺',s.storeName||'—'],['业务员',s.salesperson||'—']].map(([k,v])=>`
-        <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
-          <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${k}</div>
-          <div style="font-weight:600;font-size:13px;color:#263238">${v||'—'}</div>
-        </div>`).join('')}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-weight:700;color:#0d2137;font-size:13px">${tl('基本信息','Basic Info','ព័ត៌មានមូលដ្ឋាន')}</div>
+      <div id="auditEditBtns_${contractId}">
+        <button type="button" onclick="startAuditBasicEdit('${contractId}')" class="btn btn-outline btn-sm" style="font-size:11px">✏️ ${tl('编辑基础信息','Edit Basic Info','កែប្រែព័ត៌មានមូលដ្ឋាន')}</button>
+      </div>
     </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px">
+      <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
+        <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('客户姓名','Customer Name','ឈ្មោះអតិថិជន')}</div>
+        <input id="auditEdit_customer_${contractId}" value="${esc(s.customer||'')}" readonly
+          style="width:100%;box-sizing:border-box;border:none;background:transparent;font-weight:600;font-size:13px;color:#263238;padding:0;font-family:inherit">
+      </div>
+      <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
+        <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('手机号','Phone','លេខទូរស័ព្ទ')}</div>
+        <input id="auditEdit_customerPhone_${contractId}" value="${esc(s.customerPhone||'')}" readonly
+          style="width:100%;box-sizing:border-box;border:none;background:transparent;font-weight:600;font-size:13px;color:#263238;padding:0;font-family:inherit">
+      </div>
+      <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
+        <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('型号','Model','ម៉ូដែល')}</div>
+        <input id="auditEdit_modelName_${contractId}" value="${esc(s.modelName||'')}" readonly
+          style="width:100%;box-sizing:border-box;border:none;background:transparent;font-weight:600;font-size:13px;color:#263238;padding:0;font-family:inherit">
+      </div>
+      <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
+        <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('签约日期','Sign Date','ថ្ងៃចុះកិច្ចសន្យា')}</div>
+        <div style="font-weight:600;font-size:13px;color:#263238">${s.date||'—'}</div>
+      </div>
+      <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
+        <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('期数','Periods','ចំនួនខែ')}</div>
+        <div style="font-weight:600;font-size:13px;color:#263238">${tl(`${s.periods}期`,`${s.periods} periods`,`${s.periods} ខែ`)}</div>
+      </div>
+      <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
+        <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('合同金额','Installment Amount','ចំនួនទឹកប្រាក់បង់រំលោះ')}</div>
+        <div style="font-weight:600;font-size:13px;color:#263238">${tl(`$${fmt(s.installmentAmount||0)}/期`,`$${fmt(s.installmentAmount||0)}/period`,`$${fmt(s.installmentAmount||0)}/ខែ`)}</div>
+      </div>
+      <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
+        <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('店铺','Store','ហាង')}</div>
+        <div style="font-weight:600;font-size:13px;color:#263238">${s.storeName||'—'}</div>
+      </div>
+      <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
+        <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('业务员','Salesperson','ភ្នាក់ងារ​លក់')}</div>
+        <div style="font-weight:600;font-size:13px;color:#263238">${s.salesperson||'—'}</div>
+      </div>
+      <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px;grid-column:1/-1">
+        <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('备注','Note','កំណត់ចំណាំ')}</div>
+        <input id="auditEdit_note_${contractId}" value="${esc(s.note||'')}" readonly
+          style="width:100%;box-sizing:border-box;border:none;background:transparent;font-weight:600;font-size:13px;color:#263238;padding:0;font-family:inherit">
+      </div>
+    </div>
+    <div style="font-size:11px;color:#90a4ae;margin:-14px 0 20px 2px">${tl('💡 只能修改客户姓名/手机号/型号/备注；金额和还款计划请找业务员/主管处理。每次修改都会自动记录在"操作日志"里。','💡 Only customer name / phone / model / note can be edited here. Contact sales/manager for amount or schedule changes. Every edit is automatically logged in Activity Log.','💡 អាចកែបានតែ ឈ្មោះអតិថិជន/ទូរស័ព្ទ/ម៉ូដែល/កំណត់ចំណាំ។ ចំនួនទឹកប្រាក់និងកាលវិភាគសូមទាក់ទងភ្នាក់ងារលក់/អ្នកគ្រប់គ្រង។ រាល់ការកែប្រែនឹងកត់ត្រាទុកស្វ័យប្រវត្តិ។')}</div>
 
     <!-- 还款计划 -->
     <div style="margin-bottom:20px">
-      <div style="font-weight:700;color:#0d2137;margin-bottom:8px;font-size:13px">📅 还款计划</div>
+      <div style="font-weight:700;color:#0d2137;margin-bottom:8px;font-size:13px">📅 ${tl('还款计划','Repayment Schedule','កាលវិភាគទូទាត់ប្រាក់')}</div>
       <div class="table-wrap" style="max-height:200px;overflow-y:auto"><table>
         <tr><th>${tl('期次','Period','ខែ')}</th><th>${tl('到期日','Due Date','ថ្ងៃ​ផុត')}</th><th>${tl('本金','Principal','ដើម')}</th><th>${tl('利息','Interest','ការ​ប្រាក់')}</th><th>${tl('状态','Status','ស្ថានភាព')}</th></tr>
         ${(s.schedule||[]).map(p=>`<tr>
-          <td>${p.period}期</td>
+          <td>${tl(p.period+'期','Period '+p.period,'ខែទី'+p.period)}</td>
           <td>${p.dueDate||'—'}</td>
           <td>$${fmt(+p.principalDue||0)}</td>
           <td>$${fmt(+p.interestDue||0)}</td>
@@ -8810,21 +8877,21 @@ window.openAuditDetail = async function(contractId) {
 
     <!-- 图片区 -->
     <div style="margin-bottom:20px">
-      <div style="font-weight:700;color:#0d2137;margin-bottom:8px;font-size:13px">📎 客户材料（共${images.length}张）</div>
+      <div style="font-weight:700;color:#0d2137;margin-bottom:8px;font-size:13px">📎 ${tl(`客户材料（共${images.length}张）`,`Customer Documents (${images.length})`,`ឯកសារអតិថិជន (សរុប ${images.length})`)}</div>
       ${images.length ? `
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
         ${images.map(img=>`
         <div style="border-radius:10px;overflow:hidden;border:1px solid #e0e0e0;cursor:pointer" onclick="window.open('${img.url}','_blank')">
           <img src="${img.url}" style="width:100%;height:100px;object-fit:cover;display:block" onerror="this.style.display='none';this.nextSibling.style.display='flex'">
           <div style="display:none;height:100px;align-items:center;justify-content:center;background:#f5f5f5;font-size:11px;color:#90a4ae">📄 ${img.name.split('/').pop()}</div>
-          <div style="padding:4px 6px;font-size:10px;color:#78909c;background:#fafafa">${img.cat||''} ${img.name.split('/').pop()}</div>
+          <div style="padding:4px 6px;font-size:10px;color:#78909c;background:#fafafa">${auditFolderLabel(img.cat||'')} ${img.name.split('/').pop()}</div>
         </div>`).join('')}
-      </div>` : '<div style="color:#90a4ae;font-size:13px;padding:10px">暂无上传图片</div>'}
+      </div>` : `<div style="color:#90a4ae;font-size:13px;padding:10px">${tl('暂无上传图片','No documents uploaded','មិនទាន់មានឯកសារបញ្ចូល')}</div>`}
     </div>
 
     <!-- 审核操作 -->
     <div style="background:#f8f9fa;border-radius:12px;padding:16px">
-      <div style="font-weight:700;color:#0d2137;margin-bottom:12px;font-size:13px">✍️ 审核操作</div>
+      <div style="font-weight:700;color:#0d2137;margin-bottom:12px;font-size:13px">✍️ ${tl('审核操作','Review Actions','សកម្មភាពត្រួតពិនិត្យ')}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         ${['已通过','有问题','待补充','待审核'].map(st=>`
         <button onclick="setAuditStatus('${contractId}','${st}',this)"
@@ -8833,15 +8900,15 @@ window.openAuditDetail = async function(contractId) {
                  color:${curStatus===st?'#fff':statusStyle[st]||'#333'};
                  font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s"
           data-st="${st}">
-          ${{ '已通过':'✅ 已通过','有问题':'⚠️ 有问题','待补充':'📌 待补充','待审核':'⏳ 待审核' }[st]}
+          ${{ '已通过':'✅ ','有问题':'⚠️ ','待补充':'📌 ','待审核':'⏳ ' }[st]}${auditStatusLabel(st)}
         </button>`).join('')}
       </div>
-      <textarea id="auditNotes_${contractId}" placeholder="审核备注（问题说明、补充要求等）"
+      <textarea id="auditNotes_${contractId}" placeholder="${tl('审核备注（问题说明、补充要求等）','Review notes (issue details, requirements, etc.)','កំណត់ចំណាំត្រួតពិនិត្យ (ព័ត៌មានលម្អិតអំពីបញ្ហា/តម្រូវការបន្ថែម)')}"
         style="width:100%;box-sizing:border-box;height:80px;padding:10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical">${curNotes}</textarea>
       <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
         <button onclick="saveAudit('${contractId}')"
           style="padding:10px 24px;background:#1565c0;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">
-          💾 保存审核
+          💾 ${tl('保存审核','Save Review','រក្សាទុកលទ្ធផលត្រួតពិនិត្យ')}
         </button>
         <span id="auditSaveMsg_${contractId}" style="font-size:12px;color:var(--green)"></span>
       </div>
@@ -8849,6 +8916,79 @@ window.openAuditDetail = async function(contractId) {
   // 更新当前状态到全局
   window._currentAuditStatus = window._currentAuditStatus || {};
   window._currentAuditStatus[contractId] = curStatus;
+};
+
+// ══════════════════════════════════════════════════════
+// 内审员编辑基础信息：只能改客户姓名/手机号/型号/备注，金额和排期不可动
+// 每次修改都记一条操作日志（谁、什么时候、改之前是什么、改之后是什么），供老板事后核查
+// ══════════════════════════════════════════════════════
+window.startAuditBasicEdit = function(contractId) {
+  ['customer','customerPhone','modelName','note'].forEach(f => {
+    const el = document.getElementById(`auditEdit_${f}_${contractId}`);
+    if (el) {
+      el.readOnly = false;
+      el.style.background = '#fff';
+      el.style.border = '1.5px solid #1565c0';
+      el.style.borderRadius = '5px';
+      el.style.padding = '4px 6px';
+    }
+  });
+  const btnWrap = document.getElementById(`auditEditBtns_${contractId}`);
+  if (btnWrap) btnWrap.innerHTML = `
+    <button type="button" onclick="saveAuditBasicEdit('${contractId}')" class="btn btn-primary btn-sm" style="font-size:11px;margin-right:6px">💾 ${tl('保存修改','Save Changes','រក្សាទុកការកែប្រែ')}</button>
+    <button type="button" onclick="cancelAuditBasicEdit('${contractId}')" class="btn btn-outline btn-sm" style="font-size:11px">✖ ${tl('取消','Cancel','បោះបង់')}</button>`;
+};
+
+window.cancelAuditBasicEdit = function(contractId) {
+  openAuditDetail(contractId); // 放弃未保存的改动，重新渲染回只读状态
+};
+
+window.saveAuditBasicEdit = async function(contractId) {
+  const sales = DB_get('sales') || [];
+  const idx = sales.findIndex(x => String(x.id) === String(contractId));
+  if (idx === -1) { alert(tl('合同不存在','Contract not found','រកមិនឃើញកិច្ចសន្យា')); return; }
+  const s = sales[idx];
+
+  const newVals = {
+    customer:      document.getElementById(`auditEdit_customer_${contractId}`)?.value?.trim() || '',
+    customerPhone: document.getElementById(`auditEdit_customerPhone_${contractId}`)?.value?.trim() || '',
+    modelName:     document.getElementById(`auditEdit_modelName_${contractId}`)?.value?.trim() || '',
+    note:          document.getElementById(`auditEdit_note_${contractId}`)?.value?.trim() || ''
+  };
+  if (!newVals.customer) {
+    alert(tl('客户姓名不能为空','Customer name cannot be empty','ឈ្មោះអតិថិជនមិនអាចទទេបានទេ'));
+    return;
+  }
+
+  const fieldLabel = {
+    customer: tl('客户姓名','Customer Name','ឈ្មោះអតិថិជន'),
+    customerPhone: tl('手机号','Phone','លេខទូរស័ព្ទ'),
+    modelName: tl('型号','Model','ម៉ូដែល'),
+    note: tl('备注','Note','កំណត់ចំណាំ')
+  };
+  const changed = [];
+  Object.keys(newVals).forEach(k => {
+    const oldV = s[k] || '';
+    const newV = newVals[k];
+    if (String(oldV) !== String(newV)) changed.push(`${fieldLabel[k]}: "${oldV||'—'}" → "${newV||'—'}"`);
+  });
+
+  if (!changed.length) { openAuditDetail(contractId); return; }
+
+  if (!confirm(tl('确认保存以下修改？\n\n','Confirm the following changes?\n\n','សូមបញ្ជាក់ការកែប្រែខាងក្រោម？\n\n') + changed.join('\n'))) return;
+
+  sales[idx] = { ...s, ...newVals };
+  DB_set('sales', sales);
+
+  logActivity(
+    tl('内审修改基础信息','Auditor Edited Basic Info','សវនករបានកែប្រែព័ត៌មានមូលដ្ឋាន'),
+    `#${s.id} ${s.customer}`,
+    changed.join('; ')
+  );
+
+  await flushPendingSave();
+  alert('✅ ' + tl('已保存','Saved','បានរក្សាទុក'));
+  openAuditDetail(contractId);
 };
 
 window.setAuditStatus = function(contractId, status, btn) {
@@ -8906,10 +9046,10 @@ window.saveAudit = async function(contractId) {
           'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
           body: JSON.stringify(payload) });
     }
-    if (msgEl) { msgEl.textContent = '✅ 保存成功'; setTimeout(()=>msgEl.textContent='', 3000); }
+    if (msgEl) { msgEl.textContent = '✅ '+tl('保存成功','Saved','បានរក្សាទុកជោគជ័យ'); setTimeout(()=>msgEl.textContent='', 3000); }
     renderAuditList();
   } catch(e) {
-    if (msgEl) { msgEl.textContent = '❌ 保存失败：'+e.message; msgEl.style.color='red'; }
+    if (msgEl) { msgEl.textContent = '❌ '+tl('保存失败：','Save failed: ','រក្សាទុកមិនជោគជ័យ៖ ')+e.message; msgEl.style.color='red'; }
   }
 };
 
