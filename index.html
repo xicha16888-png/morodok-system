@@ -8846,11 +8846,13 @@ window.openAuditDetail = async function(contractId) {
       </div>
       <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
         <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('店铺','Store','ហាង')}</div>
-        <div style="font-weight:600;font-size:13px;color:#263238">${s.storeName||'—'}</div>
+        <input id="auditEdit_storeName_${contractId}" value="${esc(s.storeName||'')}" readonly
+          style="width:100%;box-sizing:border-box;border:none;background:transparent;font-weight:600;font-size:13px;color:#263238;padding:0;font-family:inherit">
       </div>
       <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
         <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('业务员','Salesperson','ភ្នាក់ងារ​លក់')}</div>
-        <div style="font-weight:600;font-size:13px;color:#263238">${s.salesperson||'—'}</div>
+        <input id="auditEdit_salesperson_${contractId}" value="${esc(s.salesperson||'')}" readonly
+          style="width:100%;box-sizing:border-box;border:none;background:transparent;font-weight:600;font-size:13px;color:#263238;padding:0;font-family:inherit">
       </div>
       <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px;grid-column:1/-1">
         <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('备注','Note','កំណត់ចំណាំ')}</div>
@@ -8858,7 +8860,7 @@ window.openAuditDetail = async function(contractId) {
           style="width:100%;box-sizing:border-box;border:none;background:transparent;font-weight:600;font-size:13px;color:#263238;padding:0;font-family:inherit">
       </div>
     </div>
-    <div style="font-size:11px;color:#90a4ae;margin:-14px 0 20px 2px">${tl('💡 只能修改客户姓名/手机号/型号/备注；金额和还款计划请找业务员/主管处理。每次修改都会自动记录在"操作日志"里。','💡 Only customer name / phone / model / note can be edited here. Contact sales/manager for amount or schedule changes. Every edit is automatically logged in Activity Log.','💡 អាចកែបានតែ ឈ្មោះអតិថិជន/ទូរស័ព្ទ/ម៉ូដែល/កំណត់ចំណាំ។ ចំនួនទឹកប្រាក់និងកាលវិភាគសូមទាក់ទងភ្នាក់ងារលក់/អ្នកគ្រប់គ្រង។ រាល់ការកែប្រែនឹងកត់ត្រាទុកស្វ័យប្រវត្តិ។')}</div>
+    <div style="font-size:11px;color:#90a4ae;margin:-14px 0 20px 2px">${tl('💡 只能修改客户姓名/手机号/型号/店铺/业务员/备注；金额和还款计划请找业务员/主管处理。每次修改都会自动记录在"操作日志"里。','💡 Only customer name / phone / model / store / salesperson / note can be edited here. Contact sales/manager for amount or schedule changes. Every edit is automatically logged in Activity Log.','💡 អាចកែបានតែ ឈ្មោះអតិថិជន/ទូរស័ព្ទ/ម៉ូដែល/ហាង/ភ្នាក់ងារលក់/កំណត់ចំណាំ។ ចំនួនទឹកប្រាក់និងកាលវិភាគសូមទាក់ទងភ្នាក់ងារលក់/អ្នកគ្រប់គ្រង។ រាល់ការកែប្រែនឹងកត់ត្រាទុកស្វ័យប្រវត្តិ។')}</div>
 
     <!-- 还款计划 -->
     <div style="margin-bottom:20px">
@@ -8923,7 +8925,7 @@ window.openAuditDetail = async function(contractId) {
 // 每次修改都记一条操作日志（谁、什么时候、改之前是什么、改之后是什么），供老板事后核查
 // ══════════════════════════════════════════════════════
 window.startAuditBasicEdit = function(contractId) {
-  ['customer','customerPhone','modelName','note'].forEach(f => {
+  ['customer','customerPhone','modelName','storeName','salesperson','note'].forEach(f => {
     const el = document.getElementById(`auditEdit_${f}_${contractId}`);
     if (el) {
       el.readOnly = false;
@@ -8953,6 +8955,8 @@ window.saveAuditBasicEdit = async function(contractId) {
     customer:      document.getElementById(`auditEdit_customer_${contractId}`)?.value?.trim() || '',
     customerPhone: document.getElementById(`auditEdit_customerPhone_${contractId}`)?.value?.trim() || '',
     modelName:     document.getElementById(`auditEdit_modelName_${contractId}`)?.value?.trim() || '',
+    storeName:     document.getElementById(`auditEdit_storeName_${contractId}`)?.value?.trim() || '',
+    salesperson:   document.getElementById(`auditEdit_salesperson_${contractId}`)?.value?.trim() || '',
     note:          document.getElementById(`auditEdit_note_${contractId}`)?.value?.trim() || ''
   };
   if (!newVals.customer) {
@@ -8964,6 +8968,8 @@ window.saveAuditBasicEdit = async function(contractId) {
     customer: tl('客户姓名','Customer Name','ឈ្មោះអតិថិជន'),
     customerPhone: tl('手机号','Phone','លេខទូរស័ព្ទ'),
     modelName: tl('型号','Model','ម៉ូដែល'),
+    storeName: tl('店铺','Store','ហាង'),
+    salesperson: tl('业务员','Salesperson','ភ្នាក់ងារ​លក់'),
     note: tl('备注','Note','កំណត់ចំណាំ')
   };
   const changed = [];
