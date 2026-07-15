@@ -1292,6 +1292,7 @@ window.closeModal = () => document.getElementById('modalBg').classList.remove('o
 const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','expenses','store-stats','staff-stats','fund-stats'];
 const REPORT_PWD = 'morodok888';
 const DELETE_PWD = 'cao';
+const AUDITOR_DELETE_PWD = 'mei'; // 内审员SREYNET专用的删除密码，跟老板/主管的删除密码(DELETE_PWD)完全分开，互不影响
 const AUDIT_START_MONTH = '2026-07'; // 内审管理只统计这个月份起的合同
 const EDIT_PWD = 'edit888';
 let _reportUnlocked = false; // 会话内解锁状态
@@ -3141,14 +3142,27 @@ window.saveEditSale = function(id) {
   });
 };
 
+// 🔒 特批：除了老板/主管，SREYNET（内审员小美）这个账号单独获批可以删除合同（专门用来处理审核时发现的重复单）
+// 只针对这一个用户名，其他内审员账号不受影响；以后要收回权限，把她的用户名从这个数组里删掉就行
+const SPECIAL_DELETE_USERNAMES = ['sreynet'];
+function canDeleteSale() {
+  const u = getCurrentUser();
+  const role = u?.role || '';
+  if (role === 'boss' || role === 'manager' || role === 'salesManager') return true;
+  return SPECIAL_DELETE_USERNAMES.includes((u?.username || '').toLowerCase());
+}
+
 window.deleteSale = function(id) {
-  const _u3 = getCurrentUser(); const _role3 = _u3?.role || 'boss';
-  if (_role3 !== 'boss' && _role3 !== 'manager' && _role3 !== 'salesManager') {
+  if (!canDeleteSale()) {
     alert(tl('只有老板/主管才能删除合同','Only boss/manager can delete contracts','មានតែចៅហ្វាយ/អ្នកគ្រប់គ្រងទេ')); return;
   }
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
   if (!s) return;
-  confirmDelete(`${tl("删除合同","Delete contract","លុប​កិច្ចសន្យា")} #${s.id} — ${s.customer}？${tl("此操作不可撤销！","This cannot be undone!","សកម្ម​នេះ​មិន​អាច​ត្រឡប់​វិញ!")}`, async function() {
+  // 老板/主管走原来的删除密码；SREYNET（内审员小美）走她专属的删除密码，两套密码互不影响
+  const u0 = getCurrentUser(); const role0 = u0?.role || '';
+  const isAdmin = role0 === 'boss' || role0 === 'manager' || role0 === 'salesManager';
+  const confirmFn = isAdmin ? confirmDelete : confirmAuditorDelete;
+  confirmFn(`${tl("删除合同","Delete contract","លុប​កិច្ចសន្យា")} #${s.id} — ${s.customer}？${tl("此操作不可撤销！","This cannot be undone!","សកម្ម​នេះ​មិន​អាច​ត្រឡប់​វិញ!")}`, async function() {
     // 🔒 先调用后端专用删除接口，真正删除合同（整体重新保存数组不会真的删除）
     try {
       const res = await fetch(`/api/sale/${id}`, { method: 'DELETE' });
@@ -3165,7 +3179,13 @@ window.deleteSale = function(id) {
     DB_set('sales', (DB_get('sales')||[]).filter(x => String(x.id) !== String(id)));
     DB_set('earlyPayments', (DB_get('earlyPayments')||[]).filter(r => String(r.contractId) !== String(id)));
     logActivity('删除合同', `#${s.id} ${s.customer}`, `贷款金额$${s.installmentAmount||0}`);
-    nav('sale-list');
+    // 内审页面删的话，删完刷新审核列表；其它页面还是回销售查询页
+    if (document.getElementById('auditDetailModal')?.style.display === 'block') {
+      document.getElementById('auditDetailModal').style.display = 'none';
+      renderAuditList();
+    } else {
+      nav('sale-list');
+    }
   });
 };
 // ══════════════════════════════════════════════════════
@@ -3958,6 +3978,31 @@ window.confirmDelete = function(msg, onConfirm) {
   `);
   setTimeout(()=>document.getElementById('deletePwdInput')?.focus(), 100);
 };
+
+// 内审员（SREYNET）专用的删除确认框：单独一套密码(AUDITOR_DELETE_PWD)，跟老板/主管的删除密码完全分开
+window.confirmAuditorDelete = function(msg, onConfirm) {
+  window._pendingDeleteCallback = onConfirm;
+  showModal(`🔐 ${tl('确认删除','Confirm Delete','បញ្ជាក់ការលុប')}`, `
+    <p style="margin-bottom:12px;color:var(--red)">${msg}</p>
+    <div class="form-group">
+      <label>${tl('请输入删除密码','Enter delete password','សូមបញ្ចូលពាក្យសម្ងាត់លុប')}</label>
+      <input type="password" id="deletePwdInput" placeholder="${tl('密码','Password','ពាក្យសម្ងាត់')}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"
+        onkeydown="if(event.key==='Enter')document.getElementById('confirmDeleteBtn').click()">
+    </div>
+    <div id="deletePwdMsg" style="color:var(--red);font-size:12px;margin-top:6px"></div>
+    <div style="margin-top:14px;display:flex;gap:10px">
+      <button id="confirmDeleteBtn" class="btn btn-danger" onclick="
+        const v = document.getElementById('deletePwdInput').value;
+        if(v !== AUDITOR_DELETE_PWD){ document.getElementById('deletePwdMsg').textContent=tl('密码错误','Wrong password','ពាក្យសម្ងាត់មិនត្រូវ'); return; }
+        closeModal();
+        if(window._pendingDeleteCallback) { window._pendingDeleteCallback(); window._pendingDeleteCallback=null; }
+      ">${tl('确认删除','Confirm Delete','បញ្ជាក់ការលុប')}</button>
+      <button class="btn btn-outline" onclick="closeModal();window._pendingDeleteCallback=null;">${tl('取消','Cancel','បោះបង់')}</button>
+    </div>
+  `);
+  setTimeout(()=>document.getElementById('deletePwdInput')?.focus(), 100);
+};
+
 window.calcPayTotal = function() {
   const p = +(document.getElementById('pPrincipal')?.value||0);
   const i = +(document.getElementById('pInterest')?.value||0);
@@ -8947,7 +8992,13 @@ window.openAuditDetail = async function(contractId) {
         </button>
         <span id="auditSaveMsg_${contractId}" style="font-size:12px;color:var(--green)"></span>
       </div>
-    </div>`;
+    </div>
+    ${canDeleteSale() ? `
+    <div style="margin-top:16px;padding-top:16px;border-top:1px dashed #e0e0e0">
+      <button type="button" onclick="deleteSale('${contractId}')" class="btn btn-danger btn-sm" style="font-size:12px">
+        🗑️ ${tl('删除此合同（发现重复单时使用）','Delete this contract (use for duplicates)','លុបកិច្ចសន្យានេះ (ប្រើពេលរកឃើញស្ទួន)')}
+      </button>
+    </div>` : ''}`;
   // 更新当前状态到全局
   window._currentAuditStatus = window._currentAuditStatus || {};
   window._currentAuditStatus[contractId] = curStatus;
