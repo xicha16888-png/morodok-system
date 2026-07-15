@@ -8751,49 +8751,44 @@ window.openAuditDetail = async function(contractId) {
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(contractId));
   if (!s) { content.innerHTML = `<div style="color:red">${tl('合同不存在','Contract not found','រកមិនឃើញកិច្ចសន្យានេះទេ')}</div>`; return; }
 
-  // 获取审核记录
+  // 🚀 审核记录 + 根目录图片列表：并行请求，不要一个等一个（这是之前加载慢的主因）
+  const auditHeaders = { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } };
+  const [auditResult, baseImagesResult] = await Promise.allSettled([
+    fetch(`${SUPABASE_URL}/rest/v1/morodok_audits?contract_id=eq.${contractId}&select=*`, auditHeaders).then(r => r.json()),
+    fetch(`${SUPABASE_URL}/storage/v1/object/list/${STORAGE_BUCKET}/contracts/${contractId}`, auditHeaders).then(r => r.json())
+  ]);
+
   let audit = null;
-  try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/morodok_audits?contract_id=eq.${contractId}&select=*`,
-      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
-    const rows = await res.json();
-    if (Array.isArray(rows) && rows.length) audit = rows[0];
-  } catch(e) {}
+  if (auditResult.status === 'fulfilled' && Array.isArray(auditResult.value) && auditResult.value.length) {
+    audit = auditResult.value[0];
+  }
 
-  // 获取图片列表
   let images = [];
-  try {
-    const res = await fetch(
-      `${SUPABASE_URL}/storage/v1/object/list/${STORAGE_BUCKET}/contracts/${contractId}`,
-      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
-    const files = await res.json();
-    if (Array.isArray(files)) {
-      images = files.map(f => ({
-        name: f.name,
-        url: `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/contracts/${contractId}/${f.name}`
-      }));
-    }
-  } catch(e) {}
+  if (baseImagesResult.status === 'fulfilled' && Array.isArray(baseImagesResult.value)) {
+    images = baseImagesResult.value.map(f => ({
+      name: f.name,
+      url: `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/contracts/${contractId}/${f.name}`
+    }));
+  }
 
-  // 递归获取子文件夹图片
+  // 🚀 子文件夹图片：6个文件夹一起并行请求，而不是一个等一个（原来是for循环里await，最多要等6趟网络往返）
   if (images.length === 0) {
-    try {
-      const folders = ['身份证正面', '身份证背面', 'FB', '银行流水', '收款码', '其他'];
-      for (const folder of folders) {
-        const res = await fetch(
-          `${SUPABASE_URL}/storage/v1/object/list/${STORAGE_BUCKET}/contracts/${contractId}/${folder}`,
-          { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
-        const files = await res.json();
-        if (Array.isArray(files)) {
-          files.forEach(f => images.push({
-            name: `${folder}/${f.name}`,
-            url: `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/contracts/${contractId}/${folder}/${f.name}`,
-            cat: folder
-          }));
-        }
+    const folders = ['身份证正面', '身份证背面', 'FB', '银行流水', '收款码', '其他'];
+    const folderResults = await Promise.allSettled(
+      folders.map(folder =>
+        fetch(`${SUPABASE_URL}/storage/v1/object/list/${STORAGE_BUCKET}/contracts/${contractId}/${folder}`, auditHeaders).then(r => r.json())
+      )
+    );
+    folderResults.forEach((result, i) => {
+      const folder = folders[i];
+      if (result.status === 'fulfilled' && Array.isArray(result.value)) {
+        result.value.forEach(f => images.push({
+          name: `${folder}/${f.name}`,
+          url: `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/contracts/${contractId}/${folder}/${f.name}`,
+          cat: folder
+        }));
       }
-    } catch(e) {}
+    });
   }
 
   const curStatus = audit?.status || '待审核';
