@@ -9054,12 +9054,13 @@ window.openAuditDetail = async function(contractId) {
     <div style="margin-bottom:20px">
       <div style="font-weight:700;color:#0d2137;margin-bottom:8px;font-size:13px">📅 ${tl('还款计划','Repayment Schedule','កាលវិភាគទូទាត់ប្រាក់')}</div>
       <div class="table-wrap" style="max-height:200px;overflow-y:auto"><table>
-        <tr><th>${tl('期次','Period','ខែ')}</th><th>${tl('到期日','Due Date','ថ្ងៃ​ផុត')}</th><th>${tl('本金','Principal','ដើម')}</th><th>${tl('利息','Interest','ការ​ប្រាក់')}</th><th>${tl('状态','Status','ស្ថានភាព')}</th></tr>
+        <tr><th>${tl('期次','Period','ខែ')}</th><th>${tl('到期日','Due Date','ថ្ងៃ​ផុត')}</th><th>${tl('本金','Principal','ដើម')}</th><th>${tl('利息','Interest','ការ​ប្រាក់')}</th><th>${tl('月供','Monthly Total','សរុបប្រចាំខែ')}</th><th>${tl('状态','Status','ស្ថានភាព')}</th></tr>
         ${(s.schedule||[]).map(p=>`<tr>
           <td>${tl(p.period+'期','Period '+p.period,'ខែទី'+p.period)}</td>
           <td>${p.dueDate||'—'}</td>
           <td>$${fmt(+p.principalDue||0)}</td>
           <td>$${fmt(+p.interestDue||0)}</td>
+          <td class="fw700">$${fmt((+p.principalDue||0)+(+p.interestDue||0))}</td>
           <td>${p.paid?('<span style="color:var(--green)">✅ '+tl('已还','Paid','បាន​បង')+'</span>'):('<span style="color:var(--amber)">⏳ '+tl('待还','Pending','រង់​ចាំ')+'</span>')}</td>
         </tr>`).join('')}
       </table></div>
