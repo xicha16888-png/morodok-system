@@ -983,6 +983,26 @@ function buildSidebar() {
       </div>
       <div style="padding:4px 0">
         <div class="nav-item" data-page="audit"><span class="nav-icon">📋</span>${tl('合同审核','Contract Audit','ត្រួតពិនិត្យកិច្ចសន្យា')}</div>
+        ${canViewSaleListSpecial() ? `<div class="nav-item" data-page="sale-list"><span class="nav-icon">🔍</span>${tl('销售查询','Sale Query','ស្វែងរកការលក់')}</div>` : ''}
+      </div>
+      <div style="height:16px"></div>`;
+    sidebar.querySelectorAll('.nav-item[data-page]').forEach(el => {
+      el.addEventListener('click', () => nav(el.dataset.page));
+      if (el.dataset.page === currentPage) el.classList.add('active');
+    });
+    return;
+  }
+
+  // 审核文员专属侧边栏：只读，只能看合同审核 + 销售查询，不能改任何东西
+  if (role === 'reviewClerk') {
+    sidebar.innerHTML = `
+      <div class="sb-logo">
+        <div class="sb-logo-sub">${tl('审核系统','Review System','ប្រព័ន្ធត្រួតពិនិត្យ')}</div>
+        <div class="sb-logo-name">MORODOK</div>
+      </div>
+      <div style="padding:4px 0">
+        <div class="nav-item" data-page="audit"><span class="nav-icon">📋</span>${tl('合同审核','Contract Audit','ត្រួតពិនិត្យកិច្ចសន្យា')}</div>
+        <div class="nav-item" data-page="sale-list"><span class="nav-icon">🔍</span>${tl('销售查询','Sale Query','ស្វែងរកការលក់')}</div>
       </div>
       <div style="height:16px"></div>`;
     sidebar.querySelectorAll('.nav-item[data-page]').forEach(el => {
@@ -1103,7 +1123,7 @@ function buildMobileNav(activePage) {
   const u = getCurrentUser();
   const role = u?.role || 'boss';
   const allowed = role === 'boss' ? null : (ROLE_PAGES[role] || []);
-  const canSee = page => page === '__more' || allowed === null || allowed.includes(page);
+  const canSee = page => page === '__more' || allowed === null || allowed.includes(page) || (page === 'sale-list' && canViewSaleListSpecial());
   const items = MOB_MAIN.filter(item => canSee(item.page));
   const isMore = !items.find(m => m.page === activePage && m.page !== '__more');
   inner.innerHTML = items.map(item => {
@@ -1294,7 +1314,7 @@ const REPORT_PWD = 'morodok888';
 const DELETE_PWD = 'cao';
 const AUDITOR_DELETE_PWD = 'mei'; // 内审员SREYNET专用的删除密码，跟老板/主管的删除密码(DELETE_PWD)完全分开，互不影响
 const AUDIT_START_MONTH = '2026-07'; // 内审管理只统计这个月份起的合同
-const EDIT_PWD = 'edit888';
+const EDIT_PWD = 'cao';
 let _reportUnlocked = false; // 会话内解锁状态
 
 function requirePassword(page, onSuccess) {
@@ -1620,11 +1640,12 @@ const ROLE_PAGES = {
   collector: ['home','sale-list','payment-add','early-payment',
                'reminder-tomorrow','reminder-overdue','payment-query'],
   auditor:   ['audit'],
+  reviewClerk: ['audit','sale-list'],
 };
 
 const ROLE_LABEL = {
   boss:'老板', manager:'主管', salesManager:'业务主管', sales:'业务员',
-  entry:'录入员', collector:'催收员', auditor:'内审员'
+  entry:'录入员', collector:'催收员', auditor:'内审员', reviewClerk:'审核文员'
 };
 
 // SHA-256 加密
@@ -1654,6 +1675,7 @@ function canAccess(page) {
   const u = getCurrentUser();
   if (!u) return false;
   if (u.role === 'boss') return true;
+  if (page === 'sale-list' && u.role === 'auditor' && canViewSaleListSpecial()) return true;
   const allowed = ROLE_PAGES[u.role] || [];
   return Array.isArray(allowed) && allowed.includes(page);
 }
@@ -1732,9 +1754,10 @@ async function startApp() {
     nav('audit');
     return;
   }
-  // 其他角色：连接数据库再进首页
+  // 其他角色：连接数据库再进首页（审核文员没有首页权限，直接进合同审核）
+  const _entryPage = (u.role === 'reviewClerk') ? 'audit' : (window._currentPage || 'home');
   buildSidebar();
-  buildMobileNav('home');
+  buildMobileNav(u.role === 'reviewClerk' ? 'audit' : 'home');
   showLoading(t('loading'));
   let _retries = 0;
   const _MAX = 15;
@@ -1742,7 +1765,7 @@ async function startApp() {
     const result = await loadDB();
     if (result.ok) {
       hideLoading();
-      nav(window._currentPage || 'home');
+      nav(_entryPage);
       updateBadges();
       setInterval(updateBadges, 60000);
       setInterval(refreshAuditBadge, 60000);
@@ -2818,8 +2841,10 @@ function buildSalesTable(sales) {
         <td style="white-space:nowrap">
           <button class="btn btn-outline btn-sm" onclick="viewSchedule('${s.id}')">${t('repaySchedule')}</button>
           <button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="showContractImages('${s.id}')">📎 材料</button>
-          ${(() => { const u = getCurrentUser(); const role = u?.role || 'boss'; return (role==='boss'||role==='manager'||role==='salesManager') ? `
+          ${canEditSaleFull() ? `
           <button class="btn btn-primary btn-sm" style="margin-left:4px" onclick="editSale('${s.id}')">${tl('编辑','Edit','កែប្រែ')}</button>
+          ` : ''}
+          ${(() => { const u = getCurrentUser(); const role = u?.role || 'boss'; return (role==='boss'||role==='manager'||role==='salesManager') ? `
           <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSale('${s.id}')">${t('deleteBtn')}</button>
           ` : ''; })()}
         </td>
@@ -2983,9 +3008,8 @@ window.viewSchedule = function(id) {
 
 
 window.editSale = function(id) {
-  const _u = getCurrentUser(); const _role = _u?.role || 'boss';
-  if (_role !== 'boss' && _role !== 'manager' && _role !== 'salesManager') {
-    alert(tl('只有老板/主管才能编辑合同','Only boss/manager can edit contracts','មានតែចៅហ្វាយ/អ្នកគ្រប់គ្រងទេ')); return;
+  if (!canEditSaleFull()) {
+    alert(tl('没有编辑合同的权限','No permission to edit contracts','គ្មានសិទ្ធិកែប្រែកិច្ចសន្យា')); return;
   }
   const sales = DB_get('sales') || [];
   const s = sales.find(x => String(x.id) === String(id));
@@ -3025,9 +3049,8 @@ window.editSale = function(id) {
 };
 
 window.saveEditSale = function(id) {
-  const _u2 = getCurrentUser(); const _role2 = _u2?.role || 'boss';
-  if (_role2 !== 'boss' && _role2 !== 'manager' && _role2 !== 'salesManager') {
-    alert(tl('只有老板/主管才能编辑合同','Only boss/manager can edit contracts','មានតែចៅហ្វាយ/អ្នកគ្រប់គ្រងទេ')); return;
+  if (!canEditSaleFull()) {
+    alert(tl('没有编辑合同的权限','No permission to edit contracts','គ្មានសិទ្ធិកែប្រែកិច្ចសន្យា')); return;
   }
   const sales = DB_get('sales') || [];
   const idx = sales.findIndex(x => String(x.id) === String(id));
@@ -3127,7 +3150,10 @@ window.saveEditSale = function(id) {
   };
 
   // 🔐 保存前需要输入修改密码，并记录操作日志（谁、什么时候、改了什么）
-  confirmEdit(`确认修改合同 #${s.id} — ${s.customer} 吗？`, function() {
+  // SREYNET用她自己的编辑密码(mei)，老板/主管用共用编辑密码(edit888)
+  const _curRole = getCurrentUser()?.role || '';
+  const _editConfirmFn = (_curRole === 'auditor') ? confirmAuditorEdit : confirmEdit;
+  _editConfirmFn(`确认修改合同 #${s.id} — ${s.customer} 吗？`, function() {
     const changedFields = [];
     ['date','customer','customerPhone','shopName','salesperson','salePrice','deposit','periods','installmentAmount','monthlyPayment','storeRebate','dailyLateFee','note'].forEach(k => {
       if (String(s[k]??'') !== String(newSale[k]??'')) changedFields.push(`${k}: ${s[k]??'—'} → ${newSale[k]??'—'}`);
@@ -3142,7 +3168,7 @@ window.saveEditSale = function(id) {
   });
 };
 
-// 🔒 特批：除了老板/主管，SREYNET（内审员小美）这个账号单独获批可以删除合同（专门用来处理审核时发现的重复单）
+// 🔒 特批：除了老板/主管，SREYNET（内审员小美，内审组长）这个账号单独获批可以删除合同（专门用来处理审核时发现的重复单）
 // 只针对这一个用户名，其他内审员账号不受影响；以后要收回权限，把她的用户名从这个数组里删掉就行
 const SPECIAL_DELETE_USERNAMES = ['sreynet'];
 function canDeleteSale() {
@@ -3150,6 +3176,26 @@ function canDeleteSale() {
   const role = u?.role || '';
   if (role === 'boss' || role === 'manager' || role === 'salesManager') return true;
   return SPECIAL_DELETE_USERNAMES.includes((u?.username || '').toLowerCase());
+}
+
+// 🔒 特批：SREYNET（内审组长）单独获批可以看"销售查询"页面，方便核对业务员单子
+// 只针对这一个用户名，其他内审员账号不受影响
+const SPECIAL_SALELIST_VIEW_USERNAMES = ['sreynet'];
+function canViewSaleListSpecial() {
+  const u = getCurrentUser();
+  if ((u?.role || '') !== 'auditor') return false;
+  return SPECIAL_SALELIST_VIEW_USERNAMES.includes((u?.username || '').toLowerCase());
+}
+
+// 🔒 特批：SREYNET（内审组长）单独获批可以完整编辑合同（金额/期数/利息/返点等，会重新生成还款排期）
+// 老板已确认她需要这个完整权限，不是只改基础信息。只针对这一个用户名，其他内审员账号不受影响
+const SPECIAL_FULL_EDIT_USERNAMES = ['sreynet'];
+function canEditSaleFull() {
+  const u = getCurrentUser();
+  const role = u?.role || '';
+  if (role === 'boss' || role === 'manager' || role === 'salesManager') return true;
+  if (role === 'auditor') return SPECIAL_FULL_EDIT_USERNAMES.includes((u?.username || '').toLowerCase());
+  return false;
 }
 
 window.deleteSale = function(id) {
@@ -3977,6 +4023,30 @@ window.confirmDelete = function(msg, onConfirm) {
     </div>
   `);
   setTimeout(()=>document.getElementById('deletePwdInput')?.focus(), 100);
+};
+
+// 内审员（SREYNET）专用的编辑确认框：复用她自己的密码(AUDITOR_DELETE_PWD='mei')，跟老板/主管的编辑密码(EDIT_PWD)完全分开
+window.confirmAuditorEdit = function(msg, onConfirm) {
+  window._pendingEditCallback = onConfirm;
+  showModal(`🔐 ${tl('确认修改','Confirm Edit','បញ្ជាក់ការកែប្រែ')}`, `
+    <p style="margin-bottom:12px;color:var(--amber)">${esc(msg)}</p>
+    <div class="form-group">
+      <label>${tl('请输入修改密码','Enter edit password','សូមបញ្ចូលពាក្យសម្ងាត់')}</label>
+      <input type="password" id="editPwdInput" placeholder="${tl('密码','Password','ពាក្យសម្ងាត់')}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"
+        onkeydown="if(event.key==='Enter')document.getElementById('confirmEditBtn').click()">
+    </div>
+    <div id="editPwdMsg" style="color:var(--red);font-size:12px;margin-top:6px"></div>
+    <div style="margin-top:14px;display:flex;gap:10px">
+      <button id="confirmEditBtn" class="btn btn-primary" onclick="
+        const v = document.getElementById('editPwdInput').value;
+        if(v !== AUDITOR_DELETE_PWD){ document.getElementById('editPwdMsg').textContent=tl('密码错误','Wrong password','ពាក្យសម្ងាត់មិនត្រូវ'); return; }
+        closeModal();
+        if(window._pendingEditCallback) { window._pendingEditCallback(); window._pendingEditCallback=null; }
+      ">${tl('确认修改','Confirm','បញ្ជាក់')}</button>
+      <button class="btn btn-outline" onclick="closeModal();window._pendingEditCallback=null;">${tl('取消','Cancel','បោះបង់')}</button>
+    </div>
+  `);
+  setTimeout(()=>document.getElementById('editPwdInput')?.focus(), 100);
 };
 
 // 内审员（SREYNET）专用的删除确认框：单独一套密码(AUDITOR_DELETE_PWD)，跟老板/主管的删除密码完全分开
@@ -6002,7 +6072,7 @@ function buildExpenseTable(expenses) {
       <td style="color:var(--muted);font-size:12px">${e.payDate||'—'}</td>
       <td><span class="badge ${catColors[e.cat]||'badge-gray'}">${esc(e.cat)}</span></td>
       <td class="fw700 text-red">${fmt(e.amount)}</td>
-      <td style="color:var(--muted);font-size:12px">${e.otherBiz ? '<span class="badge badge-amber" style="margin-right:4px">⚠️跨业务</span>' : ''}${esc(e.note||'—')}</td>
+      <td style="color:var(--muted);font-size:12px">${e.otherBiz ? '<span class="badge badge-amber" style="margin-right:4px">⚠️需核实</span>' : ''}${esc(e.note||'—')}</td>
       <td style="font-size:12px">${esc(e.person||'—')}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.id})">${t('deleteBtn')}</button></td>
     </tr>`).join('')}
@@ -8931,7 +9001,7 @@ window.openAuditDetail = async function(contractId) {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <div style="font-weight:700;color:#0d2137;font-size:13px">${tl('基本信息','Basic Info','ព័ត៌មានមូលដ្ឋាន')}</div>
       <div id="auditEditBtns_${contractId}">
-        <button type="button" onclick="startAuditBasicEdit('${contractId}')" class="btn btn-outline btn-sm" style="font-size:11px">✏️ ${tl('编辑基础信息','Edit Basic Info','កែប្រែព័ត៌មានមូលដ្ឋាន')}</button>
+        ${getCurrentUser()?.role !== 'reviewClerk' ? `<button type="button" onclick="startAuditBasicEdit('${contractId}')" class="btn btn-outline btn-sm" style="font-size:11px">✏️ ${tl('编辑基础信息','Edit Basic Info','កែប្រែព័ត៌មានមូលដ្ឋាន')}</button>` : ''}
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px">
@@ -9298,6 +9368,7 @@ function renderUserMgmt() {
           <option value="entry">录入员</option>
           <option value="collector">催收员</option>
           <option value="auditor">内审员</option>
+          <option value="reviewClerk">审核文员</option>
           <option value="manager">主管</option>
           <option value="boss">老板</option>
         </select>
@@ -9357,9 +9428,9 @@ window.loadUserList = async function() {
     if (!Array.isArray(users)||!users.length) {
       wrap.innerHTML='<div style="padding:20px;color:#90a4ae;text-align:center">暂无账号</div>'; return;
     }
-    const roleBg = {boss:'#ffebee',manager:'#e8eaf6',salesManager:'#e0f2f1',sales:'#e8f5e9',entry:'#e3f2fd',collector:'#fff3e0',auditor:'#f3e5f5'};
-    const roleColor = {boss:'#c62828',manager:'#283593',salesManager:'#00695c',sales:'#2e7d32',entry:'#1565c0',collector:'#e65100',auditor:'#6a1b9a'};
-    const roleOrder = ['boss','manager','salesManager','sales','entry','collector','auditor'];
+    const roleBg = {boss:'#ffebee',manager:'#e8eaf6',salesManager:'#e0f2f1',sales:'#e8f5e9',entry:'#e3f2fd',collector:'#fff3e0',auditor:'#f3e5f5',reviewClerk:'#eceff1'};
+    const roleColor = {boss:'#c62828',manager:'#283593',salesManager:'#00695c',sales:'#2e7d32',entry:'#1565c0',collector:'#e65100',auditor:'#6a1b9a',reviewClerk:'#455a64'};
+    const roleOrder = ['boss','manager','salesManager','sales','entry','collector','auditor','reviewClerk'];
 
     // 🔧 按角色分组，同类角色排在一起
     const byRole = {};
