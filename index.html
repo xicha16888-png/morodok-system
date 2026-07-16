@@ -5965,7 +5965,31 @@ function renderExpenses() {
         </tr>
       </table></div>` : `<div class="empty-state"><div class="ei">🧾</div><p>${t("noRecord")}</p></div>`}
     </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:14px">按类别汇总（跟随左侧筛选）</div>
+      <div id="exCatSummary">${buildCatSummary(expenses)}</div>
+    </div>
   </div>`;
+}
+
+function buildCatSummary(list) {
+  if (!list.length) return `<div class="empty-state"><div class="ei">🧾</div><p>${t("noRecord")}</p></div>`;
+  const byCat = {};
+  list.forEach(e => { byCat[e.cat] = (byCat[e.cat]||0) + (+e.amount||0); });
+  const total = list.reduce((a,e)=>a+(+e.amount||0), 0);
+  const rows = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+  return `<div class="table-wrap"><table>
+    <tr><th>类别</th><th>合计</th></tr>
+    ${rows.map(([c,v])=>`
+      <tr>
+        <td class="fw700">${esc(c)}</td>
+        <td class="fw700 text-red">${fmt(v)}</td>
+      </tr>`).join('')}
+    <tr style="background:#fff5f5;font-weight:700;border-top:2px solid var(--border)">
+      <td>${t("totalRow")}</td><td class="text-red">${fmt(total)}</td>
+    </tr>
+  </table></div>`;
 }
 
 function buildExpenseTable(expenses) {
@@ -5993,6 +6017,8 @@ window.filterExpenses = function() {
   if (cat)   list = list.filter(e=>e.cat===cat);
   const wrap = document.getElementById('exTable');
   if (wrap) wrap.innerHTML = buildExpenseTable(list.slice().reverse());
+  const catWrap = document.getElementById('exCatSummary');
+  if (catWrap) catWrap.innerHTML = buildCatSummary(list);
 };
 
 window.submitExpense = function() {
