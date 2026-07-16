@@ -5893,7 +5893,7 @@ function renderFinanceReport() {
 // ══════════════════════════════════════════════════════
 // EXPENSES 日常开支
 // ══════════════════════════════════════════════════════
-const EXPENSE_CATS = ['房租','水电','员工工资','通讯费','交通费','餐饮','维修','广告推广','办公用品','税费','手机采购','锁机费用','其他'];
+const EXPENSE_CATS = ['房租','水电','员工工资','通讯费','交通费','餐饮','维修','广告推广','办公用品','税费','手机采购','锁机费用','AI数据费用','业务公关','其他'];
 
 function renderExpenses() {
   const expenses = (DB_get('expenses')||[]).slice().reverse();
@@ -5970,15 +5970,15 @@ function renderExpenses() {
 
 function buildExpenseTable(expenses) {
   if (!expenses.length) return `<div class="empty-state"><div class="ei">🧾</div><p>${t("noRecord")}</p></div>`;
-  const catColors = {'房租':'badge-red','员工工资':'badge-red','税费':'badge-red','水电':'badge-amber','通讯费':'badge-amber','交通费':'badge-amber','餐饮':'badge-blue','维修':'badge-amber','广告推广':'badge-purple','办公用品':'badge-blue','手机采购':'badge-green','锁机费用':'badge-amber','其他':'badge-gray'};
+  const catColors = {'房租':'badge-red','员工工资':'badge-red','税费':'badge-red','水电':'badge-amber','通讯费':'badge-amber','交通费':'badge-amber','餐饮':'badge-blue','维修':'badge-amber','广告推广':'badge-purple','办公用品':'badge-blue','手机采购':'badge-green','锁机费用':'badge-amber','AI数据费用':'badge-purple','业务公关':'badge-blue','其他':'badge-gray'};
   return `<div class="table-wrap"><table>
     <tr><th>日期</th><th>实际发放日期</th><th>类别</th><th>金额</th><th>说明</th><th>经手人</th><th>操作</th></tr>
-    ${expenses.map(e=>`<tr>
+    ${expenses.map(e=>`<tr${e.otherBiz ? ' style="background:#fff3e0"' : ''}>
       <td>${e.date}</td>
       <td style="color:var(--muted);font-size:12px">${e.payDate||'—'}</td>
       <td><span class="badge ${catColors[e.cat]||'badge-gray'}">${esc(e.cat)}</span></td>
       <td class="fw700 text-red">${fmt(e.amount)}</td>
-      <td style="color:var(--muted);font-size:12px">${esc(e.note||'—')}</td>
+      <td style="color:var(--muted);font-size:12px">${e.otherBiz ? '<span class="badge badge-amber" style="margin-right:4px">⚠️跨业务</span>' : ''}${esc(e.note||'—')}</td>
       <td style="font-size:12px">${esc(e.person||'—')}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.id})">${t('deleteBtn')}</button></td>
     </tr>`).join('')}
