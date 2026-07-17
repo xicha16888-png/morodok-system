@@ -275,7 +275,6 @@ tr:hover td{background:#f8faff}
 }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://customer-query-system.onrender.com/widget.js"></script>
 </head>
 <body>
 
@@ -984,6 +983,26 @@ function buildSidebar() {
       </div>
       <div style="padding:4px 0">
         <div class="nav-item" data-page="audit"><span class="nav-icon">📋</span>${tl('合同审核','Contract Audit','ត្រួតពិនិត្យកិច្ចសន្យា')}</div>
+        ${canViewSaleListSpecial() ? `<div class="nav-item" data-page="sale-list"><span class="nav-icon">🔍</span>${tl('销售查询','Sale Query','ស្វែងរកការលក់')}</div>` : ''}
+      </div>
+      <div style="height:16px"></div>`;
+    sidebar.querySelectorAll('.nav-item[data-page]').forEach(el => {
+      el.addEventListener('click', () => nav(el.dataset.page));
+      if (el.dataset.page === currentPage) el.classList.add('active');
+    });
+    return;
+  }
+
+  // 审核文员专属侧边栏：只读，只能看合同审核 + 销售查询，不能改任何东西
+  if (role === 'reviewClerk') {
+    sidebar.innerHTML = `
+      <div class="sb-logo">
+        <div class="sb-logo-sub">${tl('审核系统','Review System','ប្រព័ន្ធត្រួតពិនិត្យ')}</div>
+        <div class="sb-logo-name">MORODOK</div>
+      </div>
+      <div style="padding:4px 0">
+        <div class="nav-item" data-page="audit"><span class="nav-icon">📋</span>${tl('合同审核','Contract Audit','ត្រួតពិនិត្យកិច្ចសន្យា')}</div>
+        <div class="nav-item" data-page="sale-list"><span class="nav-icon">🔍</span>${tl('销售查询','Sale Query','ស្វែងរកការលក់')}</div>
       </div>
       <div style="height:16px"></div>`;
     sidebar.querySelectorAll('.nav-item[data-page]').forEach(el => {
@@ -1104,7 +1123,7 @@ function buildMobileNav(activePage) {
   const u = getCurrentUser();
   const role = u?.role || 'boss';
   const allowed = role === 'boss' ? null : (ROLE_PAGES[role] || []);
-  const canSee = page => page === '__more' || allowed === null || allowed.includes(page);
+  const canSee = page => page === '__more' || allowed === null || allowed.includes(page) || (page === 'sale-list' && canViewSaleListSpecial());
   const items = MOB_MAIN.filter(item => canSee(item.page));
   const isMore = !items.find(m => m.page === activePage && m.page !== '__more');
   inner.innerHTML = items.map(item => {
@@ -1153,6 +1172,90 @@ let _syncTimer = null;
 let _dirty = false;
 let _dbReady = false; // 🔒 数据安全锁
 
+// ══════════════════════════════════════════════════════
+// 🔒 并发安全保存机制（sales / payments 专用）
+// 背景：50+人同时在线，旧机制每次保存都是把本地整份 _db（包含全部合同、全部收款记录）
+// 整体 POST 给服务器。哪怕这次只改了1条记录，也会把"本地这一份可能已经过期的其他几百条记录"
+// 一起重新写回服务器，导致自己保存的时候，把"刚才别人保存的、自己本地还没刷新到的改动"覆盖掉。
+// 这正是YON MENGLY那笔收款"钱收了但排期表没标记已还"的根本原因。
+// 解决方式：sales 和 payments 这两个高频、高并发的数组，只上传"这次真正改动过的那几条"，
+// 而不是整个数组；服务器 saveData() 本来就是按id逐条更新（upsert），天然支持这种"部分提交"。
+// ══════════════════════════════════════════════════════
+let _salesBaseline = {};    // id -> 最后一次已知与服务器一致的JSON字符串
+let _paymentsBaseline = {}; // id -> 同上
+let _salesSyncTimer = null;
+let _paymentsSyncTimer = null;
+let _salesDirty = false;    // 🔒 有合同改动还没保存到服务器
+let _paymentsDirty = false; // 🔒 有收款记录改动还没保存到服务器
+
+// 🔒 统一入口：只要还有任何一类改动（整包 / 合同 / 收款）没保存完，都算"有待保存的本地改动"，
+// 后台静默刷新（loadDB整包覆盖_db）必须跳过，否则会把还没来得及上传的改动直接冲掉。
+function _hasPendingLocalChanges() {
+  return _dirty || _salesDirty || _paymentsDirty;
+}
+
+function _snapshotBaseline(arr, map) {
+  Object.keys(map).forEach(k => delete map[k]);
+  (arr||[]).forEach(item => { if (item && item.id != null) map[item.id] = JSON.stringify(item); });
+}
+
+function _scheduleSalesSave() {
+  _salesDirty = true;
+  clearTimeout(_salesSyncTimer);
+  _salesSyncTimer = setTimeout(_saveSalesDelta, 500);
+}
+function _schedulePaymentsSave() {
+  _paymentsDirty = true;
+  clearTimeout(_paymentsSyncTimer);
+  _paymentsSyncTimer = setTimeout(_savePaymentsDelta, 500);
+}
+
+async function _saveSalesDelta() {
+  if (!_dbReady || !_db || !Array.isArray(_db.sales)) { _salesDirty = false; return; }
+  const changed = _db.sales.filter(s => s && s.id != null && JSON.stringify(s) !== _salesBaseline[s.id]);
+  if (!changed.length) { _salesDirty = false; return; }
+  setSyncStatus('syncing');
+  try {
+    const res = await fetch('/api/data', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ sales: changed })
+    });
+    if (!res.ok) throw new Error('服务器返回错误: ' + res.status);
+    changed.forEach(s => { _salesBaseline[s.id] = JSON.stringify(s); });
+    _salesDirty = false;
+    setSyncStatus('ok');
+  } catch(e) {
+    setSyncStatus('error');
+    console.error('❌ 合同保存失败，3秒后重试:', e.message);
+    clearTimeout(_salesSyncTimer);
+    _salesSyncTimer = setTimeout(_saveSalesDelta, 3000); // _salesDirty 保持 true，直到重试成功
+  }
+}
+
+async function _savePaymentsDelta() {
+  if (!_dbReady || !_db || !Array.isArray(_db.payments)) { _paymentsDirty = false; return; }
+  const changed = _db.payments.filter(p => p && p.id != null && JSON.stringify(p) !== _paymentsBaseline[p.id]);
+  if (!changed.length) { _paymentsDirty = false; return; }
+  setSyncStatus('syncing');
+  try {
+    const res = await fetch('/api/data', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ payments: changed })
+    });
+    if (!res.ok) throw new Error('服务器返回错误: ' + res.status);
+    changed.forEach(p => { _paymentsBaseline[p.id] = JSON.stringify(p); });
+    _paymentsDirty = false;
+    setSyncStatus('ok');
+  } catch(e) {
+    setSyncStatus('error');
+    console.error('❌ 收款记录保存失败，3秒后重试:', e.message);
+    clearTimeout(_paymentsSyncTimer);
+    _paymentsSyncTimer = setTimeout(_savePaymentsDelta, 3000); // _paymentsDirty 保持 true，直到重试成功
+  }
+}
+
 async function loadDB() {
   try {
     const controller = new AbortController();
@@ -1173,6 +1276,8 @@ async function loadDB() {
     if (!data.company)                     data.company = {name:'MORODOK',address:'',phone:'',note:''};
     _db = data;
     _dbReady = true;
+    _snapshotBaseline(_db.sales, _salesBaseline);
+    _snapshotBaseline(_db.payments, _paymentsBaseline);
     _lastSyncTime = Date.now();
     try { const el=document.getElementById('companyName'); if(el&&data.company?.name) el.textContent=data.company.name; } catch(e2){}
     return {ok:true};
@@ -1192,10 +1297,13 @@ async function saveDB() {
   }
   setSyncStatus('syncing');
   try {
+    // 🔒 sales / payments 不走这里的整包上传——它们各自有独立的"只传改动过的那几条"通道
+    // （见上面的 _saveSalesDelta / _savePaymentsDelta），避免整份本地快照把别人刚保存的改动覆盖掉。
+    const { sales, payments, ...rest } = _db;
     const res = await fetch('/api/data', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(_db)
+      body: JSON.stringify(rest)
     });
     if (!res.ok) throw new Error('服务器返回错误: ' + res.status);
     setSyncStatus('ok');
@@ -1213,13 +1321,17 @@ function markDirty() {
   _syncTimer = setTimeout(() => { if (_dirty) saveDB(); }, 800);
 }
 
-// 🔒 如果有还没存到服务器的本地改动（_dirty=true），先把它存完，
-// 再做任何"重新从服务器拉数据覆盖本地"的操作，避免刚登记的收款/改动被冲掉
+// 🔒 如果有还没存到服务器的本地改动（_dirty=true，或 sales/payments 的独立保存队列还没发出去），
+// 先把它们都存完，再做任何"重新从服务器拉数据覆盖本地"的操作，避免刚登记的收款/改动被冲掉
 async function flushPendingSave() {
   if (_dirty) {
     clearTimeout(_syncTimer);
     await saveDB();
   }
+  clearTimeout(_salesSyncTimer);
+  await _saveSalesDelta();
+  clearTimeout(_paymentsSyncTimer);
+  await _savePaymentsDelta();
 }
 
 function setSyncStatus(state) {
@@ -1237,6 +1349,9 @@ function DB_set(k, v) {
     return;
   }
   _db[k] = v;
+  // 🔒 sales / payments 走独立的"只传改动记录"通道，不触发整包保存（见并发安全说明）
+  if (k === 'sales') { _scheduleSalesSave(); return; }
+  if (k === 'payments') { _schedulePaymentsSave(); return; }
   markDirty();
 }
 
@@ -1295,7 +1410,7 @@ const REPORT_PWD = 'morodok888';
 const DELETE_PWD = 'cao';
 const AUDITOR_DELETE_PWD = 'mei'; // 内审员SREYNET专用的删除密码，跟老板/主管的删除密码(DELETE_PWD)完全分开，互不影响
 const AUDIT_START_MONTH = '2026-07'; // 内审管理只统计这个月份起的合同
-const EDIT_PWD = 'edit888';
+const EDIT_PWD = 'cao';
 let _reportUnlocked = false; // 会话内解锁状态
 
 function requirePassword(page, onSuccess) {
@@ -1421,7 +1536,7 @@ function nav(page) {
   }
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
   // 切换页面时拉取最新数据（静默刷新，不影响操作）
-  if (!_dirty) {
+  if (!_hasPendingLocalChanges()) {
     loadDB().then(ok => {
       if (ok) {
         _lastSyncTime = Date.now();
@@ -1492,7 +1607,7 @@ function userIsTyping() {
 }
 const FORM_PAGES = ['sale-add','payment-add','early-payment','phones','suppliers','purchase-add','company','expenses'];
 setInterval(async () => {
-  if (_dirty) return;
+  if (_hasPendingLocalChanges()) return;
   if (userIsTyping()) return;
   const page = document.querySelector('.nav-item.active')?.dataset?.page;
   if (FORM_PAGES.includes(page)) return;
@@ -1621,11 +1736,12 @@ const ROLE_PAGES = {
   collector: ['home','sale-list','payment-add','early-payment',
                'reminder-tomorrow','reminder-overdue','payment-query'],
   auditor:   ['audit'],
+  reviewClerk: ['audit','sale-list'],
 };
 
 const ROLE_LABEL = {
   boss:'老板', manager:'主管', salesManager:'业务主管', sales:'业务员',
-  entry:'录入员', collector:'催收员', auditor:'内审员'
+  entry:'录入员', collector:'催收员', auditor:'内审员', reviewClerk:'审核文员'
 };
 
 // SHA-256 加密
@@ -1655,6 +1771,7 @@ function canAccess(page) {
   const u = getCurrentUser();
   if (!u) return false;
   if (u.role === 'boss') return true;
+  if (page === 'sale-list' && u.role === 'auditor' && canViewSaleListSpecial()) return true;
   const allowed = ROLE_PAGES[u.role] || [];
   return Array.isArray(allowed) && allowed.includes(page);
 }
@@ -1733,9 +1850,10 @@ async function startApp() {
     nav('audit');
     return;
   }
-  // 其他角色：连接数据库再进首页
+  // 其他角色：连接数据库再进首页（审核文员没有首页权限，直接进合同审核）
+  const _entryPage = (u.role === 'reviewClerk') ? 'audit' : (window._currentPage || 'home');
   buildSidebar();
-  buildMobileNav('home');
+  buildMobileNav(u.role === 'reviewClerk' ? 'audit' : 'home');
   showLoading(t('loading'));
   let _retries = 0;
   const _MAX = 15;
@@ -1743,7 +1861,7 @@ async function startApp() {
     const result = await loadDB();
     if (result.ok) {
       hideLoading();
-      nav(window._currentPage || 'home');
+      nav(_entryPage);
       updateBadges();
       setInterval(updateBadges, 60000);
       setInterval(refreshAuditBadge, 60000);
@@ -2520,7 +2638,7 @@ window.filterStoreOptions = function() {
     dropdown.style.display = 'block';
     return;
   }
-  dropdown.innerHTML = list.slice(0, 50).map(s => `
+  dropdown.innerHTML = list.slice(0, 300).map(s => `
     <div class="store-opt" data-code="${esc(s.code||'')}" data-name="${esc(s.name||'')}"
       style="padding:7px 10px;cursor:pointer;font-size:12px;display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #f0f0f0">
       <span>${s.code ? `<b style="color:var(--blue)">${esc(s.code)}</b> ${esc(s.nameKm||'')}` : esc(s.name||'')}</span>
@@ -2543,7 +2661,7 @@ document.addEventListener('click', (e) => {
   }
 });
 
-window.submitSale = async function() {
+window.submitSale = function() {
   const isOld = window._loanMethod === 'old';
   const cust        = document.getElementById('sCust')?.value?.trim();
   const custPhone   = document.getElementById('sCustPhone')?.value?.trim() || '';
@@ -2605,12 +2723,6 @@ window.submitSale = async function() {
   if (!cust)      { showMsg('saleMsg', t('msgFillCustomer'), 'red'); return; }
   if (!principal) { showMsg('saleMsg', t('msgFillPrice'), 'red'); return; }
   if (!firstDue)  { showMsg('saleMsg', t('msgFillDue'), 'red'); return; }
-
-  // 🔎 客户交叉查询：检查该客户是否已在小贷/抵押系统(PAWN)有未结清贷款，或黑名单
-  if (window.CustomerCheck) {
-    const _ccOk = await CustomerCheck.confirmBeforeSubmit(cust, custPhone, '', 'morodok');
-    if (!_ccOk) { showMsg('saleMsg', '已取消提交', 'red'); return; }
-  }
 
   // 🔒 按型号+容量的放款上限做最终校验(防止绕过UI直接改滑块/输入框超额) —— 只在新方式下生效
   if (!isOld) {
@@ -2825,8 +2937,10 @@ function buildSalesTable(sales) {
         <td style="white-space:nowrap">
           <button class="btn btn-outline btn-sm" onclick="viewSchedule('${s.id}')">${t('repaySchedule')}</button>
           <button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="showContractImages('${s.id}')">📎 材料</button>
-          ${(() => { const u = getCurrentUser(); const role = u?.role || 'boss'; return (role==='boss'||role==='manager'||role==='salesManager') ? `
+          ${canEditSaleFull() ? `
           <button class="btn btn-primary btn-sm" style="margin-left:4px" onclick="editSale('${s.id}')">${tl('编辑','Edit','កែប្រែ')}</button>
+          ` : ''}
+          ${(() => { const u = getCurrentUser(); const role = u?.role || 'boss'; return (role==='boss'||role==='manager'||role==='salesManager') ? `
           <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSale('${s.id}')">${t('deleteBtn')}</button>
           ` : ''; })()}
         </td>
@@ -2990,9 +3104,8 @@ window.viewSchedule = function(id) {
 
 
 window.editSale = function(id) {
-  const _u = getCurrentUser(); const _role = _u?.role || 'boss';
-  if (_role !== 'boss' && _role !== 'manager' && _role !== 'salesManager') {
-    alert(tl('只有老板/主管才能编辑合同','Only boss/manager can edit contracts','មានតែចៅហ្វាយ/អ្នកគ្រប់គ្រងទេ')); return;
+  if (!canEditSaleFull()) {
+    alert(tl('没有编辑合同的权限','No permission to edit contracts','គ្មានសិទ្ធិកែប្រែកិច្ចសន្យា')); return;
   }
   const sales = DB_get('sales') || [];
   const s = sales.find(x => String(x.id) === String(id));
@@ -3032,9 +3145,8 @@ window.editSale = function(id) {
 };
 
 window.saveEditSale = function(id) {
-  const _u2 = getCurrentUser(); const _role2 = _u2?.role || 'boss';
-  if (_role2 !== 'boss' && _role2 !== 'manager' && _role2 !== 'salesManager') {
-    alert(tl('只有老板/主管才能编辑合同','Only boss/manager can edit contracts','មានតែចៅហ្វាយ/អ្នកគ្រប់គ្រងទេ')); return;
+  if (!canEditSaleFull()) {
+    alert(tl('没有编辑合同的权限','No permission to edit contracts','គ្មានសិទ្ធិកែប្រែកិច្ចសន្យា')); return;
   }
   const sales = DB_get('sales') || [];
   const idx = sales.findIndex(x => String(x.id) === String(id));
@@ -3134,7 +3246,10 @@ window.saveEditSale = function(id) {
   };
 
   // 🔐 保存前需要输入修改密码，并记录操作日志（谁、什么时候、改了什么）
-  confirmEdit(`确认修改合同 #${s.id} — ${s.customer} 吗？`, function() {
+  // SREYNET用她自己的编辑密码(mei)，老板/主管用共用编辑密码(edit888)
+  const _curRole = getCurrentUser()?.role || '';
+  const _editConfirmFn = (_curRole === 'auditor') ? confirmAuditorEdit : confirmEdit;
+  _editConfirmFn(`确认修改合同 #${s.id} — ${s.customer} 吗？`, function() {
     const changedFields = [];
     ['date','customer','customerPhone','shopName','salesperson','salePrice','deposit','periods','installmentAmount','monthlyPayment','storeRebate','dailyLateFee','note'].forEach(k => {
       if (String(s[k]??'') !== String(newSale[k]??'')) changedFields.push(`${k}: ${s[k]??'—'} → ${newSale[k]??'—'}`);
@@ -3149,7 +3264,7 @@ window.saveEditSale = function(id) {
   });
 };
 
-// 🔒 特批：除了老板/主管，SREYNET（内审员小美）这个账号单独获批可以删除合同（专门用来处理审核时发现的重复单）
+// 🔒 特批：除了老板/主管，SREYNET（内审员小美，内审组长）这个账号单独获批可以删除合同（专门用来处理审核时发现的重复单）
 // 只针对这一个用户名，其他内审员账号不受影响；以后要收回权限，把她的用户名从这个数组里删掉就行
 const SPECIAL_DELETE_USERNAMES = ['sreynet'];
 function canDeleteSale() {
@@ -3157,6 +3272,26 @@ function canDeleteSale() {
   const role = u?.role || '';
   if (role === 'boss' || role === 'manager' || role === 'salesManager') return true;
   return SPECIAL_DELETE_USERNAMES.includes((u?.username || '').toLowerCase());
+}
+
+// 🔒 特批：SREYNET（内审组长）单独获批可以看"销售查询"页面，方便核对业务员单子
+// 只针对这一个用户名，其他内审员账号不受影响
+const SPECIAL_SALELIST_VIEW_USERNAMES = ['sreynet'];
+function canViewSaleListSpecial() {
+  const u = getCurrentUser();
+  if ((u?.role || '') !== 'auditor') return false;
+  return SPECIAL_SALELIST_VIEW_USERNAMES.includes((u?.username || '').toLowerCase());
+}
+
+// 🔒 特批：SREYNET（内审组长）单独获批可以完整编辑合同（金额/期数/利息/返点等，会重新生成还款排期）
+// 老板已确认她需要这个完整权限，不是只改基础信息。只针对这一个用户名，其他内审员账号不受影响
+const SPECIAL_FULL_EDIT_USERNAMES = ['sreynet'];
+function canEditSaleFull() {
+  const u = getCurrentUser();
+  const role = u?.role || '';
+  if (role === 'boss' || role === 'manager' || role === 'salesManager') return true;
+  if (role === 'auditor') return SPECIAL_FULL_EDIT_USERNAMES.includes((u?.username || '').toLowerCase());
+  return false;
 }
 
 window.deleteSale = function(id) {
@@ -3986,6 +4121,30 @@ window.confirmDelete = function(msg, onConfirm) {
   setTimeout(()=>document.getElementById('deletePwdInput')?.focus(), 100);
 };
 
+// 内审员（SREYNET）专用的编辑确认框：复用她自己的密码(AUDITOR_DELETE_PWD='mei')，跟老板/主管的编辑密码(EDIT_PWD)完全分开
+window.confirmAuditorEdit = function(msg, onConfirm) {
+  window._pendingEditCallback = onConfirm;
+  showModal(`🔐 ${tl('确认修改','Confirm Edit','បញ្ជាក់ការកែប្រែ')}`, `
+    <p style="margin-bottom:12px;color:var(--amber)">${esc(msg)}</p>
+    <div class="form-group">
+      <label>${tl('请输入修改密码','Enter edit password','សូមបញ្ចូលពាក្យសម្ងាត់')}</label>
+      <input type="password" id="editPwdInput" placeholder="${tl('密码','Password','ពាក្យសម្ងាត់')}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"
+        onkeydown="if(event.key==='Enter')document.getElementById('confirmEditBtn').click()">
+    </div>
+    <div id="editPwdMsg" style="color:var(--red);font-size:12px;margin-top:6px"></div>
+    <div style="margin-top:14px;display:flex;gap:10px">
+      <button id="confirmEditBtn" class="btn btn-primary" onclick="
+        const v = document.getElementById('editPwdInput').value;
+        if(v !== AUDITOR_DELETE_PWD){ document.getElementById('editPwdMsg').textContent=tl('密码错误','Wrong password','ពាក្យសម្ងាត់មិនត្រូវ'); return; }
+        closeModal();
+        if(window._pendingEditCallback) { window._pendingEditCallback(); window._pendingEditCallback=null; }
+      ">${tl('确认修改','Confirm','បញ្ជាក់')}</button>
+      <button class="btn btn-outline" onclick="closeModal();window._pendingEditCallback=null;">${tl('取消','Cancel','បោះបង់')}</button>
+    </div>
+  `);
+  setTimeout(()=>document.getElementById('editPwdInput')?.focus(), 100);
+};
+
 // 内审员（SREYNET）专用的删除确认框：单独一套密码(AUDITOR_DELETE_PWD)，跟老板/主管的删除密码完全分开
 window.confirmAuditorDelete = function(msg, onConfirm) {
   window._pendingDeleteCallback = onConfirm;
@@ -4043,6 +4202,8 @@ window.submitPayment = async function() {
   }
   // 用最新数据覆盖本地缓存，确保后续所有读写都基于服务器最新状态，不使用可能过期的旧缓存
   _db = freshData; _dbReady = true;
+  _snapshotBaseline(_db.sales, _salesBaseline);
+  _snapshotBaseline(_db.payments, _paymentsBaseline);
   const sales = DB_get('sales') || [];
   const si = sales.findIndex(s => String(s.id) === String(contractId));
   if (si < 0) return;
@@ -5900,7 +6061,7 @@ function renderFinanceReport() {
 // ══════════════════════════════════════════════════════
 // EXPENSES 日常开支
 // ══════════════════════════════════════════════════════
-const EXPENSE_CATS = ['房租','水电','员工工资','通讯费','交通费','餐饮','维修','广告推广','办公用品','税费','手机采购','锁机费用','其他'];
+const EXPENSE_CATS = ['房租','水电','员工工资','通讯费','交通费','餐饮','维修','广告推广','办公用品','税费','手机采购','锁机费用','AI数据费用','业务公关','其他'];
 
 function renderExpenses() {
   const expenses = (DB_get('expenses')||[]).slice().reverse();
@@ -5972,20 +6133,44 @@ function renderExpenses() {
         </tr>
       </table></div>` : `<div class="empty-state"><div class="ei">🧾</div><p>${t("noRecord")}</p></div>`}
     </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:14px">按类别汇总（跟随左侧筛选）</div>
+      <div id="exCatSummary">${buildCatSummary(expenses)}</div>
+    </div>
   </div>`;
+}
+
+function buildCatSummary(list) {
+  if (!list.length) return `<div class="empty-state"><div class="ei">🧾</div><p>${t("noRecord")}</p></div>`;
+  const byCat = {};
+  list.forEach(e => { byCat[e.cat] = (byCat[e.cat]||0) + (+e.amount||0); });
+  const total = list.reduce((a,e)=>a+(+e.amount||0), 0);
+  const rows = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+  return `<div class="table-wrap"><table>
+    <tr><th>类别</th><th>合计</th></tr>
+    ${rows.map(([c,v])=>`
+      <tr>
+        <td class="fw700">${esc(c)}</td>
+        <td class="fw700 text-red">${fmt(v)}</td>
+      </tr>`).join('')}
+    <tr style="background:#fff5f5;font-weight:700;border-top:2px solid var(--border)">
+      <td>${t("totalRow")}</td><td class="text-red">${fmt(total)}</td>
+    </tr>
+  </table></div>`;
 }
 
 function buildExpenseTable(expenses) {
   if (!expenses.length) return `<div class="empty-state"><div class="ei">🧾</div><p>${t("noRecord")}</p></div>`;
-  const catColors = {'房租':'badge-red','员工工资':'badge-red','税费':'badge-red','水电':'badge-amber','通讯费':'badge-amber','交通费':'badge-amber','餐饮':'badge-blue','维修':'badge-amber','广告推广':'badge-purple','办公用品':'badge-blue','手机采购':'badge-green','锁机费用':'badge-amber','其他':'badge-gray'};
+  const catColors = {'房租':'badge-red','员工工资':'badge-red','税费':'badge-red','水电':'badge-amber','通讯费':'badge-amber','交通费':'badge-amber','餐饮':'badge-blue','维修':'badge-amber','广告推广':'badge-purple','办公用品':'badge-blue','手机采购':'badge-green','锁机费用':'badge-amber','AI数据费用':'badge-purple','业务公关':'badge-blue','其他':'badge-gray'};
   return `<div class="table-wrap"><table>
     <tr><th>日期</th><th>实际发放日期</th><th>类别</th><th>金额</th><th>说明</th><th>经手人</th><th>操作</th></tr>
-    ${expenses.map(e=>`<tr>
+    ${expenses.map(e=>`<tr${e.otherBiz ? ' style="background:#fff3e0"' : ''}>
       <td>${e.date}</td>
       <td style="color:var(--muted);font-size:12px">${e.payDate||'—'}</td>
       <td><span class="badge ${catColors[e.cat]||'badge-gray'}">${esc(e.cat)}</span></td>
       <td class="fw700 text-red">${fmt(e.amount)}</td>
-      <td style="color:var(--muted);font-size:12px">${esc(e.note||'—')}</td>
+      <td style="color:var(--muted);font-size:12px">${e.otherBiz ? '<span class="badge badge-amber" style="margin-right:4px">⚠️需核实</span>' : ''}${esc(e.note||'—')}</td>
       <td style="font-size:12px">${esc(e.person||'—')}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.id})">${t('deleteBtn')}</button></td>
     </tr>`).join('')}
@@ -6000,6 +6185,8 @@ window.filterExpenses = function() {
   if (cat)   list = list.filter(e=>e.cat===cat);
   const wrap = document.getElementById('exTable');
   if (wrap) wrap.innerHTML = buildExpenseTable(list.slice().reverse());
+  const catWrap = document.getElementById('exCatSummary');
+  if (catWrap) catWrap.innerHTML = buildCatSummary(list);
 };
 
 window.submitExpense = function() {
@@ -8912,7 +9099,7 @@ window.openAuditDetail = async function(contractId) {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <div style="font-weight:700;color:#0d2137;font-size:13px">${tl('基本信息','Basic Info','ព័ត៌មានមូលដ្ឋាន')}</div>
       <div id="auditEditBtns_${contractId}">
-        <button type="button" onclick="startAuditBasicEdit('${contractId}')" class="btn btn-outline btn-sm" style="font-size:11px">✏️ ${tl('编辑基础信息','Edit Basic Info','កែប្រែព័ត៌មានមូលដ្ឋាន')}</button>
+        ${getCurrentUser()?.role !== 'reviewClerk' ? `<button type="button" onclick="startAuditBasicEdit('${contractId}')" class="btn btn-outline btn-sm" style="font-size:11px">✏️ ${tl('编辑基础信息','Edit Basic Info','កែប្រែព័ត៌មានមូលដ្ឋាន')}</button>` : ''}
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px">
@@ -8965,12 +9152,13 @@ window.openAuditDetail = async function(contractId) {
     <div style="margin-bottom:20px">
       <div style="font-weight:700;color:#0d2137;margin-bottom:8px;font-size:13px">📅 ${tl('还款计划','Repayment Schedule','កាលវិភាគទូទាត់ប្រាក់')}</div>
       <div class="table-wrap" style="max-height:200px;overflow-y:auto"><table>
-        <tr><th>${tl('期次','Period','ខែ')}</th><th>${tl('到期日','Due Date','ថ្ងៃ​ផុត')}</th><th>${tl('本金','Principal','ដើម')}</th><th>${tl('利息','Interest','ការ​ប្រាក់')}</th><th>${tl('状态','Status','ស្ថានភាព')}</th></tr>
+        <tr><th>${tl('期次','Period','ខែ')}</th><th>${tl('到期日','Due Date','ថ្ងៃ​ផុត')}</th><th>${tl('本金','Principal','ដើម')}</th><th>${tl('利息','Interest','ការ​ប្រាក់')}</th><th>${tl('月供','Monthly Total','សរុបប្រចាំខែ')}</th><th>${tl('状态','Status','ស្ថានភាព')}</th></tr>
         ${(s.schedule||[]).map(p=>`<tr>
           <td>${tl(p.period+'期','Period '+p.period,'ខែទី'+p.period)}</td>
           <td>${p.dueDate||'—'}</td>
           <td>$${fmt(+p.principalDue||0)}</td>
           <td>$${fmt(+p.interestDue||0)}</td>
+          <td class="fw700">$${fmt((+p.principalDue||0)+(+p.interestDue||0))}</td>
           <td>${p.paid?('<span style="color:var(--green)">✅ '+tl('已还','Paid','បាន​បង')+'</span>'):('<span style="color:var(--amber)">⏳ '+tl('待还','Pending','រង់​ចាំ')+'</span>')}</td>
         </tr>`).join('')}
       </table></div>
@@ -9279,6 +9467,7 @@ function renderUserMgmt() {
           <option value="entry">录入员</option>
           <option value="collector">催收员</option>
           <option value="auditor">内审员</option>
+          <option value="reviewClerk">审核文员</option>
           <option value="manager">主管</option>
           <option value="boss">老板</option>
         </select>
@@ -9338,9 +9527,9 @@ window.loadUserList = async function() {
     if (!Array.isArray(users)||!users.length) {
       wrap.innerHTML='<div style="padding:20px;color:#90a4ae;text-align:center">暂无账号</div>'; return;
     }
-    const roleBg = {boss:'#ffebee',manager:'#e8eaf6',salesManager:'#e0f2f1',sales:'#e8f5e9',entry:'#e3f2fd',collector:'#fff3e0',auditor:'#f3e5f5'};
-    const roleColor = {boss:'#c62828',manager:'#283593',salesManager:'#00695c',sales:'#2e7d32',entry:'#1565c0',collector:'#e65100',auditor:'#6a1b9a'};
-    const roleOrder = ['boss','manager','salesManager','sales','entry','collector','auditor'];
+    const roleBg = {boss:'#ffebee',manager:'#e8eaf6',salesManager:'#e0f2f1',sales:'#e8f5e9',entry:'#e3f2fd',collector:'#fff3e0',auditor:'#f3e5f5',reviewClerk:'#eceff1'};
+    const roleColor = {boss:'#c62828',manager:'#283593',salesManager:'#00695c',sales:'#2e7d32',entry:'#1565c0',collector:'#e65100',auditor:'#6a1b9a',reviewClerk:'#455a64'};
+    const roleOrder = ['boss','manager','salesManager','sales','entry','collector','auditor','reviewClerk'];
 
     // 🔧 按角色分组，同类角色排在一起
     const byRole = {};
