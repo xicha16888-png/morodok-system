@@ -1172,6 +1172,90 @@ let _syncTimer = null;
 let _dirty = false;
 let _dbReady = false; // 🔒 数据安全锁
 
+// ══════════════════════════════════════════════════════
+// 🔒 并发安全保存机制（sales / payments 专用）
+// 背景：50+人同时在线，旧机制每次保存都是把本地整份 _db（包含全部合同、全部收款记录）
+// 整体 POST 给服务器。哪怕这次只改了1条记录，也会把"本地这一份可能已经过期的其他几百条记录"
+// 一起重新写回服务器，导致自己保存的时候，把"刚才别人保存的、自己本地还没刷新到的改动"覆盖掉。
+// 这正是YON MENGLY那笔收款"钱收了但排期表没标记已还"的根本原因。
+// 解决方式：sales 和 payments 这两个高频、高并发的数组，只上传"这次真正改动过的那几条"，
+// 而不是整个数组；服务器 saveData() 本来就是按id逐条更新（upsert），天然支持这种"部分提交"。
+// ══════════════════════════════════════════════════════
+let _salesBaseline = {};    // id -> 最后一次已知与服务器一致的JSON字符串
+let _paymentsBaseline = {}; // id -> 同上
+let _salesSyncTimer = null;
+let _paymentsSyncTimer = null;
+let _salesDirty = false;    // 🔒 有合同改动还没保存到服务器
+let _paymentsDirty = false; // 🔒 有收款记录改动还没保存到服务器
+
+// 🔒 统一入口：只要还有任何一类改动（整包 / 合同 / 收款）没保存完，都算"有待保存的本地改动"，
+// 后台静默刷新（loadDB整包覆盖_db）必须跳过，否则会把还没来得及上传的改动直接冲掉。
+function _hasPendingLocalChanges() {
+  return _dirty || _salesDirty || _paymentsDirty;
+}
+
+function _snapshotBaseline(arr, map) {
+  Object.keys(map).forEach(k => delete map[k]);
+  (arr||[]).forEach(item => { if (item && item.id != null) map[item.id] = JSON.stringify(item); });
+}
+
+function _scheduleSalesSave() {
+  _salesDirty = true;
+  clearTimeout(_salesSyncTimer);
+  _salesSyncTimer = setTimeout(_saveSalesDelta, 500);
+}
+function _schedulePaymentsSave() {
+  _paymentsDirty = true;
+  clearTimeout(_paymentsSyncTimer);
+  _paymentsSyncTimer = setTimeout(_savePaymentsDelta, 500);
+}
+
+async function _saveSalesDelta() {
+  if (!_dbReady || !_db || !Array.isArray(_db.sales)) { _salesDirty = false; return; }
+  const changed = _db.sales.filter(s => s && s.id != null && JSON.stringify(s) !== _salesBaseline[s.id]);
+  if (!changed.length) { _salesDirty = false; return; }
+  setSyncStatus('syncing');
+  try {
+    const res = await fetch('/api/data', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ sales: changed })
+    });
+    if (!res.ok) throw new Error('服务器返回错误: ' + res.status);
+    changed.forEach(s => { _salesBaseline[s.id] = JSON.stringify(s); });
+    _salesDirty = false;
+    setSyncStatus('ok');
+  } catch(e) {
+    setSyncStatus('error');
+    console.error('❌ 合同保存失败，3秒后重试:', e.message);
+    clearTimeout(_salesSyncTimer);
+    _salesSyncTimer = setTimeout(_saveSalesDelta, 3000); // _salesDirty 保持 true，直到重试成功
+  }
+}
+
+async function _savePaymentsDelta() {
+  if (!_dbReady || !_db || !Array.isArray(_db.payments)) { _paymentsDirty = false; return; }
+  const changed = _db.payments.filter(p => p && p.id != null && JSON.stringify(p) !== _paymentsBaseline[p.id]);
+  if (!changed.length) { _paymentsDirty = false; return; }
+  setSyncStatus('syncing');
+  try {
+    const res = await fetch('/api/data', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ payments: changed })
+    });
+    if (!res.ok) throw new Error('服务器返回错误: ' + res.status);
+    changed.forEach(p => { _paymentsBaseline[p.id] = JSON.stringify(p); });
+    _paymentsDirty = false;
+    setSyncStatus('ok');
+  } catch(e) {
+    setSyncStatus('error');
+    console.error('❌ 收款记录保存失败，3秒后重试:', e.message);
+    clearTimeout(_paymentsSyncTimer);
+    _paymentsSyncTimer = setTimeout(_savePaymentsDelta, 3000); // _paymentsDirty 保持 true，直到重试成功
+  }
+}
+
 async function loadDB() {
   try {
     const controller = new AbortController();
@@ -1192,6 +1276,8 @@ async function loadDB() {
     if (!data.company)                     data.company = {name:'MORODOK',address:'',phone:'',note:''};
     _db = data;
     _dbReady = true;
+    _snapshotBaseline(_db.sales, _salesBaseline);
+    _snapshotBaseline(_db.payments, _paymentsBaseline);
     _lastSyncTime = Date.now();
     try { const el=document.getElementById('companyName'); if(el&&data.company?.name) el.textContent=data.company.name; } catch(e2){}
     return {ok:true};
@@ -1211,10 +1297,13 @@ async function saveDB() {
   }
   setSyncStatus('syncing');
   try {
+    // 🔒 sales / payments 不走这里的整包上传——它们各自有独立的"只传改动过的那几条"通道
+    // （见上面的 _saveSalesDelta / _savePaymentsDelta），避免整份本地快照把别人刚保存的改动覆盖掉。
+    const { sales, payments, ...rest } = _db;
     const res = await fetch('/api/data', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(_db)
+      body: JSON.stringify(rest)
     });
     if (!res.ok) throw new Error('服务器返回错误: ' + res.status);
     setSyncStatus('ok');
@@ -1232,13 +1321,17 @@ function markDirty() {
   _syncTimer = setTimeout(() => { if (_dirty) saveDB(); }, 800);
 }
 
-// 🔒 如果有还没存到服务器的本地改动（_dirty=true），先把它存完，
-// 再做任何"重新从服务器拉数据覆盖本地"的操作，避免刚登记的收款/改动被冲掉
+// 🔒 如果有还没存到服务器的本地改动（_dirty=true，或 sales/payments 的独立保存队列还没发出去），
+// 先把它们都存完，再做任何"重新从服务器拉数据覆盖本地"的操作，避免刚登记的收款/改动被冲掉
 async function flushPendingSave() {
   if (_dirty) {
     clearTimeout(_syncTimer);
     await saveDB();
   }
+  clearTimeout(_salesSyncTimer);
+  await _saveSalesDelta();
+  clearTimeout(_paymentsSyncTimer);
+  await _savePaymentsDelta();
 }
 
 function setSyncStatus(state) {
@@ -1256,6 +1349,9 @@ function DB_set(k, v) {
     return;
   }
   _db[k] = v;
+  // 🔒 sales / payments 走独立的"只传改动记录"通道，不触发整包保存（见并发安全说明）
+  if (k === 'sales') { _scheduleSalesSave(); return; }
+  if (k === 'payments') { _schedulePaymentsSave(); return; }
   markDirty();
 }
 
@@ -1440,7 +1536,7 @@ function nav(page) {
   }
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
   // 切换页面时拉取最新数据（静默刷新，不影响操作）
-  if (!_dirty) {
+  if (!_hasPendingLocalChanges()) {
     loadDB().then(ok => {
       if (ok) {
         _lastSyncTime = Date.now();
@@ -1511,7 +1607,7 @@ function userIsTyping() {
 }
 const FORM_PAGES = ['sale-add','payment-add','early-payment','phones','suppliers','purchase-add','company','expenses'];
 setInterval(async () => {
-  if (_dirty) return;
+  if (_hasPendingLocalChanges()) return;
   if (userIsTyping()) return;
   const page = document.querySelector('.nav-item.active')?.dataset?.page;
   if (FORM_PAGES.includes(page)) return;
@@ -4106,6 +4202,8 @@ window.submitPayment = async function() {
   }
   // 用最新数据覆盖本地缓存，确保后续所有读写都基于服务器最新状态，不使用可能过期的旧缓存
   _db = freshData; _dbReady = true;
+  _snapshotBaseline(_db.sales, _salesBaseline);
+  _snapshotBaseline(_db.payments, _paymentsBaseline);
   const sales = DB_get('sales') || [];
   const si = sales.findIndex(s => String(s.id) === String(contractId));
   if (si < 0) return;
