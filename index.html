@@ -3405,7 +3405,11 @@ function renderPaymentAdd() {
       <div class="form-group"><label>${tl('实收合计','Total Received','សរុប​ទទួល​បាន')}</label><input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px"></div>
       <input type="hidden" id="pPrincipal"><input type="hidden" id="pInterest">
       `}
-      <div class="form-group"><label>${t('remarks')}</label><input id="pNote" placeholder="${tl('可选','Optional','ស្រេច​ចិត្ត')}"></div>
+      <div class="form-group">
+        <label style="color:var(--red);font-weight:700">${tl('本次减免','Waived This Time','បង់​បន្ថយ')} ($) <span style="font-size:11px;font-weight:400;color:#90a4ae">${tl('跟客户协商好不收的部分，会当已还处理','Agreed-upon waived amount, counted as paid','ចំនួន​ដែល​យល់ព្រម​មិន​យក')}</span></label>
+        <input type="number" id="pWaive" value="0" step="0.01" oninput="calcCollectorTotal()" style="border:1.5px solid var(--red)">
+      </div>
+      <div class="form-group"><label>${t('remarks')}</label><input id="pNote" placeholder="${tl('建议写清楚减免原因，方便以后核对','Recommend noting the reason for the waiver','សូម​កត់​ហេតុផល')}"></div>
       <div class="form-group span3">
         <label>${tl('收款凭证截图（可选，方便日后核实）','Payment Screenshot (optional)','រូបភាព​បញ្ជាក់​ការ​បង់​ប្រាក់')}</label>
         <div style="font-size:11px;color:#90a4ae;margin:2px 0 6px">${tl('也可以直接粘贴截图 Ctrl+V','Or paste screenshot with Ctrl+V','ឬ​ចម្លង​រូបភាព​ដោយ Ctrl+V')}</div>
@@ -4266,21 +4270,29 @@ window.submitPayment = async function() {
 
   // 所有角色统一填实收总额，系统自动拆分本金/利息
   actualReceived = +(document.getElementById('pTotalReceived')?.value||0);
-  if (!actualReceived) { showMsg('payMsg', '请输入实收金额', 'red'); return; }
+  const waiveAmt = Math.max(0, +(document.getElementById('pWaive')?.value||0)); // 🔖 跟客户协商好不收的部分（比如免最后一期利息），不算真实现金，但算已结清
+  if (!actualReceived && !waiveAmt) { showMsg('payMsg', '请输入实收金额', 'red'); return; }
 
-  // 按应还比例拆分：本金优先，剩余算利息
+  // 按应还比例拆分：本金优先，剩余算利息（只算真实收到的现金）
   principal = Math.min(actualReceived, duePrincipal);
   interest  = Math.max(0, actualReceived - principal);
 
+  // 减免金额优先冲抵"现金没覆盖到的利息缺口"，剩余的再冲抵本金缺口
+  const interestGap = Math.max(0, dueInterest - interest);
+  const waivedInterest = Math.min(waiveAmt, interestGap);
+  const principalGap = Math.max(0, duePrincipal - principal);
+  const waivedPrincipal = Math.min(Math.max(0, waiveAmt - waivedInterest), principalGap);
+
   const total = actualReceived + penalty;
 
-  // ── 判断足额/不足额 ──
+  // ── 判断足额/不足额（现金 + 减免 一起算够不够）──
   const TOLERANCE = 2.00; // 差额2美元以内按已结清处理
-  const isFullPaid = actualReceived >= dueTotalAmt - TOLERANCE;
-  const shortfall  = Math.max(0, dueTotalAmt - actualReceived);
+  const effectiveTotal = actualReceived + waiveAmt;
+  const isFullPaid = effectiveTotal >= dueTotalAmt - TOLERANCE;
+  const shortfall  = Math.max(0, dueTotalAmt - effectiveTotal);
 
   if (isFullPaid) {
-    // ✅ 足额 → 标记已还
+    // ✅ 足额（含减免）→ 标记已还
     sales[si].schedule[pi] = {
       ...sched,
       paid: true,
@@ -4288,15 +4300,19 @@ window.submitPayment = async function() {
       paidPrincipal: parseFloat(principal.toFixed(2)),
       paidInterest: parseFloat(interest.toFixed(2)),
       paidServiceFee: serviceFee,
+      waivedPrincipal: parseFloat(waivedPrincipal.toFixed(2)),
+      waivedInterest: parseFloat(waivedInterest.toFixed(2)),
       penalty,
       paidStatus: 'paid',
       shortfall: 0,
       advanceDays: advanceDays > 0 ? advanceDays : 0
     };
     if (sales[si].schedule.every(p => p.paid)) sales[si].status = '已结清';
-    showMsg('payMsg', `✅ ${s.customer} 第${periodNo}期 — 实收 ${fmt(total)}，已结清`, 'green');
+    showMsg('payMsg', waiveAmt
+      ? `✅ ${s.customer} 第${periodNo}期 — 实收 ${fmt(total)}，减免 <b style="color:var(--red)">${fmt(waiveAmt)}</b>，已结清`
+      : `✅ ${s.customer} 第${periodNo}期 — 实收 ${fmt(total)}，已结清`, 'green');
   } else {
-    // ⚠️ 不足额 → 记录部分收款，不标记已还，继续计逾期
+    // ⚠️ 不足额（现金+减免仍不够）→ 记录部分收款，不标记已还，继续计逾期
     sales[si].schedule[pi] = {
       ...sched,
       paid: false,           // 未全额，保留在逾期
@@ -4305,10 +4321,12 @@ window.submitPayment = async function() {
       partialPrincipal: parseFloat(principal.toFixed(2)),
       partialInterest: parseFloat(interest.toFixed(2)),
       partialPenalty: penalty,
+      waivedPrincipal: parseFloat(waivedPrincipal.toFixed(2)),
+      waivedInterest: parseFloat(waivedInterest.toFixed(2)),
       shortfall: parseFloat(shortfall.toFixed(2))
     };
     showMsg('payMsg',
-      `⚠️ ${s.customer} 第${periodNo}期 — 实收 ${fmt(total)}，差额 <b style="color:red">${fmt(shortfall)}</b>，期次保留在逾期列表`,
+      `⚠️ ${s.customer} 第${periodNo}期 — 实收 ${fmt(total)}${waiveAmt?`，减免${fmt(waiveAmt)}`:''}，差额 <b style="color:red">${fmt(shortfall)}</b>，期次保留在逾期列表`,
       'amber');
   }
 
@@ -4322,6 +4340,8 @@ window.submitPayment = async function() {
     id: newPayId, contractId, customer: s.customer, period: periodNo,
     date: pDate, principal: parseFloat(principal.toFixed(2)),
     interest: parseFloat(interest.toFixed(2)), serviceFee, penalty,
+    waivedPrincipal: parseFloat(waivedPrincipal.toFixed(2)),
+    waivedInterest: parseFloat(waivedInterest.toFixed(2)),
     isPartial: !isFullPaid,
     shortfall: isFullPaid ? 0 : parseFloat(shortfall.toFixed(2)),
     advanceDays: advanceDays > 0 ? advanceDays : 0,
@@ -4329,7 +4349,7 @@ window.submitPayment = async function() {
     recordedByRole: _payUser?.role || ''
   });
   DB_set('payments', pays);
-  logActivity('还款登记', `#${contractId} ${s.customer} 第${periodNo}期`, `本金$${principal.toFixed(2)} 利息$${interest.toFixed(2)}${penalty?` 滞纳金$${penalty}`:''}`);
+  logActivity('还款登记', `#${contractId} ${s.customer} 第${periodNo}期`, `本金$${principal.toFixed(2)} 利息$${interest.toFixed(2)}${penalty?` 滞纳金$${penalty}`:''}${waiveAmt?` 减免$${waiveAmt.toFixed(2)}`:''}`);
 
   // 📷 如果填了收款截图，异步上传并回填URL（不阻塞主流程）
   if (window._pendingPayReceipt) {
@@ -4347,9 +4367,9 @@ window.submitPayment = async function() {
   }
 
   // 重置表单
-  ['pPenalty','pNote','pTotalReceived'].forEach(id => {
+  ['pPenalty','pNote','pTotalReceived','pWaive'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.value = id === 'pPenalty' ? '0' : '';
+    if (el) el.value = (id === 'pPenalty' || id === 'pWaive') ? '0' : '';
   });
   const totEl = document.getElementById('pTotal');
   if (totEl) totEl.value = '';
@@ -9159,7 +9179,7 @@ window.openAuditDetail = async function(contractId) {
           <td>$${fmt(+p.principalDue||0)}</td>
           <td>$${fmt(+p.interestDue||0)}</td>
           <td class="fw700">$${fmt((+p.principalDue||0)+(+p.interestDue||0))}</td>
-          <td>${p.paid?('<span style="color:var(--green)">✅ '+tl('已还','Paid','បាន​បង')+'</span>'):('<span style="color:var(--amber)">⏳ '+tl('待还','Pending','រង់​ចាំ')+'</span>')}</td>
+          <td>${p.paid?('<span style="color:var(--green)">✅ '+tl('已还','Paid','បាន​បង')+'</span>'):('<span style="color:var(--amber)">⏳ '+tl('待还','Pending','រង់​ចាំ')+'</span>')}${((+p.waivedPrincipal||0)+(+p.waivedInterest||0))>0?`<br><span style="font-size:11px;color:var(--red)">🔖 ${tl('减免','Waived','បង់​បន្ថយ')}$${fmt((+p.waivedPrincipal||0)+(+p.waivedInterest||0))}</span>`:''}</td>
         </tr>`).join('')}
       </table></div>
     </div>
