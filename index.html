@@ -1908,26 +1908,50 @@ async function refreshAuditBadge() {
 // 临时存储待上传的图片
 window._pendingImages = {};
 
-// 收款登记的凭证截图（独立于合同材料上传）
-window._pendingPayReceipt = null;
+// 收款登记的凭证截图（独立于合同材料上传）—— 最多3张，避免催收员为了多传一张图而把同一笔收款重复登记两次
+window._pendingPayReceipt = null; // 兼容旧代码引用，不再使用
+window._pendingPayReceipts = []; // 待上传的图片数组，最多3张
+const PAY_RECEIPT_MAX = 3;
+
 window.previewPayReceipt = function(input) {
-  const file = input.files[0];
-  if (!file) return;
-  setPayReceiptFile(file);
+  const files = Array.from(input.files || []);
+  files.forEach(f => addPayReceiptFile(f));
+  input.value = ''; // 清空，方便同一个文件再选一次或者继续加下一张
 };
 
-// 收款凭证：把文件（无论来自选择文件还是粘贴）存入待上传变量并显示预览
-function setPayReceiptFile(file) {
-  window._pendingPayReceipt = file;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const preview = document.getElementById('pReceiptPreview');
-    if (preview) preview.innerHTML = `<img src="${e.target.result}" style="max-width:160px;max-height:120px;border-radius:6px;object-fit:cover;border:1px solid var(--border)">`;
-  };
-  reader.readAsDataURL(file);
+// 收款凭证：把文件（无论来自选择文件还是粘贴）加入待上传数组并刷新预览（最多3张）
+function addPayReceiptFile(file) {
+  if (!file) return;
+  if (window._pendingPayReceipts.length >= PAY_RECEIPT_MAX) {
+    alert(tl(`最多只能传${PAY_RECEIPT_MAX}张`,`Max ${PAY_RECEIPT_MAX} photos`,`អតិបរមា ${PAY_RECEIPT_MAX} រូបភាព`));
+    return;
+  }
+  window._pendingPayReceipts.push(file);
+  renderPayReceiptPreview();
+}
+window.removePendingPayReceipt = function(idx) {
+  window._pendingPayReceipts.splice(idx, 1);
+  renderPayReceiptPreview();
+};
+function renderPayReceiptPreview() {
+  const preview = document.getElementById('pReceiptPreview');
+  if (!preview) return;
+  if (!window._pendingPayReceipts.length) { preview.innerHTML = ''; return; }
+  Promise.all(window._pendingPayReceipts.map(file => new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.readAsDataURL(file);
+  }))).then(urls => {
+    preview.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap">` + urls.map((u,i) => `
+      <div style="position:relative">
+        <img src="${u}" style="width:90px;height:90px;border-radius:6px;object-fit:cover;border:1px solid var(--border)">
+        <button type="button" onclick="removePendingPayReceipt(${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--red);color:#fff;border:none;cursor:pointer;font-size:12px;line-height:1">×</button>
+      </div>`).join('') + `</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">${window._pendingPayReceipts.length}/${PAY_RECEIPT_MAX} ${tl('张','photos','រូបភាព')}</div>`;
+  });
 }
 
-// 收款凭证：支持直接粘贴截图（Ctrl+V），只要收款登记页面打开着就生效
+// 收款凭证：支持直接粘贴截图（Ctrl+V），只要收款登记页面打开着就生效，可以连续粘贴多张
 document.addEventListener('paste', function(e) {
   const preview = document.getElementById('pReceiptPreview');
   if (!preview) return; // 收款登记页面未打开，不处理
@@ -1939,7 +1963,7 @@ document.addEventListener('paste', function(e) {
       if (raw) {
         const ext = (item.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
         const named = new File([raw], `paste_${Date.now()}.${ext}`, { type: item.type });
-        setPayReceiptFile(named);
+        addPayReceiptFile(named);
       }
       e.preventDefault();
       break;
@@ -1947,20 +1971,41 @@ document.addEventListener('paste', function(e) {
   }
 });
 
+// 把待上传数组里的图片依次上传，返回URL数组（不再是单个URL）
 window.uploadPayReceipt = async function(paymentId) {
-  const file = window._pendingPayReceipt;
-  if (!file) return null;
-  const ext = file.name.split('.').pop();
-  const path = `payments/${paymentId}.${ext}`;
-  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${path}`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': file.type, 'x-upsert': 'true' },
-    body: file,
-  });
-  window._pendingPayReceipt = null;
-  if (res.ok) return `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${path}`;
-  console.error('收款截图上传失败:', await res.text());
-  return null;
+  const files = window._pendingPayReceipts || [];
+  if (!files.length) return [];
+  const urls = [];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const ext = file.name.split('.').pop();
+    const path = `payments/${paymentId}_${i+1}.${ext}`;
+    try {
+      const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${path}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': file.type, 'x-upsert': 'true' },
+        body: file,
+      });
+      if (res.ok) urls.push(`${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${path}`);
+      else console.error('收款截图上传失败:', await res.text());
+    } catch(e) { console.error('收款截图上传失败:', e.message); }
+  }
+  window._pendingPayReceipts = [];
+  return urls;
+};
+
+// 查看一笔收款记录的全部凭证截图（兼容老记录的单张 receiptUrl 字段）
+window.viewPayReceipts = function(id) {
+  const pay = (DB_get('payments')||[]).find(p => p.id === id);
+  if (!pay) return;
+  const urls = (pay.receiptUrls && pay.receiptUrls.length) ? pay.receiptUrls : (pay.receiptUrl ? [pay.receiptUrl] : []);
+  if (!urls.length) return;
+  showModal(`📷 ${tl('收款凭证','Payment Receipt','វិក័យប័ត្រ')} — ${esc(pay.customer||'')} ${tl('第','#','ខែ')}${pay.period}${tl('期','','')}`, `
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      ${urls.map(u => `<a href="${u}" target="_blank"><img src="${u}" style="width:140px;height:140px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"></a>`).join('')}
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:10px">${tl('点击图片可以放大查看原图','Click a photo to view full size','ចុច​ដើម្បី​មើល​ពេញ')}</div>
+  `);
 };
 
 window.previewImg = function(input, catKey, slotKey) {
@@ -3411,10 +3456,10 @@ function renderPaymentAdd() {
       </div>
       <div class="form-group"><label>${t('remarks')}</label><input id="pNote" placeholder="${tl('建议写清楚减免原因，方便以后核对','Recommend noting the reason for the waiver','សូម​កត់​ហេតុផល')}"></div>
       <div class="form-group span3">
-        <label>${tl('收款凭证截图（可选，方便日后核实）','Payment Screenshot (optional)','រូបភាព​បញ្ជាក់​ការ​បង់​ប្រាក់')}</label>
-        <div style="font-size:11px;color:#90a4ae;margin:2px 0 6px">${tl('也可以直接粘贴截图 Ctrl+V','Or paste screenshot with Ctrl+V','ឬ​ចម្លង​រូបភាព​ដោយ Ctrl+V')}</div>
+        <label>${tl('收款凭证截图（可选，最多3张，方便日后核实）','Payment Screenshots (optional, up to 3)','រូបភាព​បញ្ជាក់​ការ​បង់​ប្រាក់ (រហូតដល់ 3)')}</label>
+        <div style="font-size:11px;color:#90a4ae;margin:2px 0 6px">${tl('可以多选文件，或者连续粘贴截图 Ctrl+V，不用为了多传一张图就重新登记一次','Select multiple files or paste (Ctrl+V) repeatedly — no need to re-register just to attach another photo','អាច​ជ្រើសរើស​ច្រើន ឬ​ចម្លង​ជាប់ៗ Ctrl+V')}</div>
         <div id="pReceiptPreview" style="margin-bottom:6px"></div>
-        <input type="file" accept="image/*" capture="environment" onchange="previewPayReceipt(this)">
+        <input type="file" accept="image/*" multiple onchange="previewPayReceipt(this)">
       </div>
     </div>
     <div class="btn-row">
@@ -3746,7 +3791,7 @@ function buildPayTableGrouped(pays, isCollector) {
               <div style="font-weight:800;font-size:14px;color:var(--green)">${tl('合计','Total','សរុប')} ${fmt(total)}</div>
             </div>`}
             <div style="display:flex;gap:4px;flex-shrink:0">
-              ${p.receiptUrl ? `<button onclick="window.open('${p.receiptUrl}','_blank')" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px" title="${tl('查看收款凭证','View receipt','មើលវិក័យប័ត្រ')}">📷</button>` : ''}
+              ${(p.receiptUrls && p.receiptUrls.length) || p.receiptUrl ? `<button onclick="viewPayReceipts(${p.id})" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px" title="${tl('查看收款凭证','View receipt','មើលវិក័យប័ត្រ')}">📷${(p.receiptUrls&&p.receiptUrls.length>1)?p.receiptUrls.length:''}</button>` : ''}
               <button onclick="editPayment(${p.id})" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px">✏️</button>
               <button onclick="deletePayment(${p.id})" class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 8px">🗑️</button>
             </div>
@@ -3812,6 +3857,10 @@ window.updateEpSplit = function(duePrincipal) {
   const el = document.getElementById('epSplitPreview');
   if (el) el.textContent = `${tl('本金','Principal','ដើម')} ${fmt(principal)} + ${tl('利息','Interest','ការប្រាក់')} ${fmt(interest)}`;
 };
+// 编辑收款记录时正在处理的凭证照片状态：保留下来的旧照片URL + 新加的待上传文件
+window._epKeptReceipts = [];
+window._epNewReceipts = [];
+
 window.editPayment = function(id) {
   const pays = DB_get('payments')||[];
   const pay = pays.find(p => p.id === id);
@@ -3819,6 +3868,8 @@ window.editPayment = function(id) {
   const sale = (DB_get('sales')||[]).find(s => s.id === pay.contractId);
   const sched = sale?.schedule?.find(p => p.period === pay.period);
   const duePrincipal = +sched?.principalDue || 0;
+  window._epKeptReceipts = (pay.receiptUrls && pay.receiptUrls.length) ? pay.receiptUrls.slice() : (pay.receiptUrl ? [pay.receiptUrl] : []);
+  window._epNewReceipts = [];
   showModal(`✏️ ${tl('修改收款记录','Edit Payment','កែ​ការ​ទូ​ទាត់')} — ${pay.customer} ${tl('第','#','ខែ')}${pay.period}${tl('期','','')}`,`
     <div class="form-grid" style="gap:12px">
       <div class="form-group">
@@ -3846,6 +3897,12 @@ window.editPayment = function(id) {
         <input id="epNote" type="text" value="${pay.note||''}" placeholder="${tl('可选','Optional','ស្រេច​ចិត្ត')}"
           style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
       </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('收款凭证截图（最多3张）','Payment Screenshots (up to 3)','វិក័យប័ត្រ (រហូតដល់ 3)')}</label>
+        <div style="font-size:11px;color:var(--muted);margin:2px 0 6px">${tl('比如之前只传了一张，可以在这里补传，不用重新登记一笔','Add another photo here if only one was uploaded before — no need to re-register the payment','បន្ថែម​រូបភាព​នៅ​ទីនេះ')}</div>
+        <div id="epReceiptPreview" style="margin-bottom:6px"></div>
+        <input type="file" accept="image/*" multiple onchange="epAddReceiptFiles(this)">
+      </div>
     </div>
     <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px 12px;margin:12px 0;font-size:12px;color:#5d4037">
       📌 ${tl('合同','Contract','កិច្ចសន្យា')}：<b>#${pay.contractId}</b> · ${tl('客户','Customer','អ្នក​ប្រើ')}：<b>${pay.customer}</b> · ${tl('第','#','ខែ')} <b>${pay.period}</b> ${tl('期','','')}</div>
@@ -3855,9 +3912,49 @@ window.editPayment = function(id) {
       <button onclick="closeModal()" class="btn btn-outline">${t('cancel')}</button>
     </div>
   `);
+  setTimeout(renderEpReceiptPreview, 50);
 };
 
-window.saveEditPayment = function(id) {
+// 编辑收款记录弹窗里的照片预览：保留的旧照片 + 新加的待上传照片，都能各自删除
+function renderEpReceiptPreview() {
+  const preview = document.getElementById('epReceiptPreview');
+  if (!preview) return;
+  const kept = (window._epKeptReceipts||[]).map((u,i) => `
+    <div style="position:relative">
+      <img src="${u}" style="width:80px;height:80px;border-radius:6px;object-fit:cover;border:1px solid var(--border)">
+      <button type="button" onclick="epRemoveKeptReceipt(${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--red);color:#fff;border:none;cursor:pointer;font-size:12px;line-height:1">×</button>
+    </div>`);
+  const renderNew = () => {
+    Promise.all((window._epNewReceipts||[]).map(file => new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.readAsDataURL(file);
+    }))).then(urls => {
+      const newImgs = urls.map((u,i) => `
+        <div style="position:relative">
+          <img src="${u}" style="width:80px;height:80px;border-radius:6px;object-fit:cover;border:2px solid var(--green)">
+          <button type="button" onclick="epRemoveNewReceipt(${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--red);color:#fff;border:none;cursor:pointer;font-size:12px;line-height:1">×</button>
+        </div>`);
+      preview.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap">${kept.join('')}${newImgs.join('')}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">${(kept.length+newImgs.length)}/${PAY_RECEIPT_MAX} ${tl('张（绿框是新加的）','photos (green border = new)','រូបភាព')}</div>`;
+    });
+  };
+  renderNew();
+}
+window.epAddReceiptFiles = function(input) {
+  const files = Array.from(input.files || []);
+  const total = () => (window._epKeptReceipts.length + window._epNewReceipts.length);
+  files.forEach(f => {
+    if (total() >= PAY_RECEIPT_MAX) { alert(tl(`最多只能有${PAY_RECEIPT_MAX}张`,`Max ${PAY_RECEIPT_MAX} photos`,`អតិបរមា ${PAY_RECEIPT_MAX}`)); return; }
+    window._epNewReceipts.push(f);
+  });
+  input.value = '';
+  renderEpReceiptPreview();
+};
+window.epRemoveKeptReceipt = function(idx) { window._epKeptReceipts.splice(idx,1); renderEpReceiptPreview(); };
+window.epRemoveNewReceipt = function(idx) { window._epNewReceipts.splice(idx,1); renderEpReceiptPreview(); };
+
+window.saveEditPayment = async function(id) {
   const pays = DB_get('payments')||[];
   const idx = pays.findIndex(p => p.id === id);
   if (idx < 0) return;
@@ -3877,8 +3974,18 @@ window.saveEditPayment = function(id) {
 
   if (!newDate) { if(msgEl){msgEl.textContent='❌ '+tl('请填写收款日期','Please enter payment date','សូម​បញ្ចូល​ថ្ងៃ');msgEl.style.color='red';} return; }
 
+  // 🔖 如果补传了新照片，先上传，再跟保留下来的旧照片合并成最终的凭证列表
+  let finalReceipts = (window._epKeptReceipts||[]).slice();
+  if (window._epNewReceipts && window._epNewReceipts.length) {
+    if(msgEl){msgEl.textContent=tl('正在上传照片...','Uploading photos...','កំពុង​ផ្ទុក​រូបភាព...');msgEl.style.color='#546e7a';}
+    window._pendingPayReceipts = window._epNewReceipts;
+    const uploaded = await uploadPayReceipt(id);
+    finalReceipts = finalReceipts.concat(uploaded);
+    window._epNewReceipts = [];
+  }
+
   // Update payment record
-  pays[idx] = { ...pay, date: newDate, principal: newPrincipal, interest: newInterest, penalty: newPenalty, note: newNote };
+  pays[idx] = { ...pay, date: newDate, principal: newPrincipal, interest: newInterest, penalty: newPenalty, note: newNote, receiptUrls: finalReceipts };
   DB_set('payments', pays);
 
   // Update the schedule paid amounts
@@ -4351,14 +4458,14 @@ window.submitPayment = async function() {
   DB_set('payments', pays);
   logActivity('还款登记', `#${contractId} ${s.customer} 第${periodNo}期`, `本金$${principal.toFixed(2)} 利息$${interest.toFixed(2)}${penalty?` 滞纳金$${penalty}`:''}${waiveAmt?` 减免$${waiveAmt.toFixed(2)}`:''}`);
 
-  // 📷 如果填了收款截图，异步上传并回填URL（不阻塞主流程）
-  if (window._pendingPayReceipt) {
-    uploadPayReceipt(newPayId).then(url => {
-      if (!url) return;
+  // 📷 如果填了收款截图（最多3张），异步上传并回填URL数组（不阻塞主流程）
+  if (window._pendingPayReceipts && window._pendingPayReceipts.length) {
+    uploadPayReceipt(newPayId).then(urls => {
+      if (!urls || !urls.length) return;
       const latestPays = DB_get('payments') || [];
       const idx = latestPays.findIndex(p => p.id === newPayId);
       if (idx >= 0) {
-        latestPays[idx].receiptUrl = url;
+        latestPays[idx].receiptUrls = urls;
         DB_set('payments', latestPays);
       }
     });
