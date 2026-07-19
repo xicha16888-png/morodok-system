@@ -1951,10 +1951,12 @@ function renderPayReceiptPreview() {
   });
 }
 
-// 收款凭证：支持直接粘贴截图（Ctrl+V），只要收款登记页面打开着就生效，可以连续粘贴多张
+// 收款凭证：支持直接粘贴截图（Ctrl+V），可以连续粘贴多张
+// 新登记（pReceiptPreview）和修改收款记录弹窗（epReceiptPreview）都支持，哪个开着就粘到哪个
 document.addEventListener('paste', function(e) {
-  const preview = document.getElementById('pReceiptPreview');
-  if (!preview) return; // 收款登记页面未打开，不处理
+  const inEdit = !!document.getElementById('epReceiptPreview');
+  const inNew  = !!document.getElementById('pReceiptPreview');
+  if (!inEdit && !inNew) return; // 两个界面都没打开，不处理
   const items = e.clipboardData && e.clipboardData.items;
   if (!items) return;
   for (const item of items) {
@@ -1963,7 +1965,17 @@ document.addEventListener('paste', function(e) {
       if (raw) {
         const ext = (item.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
         const named = new File([raw], `paste_${Date.now()}.${ext}`, { type: item.type });
-        addPayReceiptFile(named);
+        if (inEdit) {
+          // 修改收款记录弹窗优先（弹窗在最上层）
+          if ((window._epKeptReceipts.length + window._epNewReceipts.length) >= PAY_RECEIPT_MAX) {
+            alert(tl(`最多只能有${PAY_RECEIPT_MAX}张`,`Max ${PAY_RECEIPT_MAX} photos`,`អតិបរមា ${PAY_RECEIPT_MAX}`));
+          } else {
+            window._epNewReceipts.push(named);
+            renderEpReceiptPreview();
+          }
+        } else {
+          addPayReceiptFile(named);
+        }
       }
       e.preventDefault();
       break;
