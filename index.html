@@ -1952,11 +1952,12 @@ function renderPayReceiptPreview() {
 }
 
 // 收款凭证：支持直接粘贴截图（Ctrl+V），可以连续粘贴多张
-// 新登记（pReceiptPreview）和修改收款记录弹窗（epReceiptPreview）都支持，哪个开着就粘到哪个
+// 新登记（pReceiptPreview）、修改收款记录弹窗（epReceiptPreview）、提前还款（erpReceiptPreview）都支持，哪个开着就粘到哪个
 document.addEventListener('paste', function(e) {
-  const inEdit = !!document.getElementById('epReceiptPreview');
-  const inNew  = !!document.getElementById('pReceiptPreview');
-  if (!inEdit && !inNew) return; // 两个界面都没打开，不处理
+  const inEdit  = !!document.getElementById('epReceiptPreview');
+  const inNew   = !!document.getElementById('pReceiptPreview');
+  const inEarly = !!document.getElementById('erpReceiptPreview');
+  if (!inEdit && !inNew && !inEarly) return; // 都没打开，不处理
   const items = e.clipboardData && e.clipboardData.items;
   if (!items) return;
   for (const item of items) {
@@ -1973,8 +1974,10 @@ document.addEventListener('paste', function(e) {
             window._epNewReceipts.push(named);
             renderEpReceiptPreview();
           }
-        } else {
+        } else if (inNew) {
           addPayReceiptFile(named);
+        } else {
+          addEarlyReceiptFile(named);
         }
       }
       e.preventDefault();
@@ -2004,6 +2007,77 @@ window.uploadPayReceipt = async function(paymentId) {
   }
   window._pendingPayReceipts = [];
   return urls;
+};
+
+// 提前还款的凭证截图（独立于普通还款登记的那一套，最多3张）
+window._pendingEarlyReceipts = [];
+window.previewEarlyReceipt = function(input) {
+  const files = Array.from(input.files || []);
+  files.forEach(f => addEarlyReceiptFile(f));
+  input.value = '';
+};
+function addEarlyReceiptFile(file) {
+  if (!file) return;
+  if (window._pendingEarlyReceipts.length >= PAY_RECEIPT_MAX) {
+    alert(tl(`最多只能传${PAY_RECEIPT_MAX}张`,`Max ${PAY_RECEIPT_MAX} photos`,`អតិបរមា ${PAY_RECEIPT_MAX} រូបភាព`));
+    return;
+  }
+  window._pendingEarlyReceipts.push(file);
+  renderEarlyReceiptPreview();
+}
+window.removePendingEarlyReceipt = function(idx) {
+  window._pendingEarlyReceipts.splice(idx, 1);
+  renderEarlyReceiptPreview();
+};
+function renderEarlyReceiptPreview() {
+  const preview = document.getElementById('erpReceiptPreview');
+  if (!preview) return;
+  if (!window._pendingEarlyReceipts.length) { preview.innerHTML = ''; return; }
+  Promise.all(window._pendingEarlyReceipts.map(file => new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.readAsDataURL(file);
+  }))).then(urls => {
+    preview.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap">` + urls.map((u,i) => `
+      <div style="position:relative">
+        <img src="${u}" style="width:90px;height:90px;border-radius:6px;object-fit:cover;border:1px solid var(--border)">
+        <button type="button" onclick="removePendingEarlyReceipt(${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--red);color:#fff;border:none;cursor:pointer;font-size:12px;line-height:1">×</button>
+      </div>`).join('') + `</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">${window._pendingEarlyReceipts.length}/${PAY_RECEIPT_MAX} ${tl('张','photos','រូបភាព')}</div>`;
+  });
+}
+window.uploadEarlyReceipt = async function(recordId) {
+  const files = window._pendingEarlyReceipts || [];
+  if (!files.length) return [];
+  const urls = [];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const ext = file.name.split('.').pop();
+    const path = `early_payments/${recordId}_${i+1}.${ext}`;
+    try {
+      const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${path}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': file.type, 'x-upsert': 'true' },
+        body: file,
+      });
+      if (res.ok) urls.push(`${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${path}`);
+      else console.error('提前还款凭证上传失败:', await res.text());
+    } catch(e) { console.error('提前还款凭证上传失败:', e.message); }
+  }
+  window._pendingEarlyReceipts = [];
+  return urls;
+};
+window.viewEarlyReceipts = function(id) {
+  const rec = (DB_get('earlyPayments')||[]).find(r => r.id === id);
+  if (!rec) return;
+  const urls = rec.receiptUrls || [];
+  if (!urls.length) return;
+  showModal(`📷 ${tl('提前还款凭证','Early Settlement Receipt','វិក័យប័ត្រ')} — ${esc(rec.customer||'')}`, `
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      ${urls.map(u => `<a href="${u}" target="_blank"><img src="${u}" style="width:140px;height:140px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"></a>`).join('')}
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:10px">${tl('点击图片可以放大查看原图','Click a photo to view full size','ចុច​ដើម្បី​មើល​ពេញ')}</div>
+  `);
 };
 
 // 查看一笔收款记录的全部凭证截图（兼容老记录的单张 receiptUrl 字段）
@@ -4806,15 +4880,13 @@ function renderStatsProfit() {
   <div class="card" style="border-left:4px solid var(--amber)">
     <div class="card-header">
       <div class="card-title">⚡ ${t("earlyRepayTitle")}</div>
-      <span class="badge ${tEarlyDiff >= 0 ? 'badge-green' : 'badge-red'}">${t("profitChange")}： ${tEarlyDiff >= 0 ? '+' : ''}${fmt(tEarlyDiff)}</span>
     </div>
     <div class="table-wrap"><table>
-      <tr><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>#</th><th>${t("negotiatedAmount").replace(" *","")}</th><th>${t("origRemainInterest")}</th><th>${t("netProfit")}</th><th>${t("profitChange")}</th></tr>
-      ${earlyPays.map(r=>{const diff=+r.actualProfit-+r.origRemainInterest;return`<tr>
+      <tr><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>#</th><th>${t("negotiatedAmount").replace(" *","")}</th><th>${t("origRemainInterest")}</th><th>${t("netProfit")}</th></tr>
+      ${earlyPays.map(r=>{return`<tr>
         <td>${r.date}</td><td class="fw700">${esc(r.customer)}</td><td class="text-blue">#${r.contractId}</td>
         <td class="text-amber fw700">${fmt(+r.negotiated||+r.negotiatedAmount||0)}</td><td>${fmt(r.origRemainInterest||0)}</td>
         <td class="text-green fw700">${fmt(r.actualProfit)}</td>
-        <td class="${diff>=0?'text-green':'text-red'} fw700">${diff>=0?'+':''}${fmt(diff)}</td>
       </tr>`;}).join('')}
     </table></div>
   </div>` : ''}
@@ -5484,6 +5556,12 @@ function renderEarlyPayment() {
 
     <div class="form-grid" style="margin-top:14px">
       <div class="form-group span3"><label>${tl('备注','Remarks','សម្គាល់')}</label><input id="epNote" placeholder="${tl('协商详情（可选）','Negotiation details (optional)','ព័ត៌មានលម្អិត (ស្រេចចិត្ត)')}"></div>
+      <div class="form-group span3">
+        <label>${tl('收款凭证截图（最多3张）','Payment Screenshots (up to 3)','វិក័យប័ត្រ (រហូតដល់ 3)')}</label>
+        <div style="font-size:11px;color:#90a4ae;margin:2px 0 6px">${tl('可以多选文件，或者连续粘贴截图 Ctrl+V','Select multiple files or paste (Ctrl+V) repeatedly','អាច​ជ្រើសរើស​ច្រើន ឬ​ចម្លង​ជាប់ៗ')}</div>
+        <div id="erpReceiptPreview" style="margin-bottom:6px"></div>
+        <input type="file" accept="image/*" multiple onchange="previewEarlyReceipt(this)">
+      </div>
     </div>
     <div class="btn-row">
       <button class="btn btn-success" onclick="submitEarlyPayment()">${t("confirmEarly")}</button>
@@ -5518,11 +5596,9 @@ function buildEarlyTable(list) {
       <th>${t("remainPrincipal")}</th><th>${t("origRemainInterest")}</th>
       <th>${_lang==='km'?'កាំចំណែក':_lang==='en'?'Rebate':'返点'}</th>
       <th>${t("negotiatedAmount").replace(" *","")}</th>
-      <th>${t("netProfit")}</th><th>${t("profitChange")}</th><th>${t("remarks")}</th><th></th>
+      <th>${t("netProfit")}</th><th>${t("remarks")}</th><th></th>
     </tr>
     ${list.map(r => {
-      const origIncome = (+r.origRemainInterest||0) + (+r.remainServiceFee||0);
-      const diff = +r.actualProfit - origIncome;
       return `<tr>
         <td>${r.date}</td>
         <td class="fw700">${esc(r.customer)}</td>
@@ -5542,9 +5618,11 @@ function buildEarlyTable(list) {
         <td class="text-red">${(+r.storeRebate||+r.rebate||0)>0?'-'+fmt(+r.storeRebate||+r.rebate||0):'—'}</td>
         <td class="fw700 text-amber">${fmt(+r.negotiated||+r.negotiatedAmount||0)}</td>
         <td class="fw700 text-green">${fmt(r.actualProfit)}</td>
-        <td class="${diff >= 0 ? 'text-green' : 'text-red'}">${diff >= 0 ? '+' : ''}${fmt(diff)}</td>
         <td style="color:var(--muted);font-size:12px">${esc(r.note||'-')}</td>
-        <td><button onclick="deleteEarlyPayment(${r.id})" class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 8px">🗑️</button></td>
+        <td>
+          ${(r.receiptUrls && r.receiptUrls.length) ? `<button onclick="viewEarlyReceipts(${r.id})" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px;margin-right:4px" title="${tl('查看凭证','View receipt','មើលវិក័យប័ត្រ')}">📷${r.receiptUrls.length>1?r.receiptUrls.length:''}</button>` : ''}
+          <button onclick="deleteEarlyPayment(${r.id})" class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 8px">🗑️</button>
+        </td>
       </tr>`;
     }).join('')}
   </table></div>`;
@@ -5635,8 +5713,6 @@ function updateProfitTip(remainP, remainI, remainSvc, rebate, neg, actualProfit)
   const tip = document.getElementById('epProfitTip');
   if (!tip) return;
   const origIncome = remainI + remainSvc; // 原应收利息+手续费
-  const diff = actualProfit - origIncome;
-  const pct  = origIncome > 0 ? ((actualProfit / origIncome) * 100).toFixed(1) : '0';
   tip.innerHTML = `
     <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px">
       <span>💰 协商收回：<b>${fmt(neg)}</b></span>
@@ -5645,9 +5721,6 @@ function updateProfitTip(remainP, remainI, remainSvc, rebate, neg, actualProfit)
     <div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px;margin-top:6px">
       <span>📉 原剩余利息：<b>${fmt(origIncome)}</b></span>
       <span>🏪 店家返点（已扣除）：<b class="text-red">-${fmt(rebate)}</b></span>
-      <span class="${diff >= 0 ? 'text-green' : 'text-red'}" style="font-weight:700">
-        利润变化：${diff >= 0 ? '+' : ''}${fmt(diff)}
-      </span>
     </div>`;
 }
 
@@ -5698,8 +5771,9 @@ window.submitEarlyPayment = function() {
 
   // Save early payment record
   const earlyPayments = DB_get('earlyPayments') || [];
+  const newEarlyId = newId();
   earlyPayments.push({
-    id: newId(), contractId, customer, date,
+    id: newEarlyId, contractId, customer, date,
     remainPrincipal: remainP, origRemainInterest: remainI,
     remainServiceFee: remainSvc, storeRebate: rebate,
     negotiatedAmount: neg, actualProfit, autoProfit,
@@ -5709,6 +5783,21 @@ window.submitEarlyPayment = function() {
   logActivity('提前还款', `#${contractId} ${customer}`, `协商金额$${neg} 利润$${actualProfit}`);
 
   showMsg('epMsg', `✅ ${_lang==='km'?'ការទូទាត់មុនបានទទួលជោគជ័យ':_lang==='en'?'Early settlement done':'提前结清成功！'} ${customer} — ${fmt(neg)} → ${_lang==='km'?'ចំណេញ':_lang==='en'?'Profit':'利润'} ${fmt(actualProfit)}`, 'green');
+
+  // 📷 如果填了凭证截图（最多3张），异步上传并回填URL数组（不阻塞主流程）
+  if (window._pendingEarlyReceipts && window._pendingEarlyReceipts.length) {
+    uploadEarlyReceipt(newEarlyId).then(urls => {
+      if (!urls || !urls.length) return;
+      const latestEarly = DB_get('earlyPayments') || [];
+      const idx = latestEarly.findIndex(r => r.id === newEarlyId);
+      if (idx >= 0) {
+        latestEarly[idx].receiptUrls = urls;
+        DB_set('earlyPayments', latestEarly);
+      }
+    });
+    const rp = document.getElementById('erpReceiptPreview');
+    if (rp) rp.innerHTML = '';
+  }
 
   // Reset form
   if (mpEl) { mpEl.value = ''; mpEl._manuallyEdited = false; }
