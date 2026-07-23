@@ -5302,16 +5302,52 @@ function renderPhones() {
 }
 function buildPhonesTable(phones) {
   if (!phones.length) return `<div class="empty-state"><div class="ei">📱</div><p>暂无型号</p></div>`;
-  return `<div class="table-wrap"><table id="phoneSortTable"><tr><th style="width:32px"></th><th>${t("colBrand")}</th><th>${t("colPhoneModel")}</th><th>${t("colCostPrice")}</th><th>${t("colSellPrice")}</th><th>${t("colStock")}</th><th>${t("colAction")}</th></tr>
+  return `<div class="table-wrap"><table id="phoneSortTable"><tr><th style="width:32px"></th><th>${t("colBrand")}</th><th>${t("colPhoneModel")}</th><th>${t("colCostPrice")}</th><th>${t("colSellPrice")}</th><th>${t("colStock")}</th><th>${tl('放款额度上限','Max Loan','ព្រំដែនកម្ចី')}</th><th>${t("colAction")}</th></tr>
     ${phones.map(p=>`<tr draggable="true" data-pid="${p.id}" style="cursor:grab">
       <td style="text-align:center;color:#888;font-size:16px;user-select:none">⠿</td>
       <td class="fw700">${esc(p.brand)}</td><td>${esc(p.model)}</td>
       <td><span class="badge badge-blue">${esc(p.storage||p.cost||'-')}</span></td>
       <td>${fmt(p.price)}</td>
       <td><span class="badge ${p.stock===0?'badge-red':p.stock<=2?'badge-amber':'badge-green'}">${p.stock} ${_lang==='km'?'គ្រឿង':_lang==='en'?'pcs':'台'}</span></td>
-      <td><button class="btn btn-danger btn-sm" onclick="deletePhone(${p.id})">${t('deleteBtn')}</button></td></tr>`).join('')}
+      <td>${p.maxLoanAmount ? `<span class="fw700" style="color:var(--amber)">$${fmt(p.maxLoanAmount)}</span>` : `<span style="color:var(--muted);font-size:12px">${tl('未设置','Not set','មិនទាន់កំណត់')}</span>`}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-outline btn-sm" style="margin-right:4px" onclick="editPhoneLimit(${p.id})">✏️ ${tl('编辑额度','Edit Limit','កែសម្រួល')}</button>
+        <button class="btn btn-danger btn-sm" onclick="deletePhone(${p.id})">${t('deleteBtn')}</button>
+      </td></tr>`).join('')}
   </table></div>`;
 }
+
+window.editPhoneLimit = function(id) {
+  const phones = DB_get('phones') || [];
+  const p = phones.find(x => x.id === id);
+  if (!p) return;
+  showModal(`✏️ ${tl('编辑放款额度上限','Edit Max Loan Amount','កែសម្រួលព្រំដែនកម្ចី')} — ${esc(p.brand)} ${esc(p.model)} ${esc(p.storage||'')}`, `
+    <div class="form-group">
+      <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('放款额度上限 ($)','Max Loan Amount ($)','ព្រំដែនកម្ចី ($)')}</label>
+      <input id="phLimitInput" type="number" step="1" value="${p.maxLoanAmount || ''}" placeholder="${tl('填0或留空表示不限制','0 or blank = no limit','0 ឬ ទទេ = គ្មានដែនកំណត់')}"
+        style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">${tl('这个数字就是销售登记时，这个型号能贷款的最高金额，超过会提示不能提交','This is the max loan amount allowed for this model at sale time','នេះជាទឹកប្រាក់កម្ចីអតិបរមាដែលអនុញ្ញាត')}</div>
+    </div>
+    <div id="phLimitMsg" style="margin:8px 0;font-size:12px"></div>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <button onclick="savePhoneLimit(${id})" class="btn btn-primary">💾 ${tl('保存','Save','រក្សាទុក')}</button>
+      <button onclick="closeModal()" class="btn btn-outline">${t('cancel')}</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('phLimitInput')?.focus(), 100);
+};
+
+window.savePhoneLimit = function(id) {
+  const phones = DB_get('phones') || [];
+  const idx = phones.findIndex(x => x.id === id);
+  if (idx < 0) return;
+  const val = parseFloat(document.getElementById('phLimitInput')?.value || '0');
+  phones[idx] = { ...phones[idx], maxLoanAmount: val > 0 ? val : 0 };
+  DB_set('phones', phones);
+  closeModal();
+  document.getElementById('phoneTable').innerHTML = buildPhonesTable(phones);
+  showMsg('phoneMsg', '✅ ' + tl('额度已更新','Limit updated','បានធ្វើបច្ចុប្បន្នភាព'), 'green');
+};
 
 // 拖拽排序逻辑
 let _dragSrcId = null;
