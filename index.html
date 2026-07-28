@@ -3016,6 +3016,7 @@ function renderSaleList() {
         ${shopOpts}
       </select>
       <button class="btn btn-primary btn-sm" onclick="nav('sale-add')">${t('newContractBtn')}</button>
+      ${canAddStoreCode() ? `<button class="btn btn-outline btn-sm" onclick="openAddStoreCodeModal()">🏪+ ${tl('新增店铺','Add Store','បន្ថែមហាង')}</button>` : ''}
     </div>
     <div id="saleShopBadge" style="margin-bottom:8px"></div>
     <div id="saleTableWrap">${buildSalesTable(allSales)}</div>
@@ -3404,6 +3405,66 @@ function canDeleteSale() {
   if (role === 'boss' || role === 'manager' || role === 'salesManager') return true;
   return SPECIAL_DELETE_USERNAMES.includes((u?.username || '').toLowerCase());
 }
+
+// 🔒 特批：SREYNET（小美）单独获批可以在"销售查询"页面手动新增店铺编号+店名
+// 随着业务增多、新店铺不断出现，让她能自己录入，不用每次都等老板发计算器/脚本
+const SPECIAL_ADD_STORE_USERNAMES = ['sreynet'];
+function canAddStoreCode() {
+  const u = getCurrentUser();
+  return SPECIAL_ADD_STORE_USERNAMES.includes((u?.username || '').toLowerCase());
+}
+
+window.openAddStoreCodeModal = function() {
+  if (!canAddStoreCode()) return;
+  showModal(`🏪 ${tl('新增店铺编号','Add Store Code','បន្ថែមលេខកូដហាង')}`, `
+    <div class="form-group">
+      <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('店铺编号','Store Code','លេខកូដហាង')} *</label>
+      <input id="newStoreCode" placeholder="${tl('比如 MPIN00099','e.g. MPIN00099','ឧ. MPIN00099')}"
+        style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+    </div>
+    <div class="form-group" style="margin-top:10px">
+      <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('店铺名称（高棉语）','Store Name (Khmer)','ឈ្មោះហាង (ខ្មែរ)')} *</label>
+      <input id="newStoreNameKm" placeholder="${tl('店铺名称','Store name','ឈ្មោះហាង')}"
+        style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+    </div>
+    <div class="form-group" style="margin-top:10px">
+      <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('店主英文名（可选）','Owner English Name (optional)','ឈ្មោះជាអក្សរឡាតាំង (ស្រេចចិត្ត)')}</label>
+      <input id="newStoreNameEn" placeholder="${tl('可选','Optional','ស្រេចចិត្ត')}"
+        style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+    </div>
+    <div id="newStoreMsg" style="margin:10px 0;font-size:12px"></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button onclick="submitNewStoreCode()" class="btn btn-primary">➕ ${tl('新增','Add','បន្ថែម')}</button>
+      <button onclick="closeModal()" class="btn btn-outline">${t('cancel')}</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('newStoreCode')?.focus(), 100);
+};
+
+window.submitNewStoreCode = function() {
+  if (!canAddStoreCode()) return;
+  const msgEl = document.getElementById('newStoreMsg');
+  const code = document.getElementById('newStoreCode')?.value?.trim() || '';
+  const nameKm = document.getElementById('newStoreNameKm')?.value?.trim() || '';
+  const nameEn = document.getElementById('newStoreNameEn')?.value?.trim() || '';
+  if (!code || !nameKm) {
+    if (msgEl) { msgEl.textContent = tl('店铺编号和名称都要填','Store code and name are required','សូមបំពេញលេខកូដ និងឈ្មោះ'); msgEl.style.color = 'red'; }
+    return;
+  }
+  const stores = DB_get('stores') || [];
+  if (stores.some(s => (s.code||'').toLowerCase() === code.toLowerCase())) {
+    if (msgEl) { msgEl.textContent = tl('这个店铺编号已经存在了','This store code already exists','លេខកូដនេះមានរួចហើយ'); msgEl.style.color = 'red'; }
+    return;
+  }
+  stores.push({
+    id: 'st_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+    code, name: `${code} - ${nameKm}`, nameKm, nameEn
+  });
+  DB_set('stores', stores);
+  logActivity('新增店铺', code, nameKm);
+  closeModal();
+  alert(`✅ ${tl('已新增店铺','Store added','បានបន្ថែមហាង')}：${code} - ${nameKm}`);
+};
 
 // 🔓 2026-07：老板确认，所有内审员都能看"销售查询"页面，方便核对业务员单子（原来只批给SREYNET一个人）
 function canViewSaleListSpecial() {
