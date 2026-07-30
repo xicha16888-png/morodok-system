@@ -4239,9 +4239,20 @@ window.loadContractPeriods = function() {
     if (totEl) totEl.value = '';
     return;
   }
-  sel.innerHTML = unpaid.map(p =>
-    `<option value="${p.period}">${p.period} ${t("period")} (到期:${p.dueDate})</option>`
-  ).join('');
+  // 🔖 每一期之前有没有已经部分收过钱/减免过，从收款记录里累加算出来（不看schedule字段，避免历史数据不准），
+  // 有的话在下拉选项里加提示"已收$X，还差$Y"，方便催收员知道这期不是从头开始收
+  const allPaysForHint = DB_get('payments')||[];
+  sel.innerHTML = unpaid.map(p => {
+    const priorPays = allPaysForHint.filter(x => String(x.contractId)===String(id) && +x.period===p.period);
+    const priorReceived = priorPays.reduce((a,x)=>a+(+x.principal||0)+(+x.interest||0),0);
+    const priorWaived   = priorPays.reduce((a,x)=>a+(+x.waivedPrincipal||0)+(+x.waivedInterest||0),0);
+    const dueTotal = (+p.principalDue||0)+(+p.interestDue||0)+(+p.serviceFeeDue||0);
+    const remain = Math.max(0, dueTotal - priorReceived - priorWaived);
+    const hint = (priorReceived + priorWaived) > 0
+      ? `（${tl('已收','Received','បានទទួល')}${fmt(priorReceived + priorWaived)}，${tl('还差','left','នៅ​សល់')}${fmt(remain)}）`
+      : '';
+    return `<option value="${p.period}">${p.period} ${t("period")} (到期:${p.dueDate})${hint}</option>`;
+  }).join('');
   autoFillPayment();
 };
 window.autoFillPayment = function() {
@@ -4250,15 +4261,26 @@ window.autoFillPayment = function() {
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
   const p = s?.schedule.find(x => x.period === period);
   if (p) {
-    const totalDue = (+p.principalDue||0)+(+p.interestDue||0)+(+p.serviceFeeDue||0);
-    // 催收员：填应还总额
+    const duePrincipal = +p.principalDue||0;
+    const dueInterest  = (+p.interestDue||0)+(+p.serviceFeeDue||0);
+    const dueTotal     = duePrincipal + dueInterest;
+    // 🔖 累计已收：从收款记录里查这个合同这一期之前所有的收款+减免，算出真正还差多少（客户分多次还这一期的场景）
+    const priorPays = (DB_get('payments')||[]).filter(x => String(x.contractId)===String(id) && +x.period===period);
+    const priorPrincipal = priorPays.reduce((a,x)=>a+(+x.principal||0),0);
+    const priorInterest  = priorPays.reduce((a,x)=>a+(+x.interest||0),0);
+    const priorWaivedPrincipal = priorPays.reduce((a,x)=>a+(+x.waivedPrincipal||0),0);
+    const priorWaivedInterest  = priorPays.reduce((a,x)=>a+(+x.waivedInterest||0),0);
+    const remainingPrincipal = Math.max(0, duePrincipal - priorPrincipal - priorWaivedPrincipal);
+    const remainingInterest  = Math.max(0, dueInterest  - priorInterest  - priorWaivedInterest);
+    const remainingTotal     = remainingPrincipal + remainingInterest;
+    // 催收员：填应还总额（有部分收款历史的，这里显示的是"还差多少"，不是整期原始应还）
     const expEl = document.getElementById('pExpected');
-    if (expEl) expEl.value = fmt(totalDue);
-    // 普通录入：分别填本金利息
+    if (expEl) expEl.value = fmt(remainingTotal);
+    // 普通录入：分别填本金利息（同样按剩余算）
     const pi = document.getElementById('pPrincipal');
     const ii = document.getElementById('pInterest');
-    if (pi && pi.type !== 'hidden') pi.value = (+p.principalDue).toFixed(2);
-    if (ii && ii.type !== 'hidden') ii.value = ((+p.interestDue||0)+(+p.serviceFeeDue||0)).toFixed(2);
+    if (pi && pi.type !== 'hidden') pi.value = remainingPrincipal.toFixed(2);
+    if (ii && ii.type !== 'hidden') ii.value = remainingInterest.toFixed(2);
     calcPayTotal();
   }
 };
@@ -4481,6 +4503,21 @@ window.submitPayment = async function() {
   const dueInterest  = (+sched.interestDue||0) + (+sched.serviceFeeDue||0);
   const dueTotalAmt  = duePrincipal + dueInterest;
 
+  // 🔖 累计已收：从收款记录里查这个合同这一期之前所有的收款+减免（客户分多次把这一期还清的场景，
+  // 比如先还$60，过几天再还$40），不看schedule上次留下的字段，直接从流水累加，保证准确
+  const priorPaysForPeriod  = (DB_get('payments')||[]).filter(x => String(x.contractId)===String(contractId) && +x.period===periodNo);
+  const priorPrincipal       = priorPaysForPeriod.reduce((a,x)=>a+(+x.principal||0),0);
+  const priorInterest        = priorPaysForPeriod.reduce((a,x)=>a+(+x.interest||0),0);
+  const priorWaivedPrincipal = priorPaysForPeriod.reduce((a,x)=>a+(+x.waivedPrincipal||0),0);
+  const priorWaivedInterest  = priorPaysForPeriod.reduce((a,x)=>a+(+x.waivedInterest||0),0);
+  const priorPenalty         = priorPaysForPeriod.reduce((a,x)=>a+(+x.penalty||0),0);
+  const priorReceived        = priorPrincipal + priorInterest; // 之前已经实收的现金（不含减免）
+
+  // 这一期还剩多少本金/利息没结清——给这一笔新收款做本金优先拆分用的是"剩余"，不是整期原始应还，
+  // 这样分期多次付款才能把每一笔正确地记到没结清的部分上
+  const remainingPrincipalDue = Math.max(0, duePrincipal - priorPrincipal - priorWaivedPrincipal);
+  const remainingInterestDue  = Math.max(0, dueInterest  - priorInterest  - priorWaivedInterest);
+
   // 🔔 提前还款超过1个月(30天)提醒 —— 不阻止提交，但需要人工确认核实
   let advanceDays = 0;
   if (sched.dueDate) {
@@ -4529,66 +4566,77 @@ window.submitPayment = async function() {
   const waiveAmt = Math.max(0, +(document.getElementById('pWaive')?.value||0)); // 🔖 跟客户协商好不收的部分（比如免最后一期利息），不算真实现金，但算已结清
   if (!actualReceived && !waiveAmt) { showMsg('payMsg', '请输入实收金额', 'red'); return; }
 
-  // 按应还比例拆分：本金优先，剩余算利息（只算真实收到的现金）
-  principal = Math.min(actualReceived, duePrincipal);
+  // 按应还比例拆分：本金优先，剩余算利息（只算真实收到的现金）——按"这一期还剩多少"拆，不是按整期
+  // 原始应还拆，这样分期多次付款才能把每一笔正确地记到没结清的部分上
+  principal = Math.min(actualReceived, remainingPrincipalDue);
   interest  = Math.max(0, actualReceived - principal);
 
-  // 减免金额优先冲抵"现金没覆盖到的利息缺口"，剩余的再冲抵本金缺口
-  const interestGap = Math.max(0, dueInterest - interest);
+  // 减免金额优先冲抵"现金没覆盖到的利息缺口"，剩余的再冲抵本金缺口（同样按剩余算）
+  const interestGap = Math.max(0, remainingInterestDue - interest);
   const waivedInterest = Math.min(waiveAmt, interestGap);
-  const principalGap = Math.max(0, duePrincipal - principal);
+  const principalGap = Math.max(0, remainingPrincipalDue - principal);
   const waivedPrincipal = Math.min(Math.max(0, waiveAmt - waivedInterest), principalGap);
 
   const total = actualReceived + penalty;
 
-  // ── 判断足额/不足额（现金 + 减免 一起算够不够）──
+  // ── 判断整期是否足额（本次现金+减免，累加上这一期之前已经收过的部分一起算）──
   const TOLERANCE = 2.00; // 差额2美元以内按已结清处理
-  const effectiveTotal = actualReceived + waiveAmt;
+  const cumulativeWaived = priorWaivedPrincipal + priorWaivedInterest + waiveAmt;
+  const effectiveTotal   = priorReceived + actualReceived + cumulativeWaived; // 这一期累计"实收+减免"
   const isFullPaid = effectiveTotal >= dueTotalAmt - TOLERANCE;
-  const shortfall  = Math.max(0, dueTotalAmt - effectiveTotal);
+  const shortfall  = Math.max(0, dueTotalAmt - effectiveTotal); // 累计后真正还差多少
+  const hasPriorPayment = priorReceived > 0 || priorWaivedPrincipal > 0 || priorWaivedInterest > 0;
+
+  // 这一期累计的本金/利息/减免/滞纳金（这一笔 + 之前所有笔加总），写回schedule时用累计值，
+  // 这样不管客户分几次还，最终 paidPrincipal/paidInterest 都是整期的真实合计
+  const cumPrincipal       = priorPrincipal + principal;
+  const cumInterest        = priorInterest + interest;
+  const cumWaivedPrincipal = priorWaivedPrincipal + waivedPrincipal;
+  const cumWaivedInterest  = priorWaivedInterest + waivedInterest;
+  const cumPenalty         = priorPenalty + penalty;
 
   if (isFullPaid) {
-    // ✅ 足额（含减免）→ 标记已还
+    // ✅ 足额（含减免，累计后够了）→ 标记已还
     sales[si].schedule[pi] = {
       ...sched,
       paid: true,
       paidDate: pDate,
-      paidPrincipal: parseFloat(principal.toFixed(2)),
-      paidInterest: parseFloat(interest.toFixed(2)),
+      paidPrincipal: parseFloat(cumPrincipal.toFixed(2)),
+      paidInterest: parseFloat(cumInterest.toFixed(2)),
       paidServiceFee: serviceFee,
-      waivedPrincipal: parseFloat(waivedPrincipal.toFixed(2)),
-      waivedInterest: parseFloat(waivedInterest.toFixed(2)),
-      penalty,
+      waivedPrincipal: parseFloat(cumWaivedPrincipal.toFixed(2)),
+      waivedInterest: parseFloat(cumWaivedInterest.toFixed(2)),
+      penalty: parseFloat(cumPenalty.toFixed(2)),
       paidStatus: 'paid',
       shortfall: 0,
       advanceDays: advanceDays > 0 ? advanceDays : 0
     };
     if (sales[si].schedule.every(p => p.paid)) sales[si].status = '已结清';
     showMsg('payMsg', waiveAmt
-      ? `✅ ${s.customer} 第${periodNo}期 — 实收 ${fmt(total)}，减免 <b style="color:var(--red)">${fmt(waiveAmt)}</b>，已结清`
-      : `✅ ${s.customer} 第${periodNo}期 — 实收 ${fmt(total)}，已结清`, 'green');
+      ? `✅ ${s.customer} 第${periodNo}期 — 本次实收 ${fmt(total)}，减免 <b style="color:var(--red)">${fmt(waiveAmt)}</b>${hasPriorPayment?`（累计${fmt(effectiveTotal)}）`:''}，已结清`
+      : `✅ ${s.customer} 第${periodNo}期 — 本次实收 ${fmt(total)}${hasPriorPayment?`（累计${fmt(effectiveTotal)}）`:''}，已结清`, 'green');
   } else {
-    // ⚠️ 不足额（现金+减免仍不够）→ 记录部分收款，不标记已还，继续计逾期
+    // ⚠️ 不足额（现金+减免累计仍不够）→ 记录部分收款，不标记已还，继续计逾期
     sales[si].schedule[pi] = {
       ...sched,
       paid: false,           // 未全额，保留在逾期
       partialPaid: true,     // 标记有部分收款
       partialDate: pDate,
-      partialPrincipal: parseFloat(principal.toFixed(2)),
-      partialInterest: parseFloat(interest.toFixed(2)),
-      partialPenalty: penalty,
-      waivedPrincipal: parseFloat(waivedPrincipal.toFixed(2)),
-      waivedInterest: parseFloat(waivedInterest.toFixed(2)),
+      partialPrincipal: parseFloat(cumPrincipal.toFixed(2)),
+      partialInterest: parseFloat(cumInterest.toFixed(2)),
+      partialPenalty: parseFloat(cumPenalty.toFixed(2)),
+      waivedPrincipal: parseFloat(cumWaivedPrincipal.toFixed(2)),
+      waivedInterest: parseFloat(cumWaivedInterest.toFixed(2)),
       shortfall: parseFloat(shortfall.toFixed(2))
     };
     showMsg('payMsg',
-      `⚠️ ${s.customer} 第${periodNo}期 — 实收 ${fmt(total)}${waiveAmt?`，减免${fmt(waiveAmt)}`:''}，差额 <b style="color:red">${fmt(shortfall)}</b>，期次保留在逾期列表`,
+      `⚠️ ${s.customer} 第${periodNo}期 — 本次实收 ${fmt(total)}${waiveAmt?`，减免${fmt(waiveAmt)}`:''}${hasPriorPayment?`（累计已收${fmt(effectiveTotal)}）`:''}，还差 <b style="color:red">${fmt(shortfall)}</b>，期次保留在逾期列表`,
       'amber');
   }
 
   DB_set('sales', sales);
 
-  // 保存收款记录（不足额也记录，备查）
+  // 保存收款记录（不足额也记录，备查；这里存的是这一笔本身的金额，不是累计值，方便查每一笔明细）
   const pays = DB_get('payments')||[];
   const newPayId = newId();
   const _payUser = getCurrentUser();
@@ -5131,6 +5179,28 @@ function renderReminderTomorrow() {
 
 function renderReminderOverdue() {
   const td = today(), sales = DB_get('sales')||[], items = [];
+
+  // 🔖 按 合同id_期次 分组，记下每一期之前已经收了多少现金/减免了多少，用于部分还款场景下
+  // 算"还差多少"，而不是拿整期原始应还金额——笔数/客户数这类计数不受影响，只影响金额显示
+  const allPaymentsForOD = DB_get('payments')||[];
+  const _odPayMap = {};
+  allPaymentsForOD.forEach(x => {
+    const k = String(x.contractId)+'_'+x.period;
+    if (!_odPayMap[k]) _odPayMap[k] = {received:0, waived:0};
+    _odPayMap[k].received += (+x.principal||0)+(+x.interest||0);
+    _odPayMap[k].waived   += (+x.waivedPrincipal||0)+(+x.waivedInterest||0);
+  });
+  function odRemainDue(s, p) {
+    const full = (+p.principalDue||0)+(+p.interestDue||0);
+    const got = _odPayMap[String(s.id)+'_'+p.period];
+    if (!got) return full;
+    return Math.max(0, full - got.received - got.waived);
+  }
+  function odReceivedSoFar(s, p) {
+    const got = _odPayMap[String(s.id)+'_'+p.period];
+    return got ? got.received + got.waived : 0;
+  }
+
   sales.forEach(s => {
     if (s.status === '提前结清') return;
     s.schedule.forEach(p => {
@@ -5150,10 +5220,10 @@ function renderReminderOverdue() {
   });
   // 少到多排序
   const allContracts = Object.values(contractMap).sort((a,b)=>a.maxDays-b.maxDays);
-  const totalOwedAll = items.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
-  // 总欠款(含未到期)：这些逾期客户名下，所有还没还完的期数(不管到没到期)全部加起来
+  const totalOwedAll = items.reduce((a,{s,p})=>a+odRemainDue(s,p),0);
+  // 总欠款(含未到期)：这些逾期客户名下，所有还没还完的期数(不管到没到期)全部加起来（部分还款的按还差多少算）
   const totalRemainingAll = allContracts.reduce((sum, {s}) => {
-    return sum + s.schedule.reduce((a,p) => a + (p.paid ? 0 : (+p.principalDue||0)+(+p.interestDue||0)), 0);
+    return sum + s.schedule.reduce((a,p) => a + (p.paid ? 0 : odRemainDue(s,p)), 0);
   }, 0);
 
   // 紧急联系人卡片（多语言）
@@ -5171,19 +5241,20 @@ function renderReminderOverdue() {
     </div>`;
   }
 
-  // 供筛选时重新计算顶部汇总数字使用
+  // 供筛选时重新计算顶部汇总数字使用（笔数/客户数仍按"期数"计，不受部分还款影响；金额按还差多少算）
   window._overdueContracts = allContracts.map(({s, periods, maxDays}) => ({
     id: s.id,
     name: (s.customer||'').toLowerCase(),
     phone: s.customerPhone||'',
     days: maxDays,
     periodCount: periods.length,
-    owed: periods.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0),
-    remaining: s.schedule.reduce((a,p) => a + (p.paid ? 0 : (+p.principalDue||0)+(+p.interestDue||0)), 0),
+    owed: periods.reduce((a,{p})=>a+odRemainDue(s,p),0),
+    remaining: s.schedule.reduce((a,p) => a + (p.paid ? 0 : odRemainDue(s,p)), 0),
   }));
 
   // 🔖 账龄分析：按逾期天数分4档，分别统计客户数+欠款合计（用每份合同"最长逾期天数"来归档，
-  // 跟下面详情列表、筛选器用的是同一个口径，点卡片能联动筛选列表）
+  // 跟下面详情列表、筛选器用的是同一个口径，点卡片能联动筛选列表；欠款金额按部分还款后"还差多少"算，
+  // 客户数/笔数不受影响）
   const AGING_BUCKETS = [
     { key:'d7',  test: d => d <= 7,           label: () => t('filter7'),     color:'#f57f17', bg:'#fffde7' },
     { key:'d15', test: d => d > 7 && d <= 15, label: () => t('filter7to15'), color:'#ef6c00', bg:'#fff3e0' },
@@ -5192,7 +5263,7 @@ function renderReminderOverdue() {
   ];
   const agingStats = AGING_BUCKETS.map(b => {
     const inBucket = allContracts.filter(c => b.test(c.maxDays));
-    const sum = inBucket.reduce((a,c) => a + c.periods.reduce((s,{p})=>s+(+p.principalDue||0)+(+p.interestDue||0),0), 0);
+    const sum = inBucket.reduce((a,c) => a + c.periods.reduce((s2,{p})=>s2+odRemainDue(c.s,p),0), 0);
     return { ...b, count: inBucket.length, amount: sum };
   });
 
@@ -5232,7 +5303,7 @@ function renderReminderOverdue() {
 
   <div class="card" style="padding:0;overflow:hidden" id="overdueListCard">
     ${allContracts.map(({s, periods, maxDays}) => {
-      const totalOwed = periods.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
+      const totalOwed = periods.reduce((a,{p})=>a+odRemainDue(s,p),0);
       const color = maxDays>=30?'var(--red)':maxDays>=15?'var(--amber)':'#f57f17';
       const bg = maxDays>=30?'#ffebee':maxDays>=15?'#fff8e1':'#fffde7';
       const uid = 'od_'+s.id;
@@ -5268,7 +5339,8 @@ function renderReminderOverdue() {
                 <span style="font-size:12px;color:#90a4ae;margin-left:8px">${t('dueLabel')} ${p.dueDate}</span>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-                <span style="font-weight:700;color:var(--red)">${fmt((+p.principalDue||0)+(+p.interestDue||0))}</span>
+                ${p.partialPaid ? `<span style="background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${tl('已部分还','Partial','បានបង់ខ្លះ')} ${fmt(odReceivedSoFar(s,p))}</span>` : ''}
+                <span style="font-weight:700;color:var(--red)">${fmt(odRemainDue(s,p))}</span>
                 <span style="background:${days>=30?'#ffebee':days>=15?'#fff3e0':'#fff8e1'};color:${days>=30?'var(--red)':days>=15?'var(--amber)':'#f57f17'};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${days} ${t('days')}</span>
                 <button onclick="event.stopPropagation();navToPayment('${s.id}',${p.period})" class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 10px">${t('registerPayment')}</button>
               </div>
