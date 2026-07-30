@@ -3970,19 +3970,58 @@ window.deletePayment = function(id) {
   DB_set('payments', newPays);
   logActivity('删除流水', `#${pay.contractId} ${pay.customer} 第${pay.period}期`, `本金$${pay.principal} 利息$${pay.interest}`);
 
-  // Also revert the schedule item to unpaid
+  // 🔖 重新根据"删掉这笔之后剩下的收款记录"算这一期的真实状态——如果这一期本来有好几笔
+  // （客户分次还），删掉其中一笔不能把整期直接清零，要按剩下那几笔重新累计判断
   const sales = DB_get('sales')||[];
   const si = sales.findIndex(s => s.id === pay.contractId);
   if (si >= 0) {
     const pi = sales[si].schedule.findIndex(p => p.period === pay.period);
-    if (pi >= 0 && sales[si].schedule[pi].paid) {
-      sales[si].schedule[pi] = {
-        ...sales[si].schedule[pi],
-        paid: false, paidDate: null,
-        paidPrincipal: 0, paidInterest: 0, paidServiceFee: 0, penalty: 0
-      };
-      // Revert status if was settled
-      if (sales[si].status === '已结清') sales[si].status = '进行中';
+    if (pi >= 0) {
+      const sched = sales[si].schedule[pi];
+      const remainPays = newPays.filter(p => String(p.contractId)===String(pay.contractId) && +p.period===pay.period);
+      if (!remainPays.length) {
+        // 这一期一笔收款都不剩了，彻底还原成"完全没收过"的状态
+        sales[si].schedule[pi] = {
+          ...sched,
+          paid: false, paidDate: null, paidStatus: '',
+          paidPrincipal: 0, paidInterest: 0, paidServiceFee: 0,
+          partialPaid: false, partialDate: null, partialPrincipal: 0, partialInterest: 0, partialPenalty: 0,
+          waivedPrincipal: 0, waivedInterest: 0, penalty: 0, shortfall: 0
+        };
+      } else {
+        const cumPrincipal       = remainPays.reduce((a,x)=>a+(+x.principal||0),0);
+        const cumInterest        = remainPays.reduce((a,x)=>a+(+x.interest||0),0);
+        const cumWaivedPrincipal = remainPays.reduce((a,x)=>a+(+x.waivedPrincipal||0),0);
+        const cumWaivedInterest  = remainPays.reduce((a,x)=>a+(+x.waivedInterest||0),0);
+        const cumPenalty         = remainPays.reduce((a,x)=>a+(+x.penalty||0),0);
+        const dueTotalAmt = (+sched.principalDue||0) + (+sched.interestDue||0) + (+sched.serviceFeeDue||0);
+        const TOLERANCE = 2.00;
+        const effectiveTotal = cumPrincipal + cumInterest + cumWaivedPrincipal + cumWaivedInterest;
+        const isFullPaid = effectiveTotal >= dueTotalAmt - TOLERANCE;
+        const shortfall  = Math.max(0, dueTotalAmt - effectiveTotal);
+        if (isFullPaid) {
+          sales[si].schedule[pi] = {
+            ...sched, paid: true, paidStatus: 'paid',
+            paidPrincipal: parseFloat(cumPrincipal.toFixed(2)),
+            paidInterest: parseFloat(cumInterest.toFixed(2)),
+            waivedPrincipal: parseFloat(cumWaivedPrincipal.toFixed(2)),
+            waivedInterest: parseFloat(cumWaivedInterest.toFixed(2)),
+            penalty: parseFloat(cumPenalty.toFixed(2)), shortfall: 0
+          };
+        } else {
+          sales[si].schedule[pi] = {
+            ...sched, paid: false, partialPaid: true,
+            partialPrincipal: parseFloat(cumPrincipal.toFixed(2)),
+            partialInterest: parseFloat(cumInterest.toFixed(2)),
+            partialPenalty: parseFloat(cumPenalty.toFixed(2)),
+            waivedPrincipal: parseFloat(cumWaivedPrincipal.toFixed(2)),
+            waivedInterest: parseFloat(cumWaivedInterest.toFixed(2)),
+            shortfall: parseFloat(shortfall.toFixed(2))
+          };
+        }
+      }
+      // Revert status if was settled but no longer every period paid
+      if (sales[si].status === '已结清' && !sales[si].schedule.every(p => p.paid)) sales[si].status = '进行中';
       DB_set('sales', sales);
     }
   }
@@ -4110,10 +4149,25 @@ window.saveEditPayment = async function(id) {
   const sale  = (DB_get('sales')||[]).find(s => s.id === pay.contractId);
   const sched = sale?.schedule?.find(p => p.period === pay.period);
   const duePrincipal = +sched?.principalDue || 0;
+  const dueInterest  = (+sched?.interestDue||0) + (+sched?.serviceFeeDue||0);
+  const dueTotalAmt  = duePrincipal + dueInterest;
+
+  // 🔖 这一期可能不止这一笔收款记录（客户分多次还），编辑这一笔时要把"这一期其他笔"的
+  // 本金/利息/减免都算进来，才能正确判断整期到底有没有真的还清——不能只看这一笔就直接标记已还
+  const otherPaysSamePeriod = pays.filter(p => p.id !== id && String(p.contractId)===String(pay.contractId) && +p.period===pay.period);
+  const otherPrincipal       = otherPaysSamePeriod.reduce((a,x)=>a+(+x.principal||0),0);
+  const otherInterest        = otherPaysSamePeriod.reduce((a,x)=>a+(+x.interest||0),0);
+  const otherWaivedPrincipal = otherPaysSamePeriod.reduce((a,x)=>a+(+x.waivedPrincipal||0),0);
+  const otherWaivedInterest  = otherPaysSamePeriod.reduce((a,x)=>a+(+x.waivedInterest||0),0);
+  const otherPenalty         = otherPaysSamePeriod.reduce((a,x)=>a+(+x.penalty||0),0);
+
+  // 这一笔本身的拆分，按"扣掉其他笔之后还剩多少"来拆，而不是按整期原始应还拆
+  const remainingPrincipalDue = Math.max(0, duePrincipal - otherPrincipal - otherWaivedPrincipal);
+  const remainingInterestDue  = Math.max(0, dueInterest  - otherInterest  - otherWaivedInterest);
 
   const newDate          = document.getElementById('epDate')?.value || pay.date;
   const totalReceived    = parseFloat(document.getElementById('epTotalReceived')?.value||0);
-  const newPrincipal     = Math.min(totalReceived, duePrincipal);
+  const newPrincipal     = Math.min(totalReceived, remainingPrincipalDue);
   const newInterest      = Math.max(0, totalReceived - newPrincipal);
   const newPenalty       = parseFloat(document.getElementById('epPenalty')?.value||0);
   const newNote          = document.getElementById('epNote')?.value || '';
@@ -4131,24 +4185,55 @@ window.saveEditPayment = async function(id) {
     window._epNewReceipts = [];
   }
 
+  // 整期累计（这一笔编辑后的新值 + 这一期其他所有笔），用来判断整期到底结清没有
+  const cumPrincipal       = otherPrincipal + newPrincipal;
+  const cumInterest        = otherInterest + newInterest;
+  const cumWaivedPrincipal = otherWaivedPrincipal + (+pay.waivedPrincipal||0); // 编辑弹窗不改减免，沿用原值
+  const cumWaivedInterest  = otherWaivedInterest + (+pay.waivedInterest||0);
+  const cumPenalty         = otherPenalty + newPenalty;
+  const TOLERANCE = 2.00;
+  const effectiveTotal = cumPrincipal + cumInterest + cumWaivedPrincipal + cumWaivedInterest;
+  const isFullPaid = sched ? (effectiveTotal >= dueTotalAmt - TOLERANCE) : true; // 找不到排期就不动paid状态，保底按已还处理
+  const shortfall  = Math.max(0, dueTotalAmt - effectiveTotal);
+
   // Update payment record
-  pays[idx] = { ...pay, date: newDate, principal: newPrincipal, interest: newInterest, penalty: newPenalty, note: newNote, receiptUrls: finalReceipts };
+  pays[idx] = { ...pay, date: newDate, principal: newPrincipal, interest: newInterest, penalty: newPenalty, note: newNote, receiptUrls: finalReceipts,
+    isPartial: !isFullPaid, shortfall: isFullPaid ? 0 : parseFloat(shortfall.toFixed(2)) };
   DB_set('payments', pays);
 
-  // Update the schedule paid amounts
+  // Update the schedule paid amounts —— 用整期累计值判断/写入，不能只看这一笔编辑后的金额
   const sales = DB_get('sales')||[];
   const si = sales.findIndex(s => s.id === pay.contractId);
   if (si >= 0) {
     const pi = sales[si].schedule.findIndex(p => p.period === pay.period);
     if (pi >= 0) {
-      sales[si].schedule[pi] = {
-        ...sales[si].schedule[pi],
-        paid: true,
-        paidDate: newDate,
-        paidPrincipal: newPrincipal,
-        paidInterest: newInterest,
-        penalty: newPenalty
-      };
+      if (isFullPaid) {
+        sales[si].schedule[pi] = {
+          ...sales[si].schedule[pi],
+          paid: true,
+          paidDate: newDate,
+          paidPrincipal: parseFloat(cumPrincipal.toFixed(2)),
+          paidInterest: parseFloat(cumInterest.toFixed(2)),
+          waivedPrincipal: parseFloat(cumWaivedPrincipal.toFixed(2)),
+          waivedInterest: parseFloat(cumWaivedInterest.toFixed(2)),
+          penalty: parseFloat(cumPenalty.toFixed(2)),
+          shortfall: 0
+        };
+        if (sales[si].schedule.every(p => p.paid)) sales[si].status = '已结清';
+      } else {
+        sales[si].schedule[pi] = {
+          ...sales[si].schedule[pi],
+          paid: false,
+          partialPaid: true,
+          partialDate: newDate,
+          partialPrincipal: parseFloat(cumPrincipal.toFixed(2)),
+          partialInterest: parseFloat(cumInterest.toFixed(2)),
+          partialPenalty: parseFloat(cumPenalty.toFixed(2)),
+          waivedPrincipal: parseFloat(cumWaivedPrincipal.toFixed(2)),
+          waivedInterest: parseFloat(cumWaivedInterest.toFixed(2)),
+          shortfall: parseFloat(shortfall.toFixed(2))
+        };
+      }
       DB_set('sales', sales);
     }
   }
@@ -4158,7 +4243,7 @@ window.saveEditPayment = async function(id) {
   const allPays = (DB_get('payments')||[]).slice().reverse();
   const wrap = document.getElementById('payTableWrap');
   refreshPayTable();
-  showMsg('payMsg', '✅ 修改成功', 'green');
+  showMsg('payMsg', isFullPaid ? '✅ 修改成功，整期已结清' : `⚠️ 修改成功，整期还差 ${fmt(shortfall)}，保留在逾期列表`, isFullPaid ? 'green' : 'amber');
   updateBadges();
 };
 
@@ -5178,7 +5263,7 @@ function renderReminderTomorrow() {
 }
 
 function renderReminderOverdue() {
-  const td = today(), sales = DB_get('sales')||[], items = [];
+  const td = today(), sales = DB_get('sales')||[], items = [], dataFixItems = [];
 
   // 🔖 按 合同id_期次 分组，记下每一期之前已经收了多少现金/减免了多少，用于部分还款场景下
   // 算"还差多少"，而不是拿整期原始应还金额——笔数/客户数这类计数不受影响，只影响金额显示
@@ -5204,7 +5289,11 @@ function renderReminderOverdue() {
   sales.forEach(s => {
     if (s.status === '提前结清') return;
     s.schedule.forEach(p => {
-      if (!p.paid && p.dueDate && p.dueDate.replace(/\//g,'-') < td) {
+      if (p.paid) return;
+      // 🔖 这一期是脚本修正过的历史数据问题（之前被误标记"已还"，实际还差一点尾款），
+      // 单独列出来，不算进正常逾期统计/名单，避免跟真正新产生的逾期客户混在一起
+      if (p.dataFixFlag) { dataFixItems.push({s,p}); return; }
+      if (p.dueDate && p.dueDate.replace(/\//g,'-') < td) {
         const days = Math.floor((new Date(td)-new Date(p.dueDate))/86400000);
         if (days >= 0) items.push({s,p,days});
       }
@@ -5285,6 +5374,27 @@ function renderReminderOverdue() {
         <div style="font-size:13px;color:#546e7a;margin-top:2px">${fmt(b.amount)}</div>
       </div>`).join('')}
   </div>
+
+  ${dataFixItems.length ? `
+  <!-- 🔖 历史数据修正提示：这些不是新产生的逾期，是之前系统bug把整期误标记"已还"，
+       实际还差一点尾款，单独放这里说明清楚，不算进上面的逾期统计里，避免误会 -->
+  <div class="card" style="border-left:4px solid #1565c0;background:#e3f2fd;margin-bottom:14px;padding:14px 16px">
+    <div style="font-weight:700;color:#1565c0;font-size:13px;margin-bottom:6px">ℹ️ ${tl('历史数据修正提示','Historical Data Correction','ការជូនដំណឹងកែតម្រូវ')}（${dataFixItems.length}${tl('条','','')}）</div>
+    <div style="font-size:12px;color:#455a64;margin-bottom:10px">${tl('以下客户之前因系统问题被误标记为"已还"，实际还差一点尾款，不是新产生的逾期，不计入上面的逾期统计，找催收员补收这一点尾款即可','These were previously mislabeled as fully settled due to a system issue and only have a small remaining balance. Not newly overdue and excluded from the stats above — just have the collector follow up on the small remainder.','ត្រូវបានសម្គាល់ខុសពីមុន')}</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      ${dataFixItems.map(({s,p}) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#fff;border-radius:8px;padding:8px 12px;border:1px solid #bbdefb">
+        <div style="font-size:12px;min-width:0">
+          <b>${esc(s.customer)}</b> <span style="color:#90a4ae">#${s.id}</span> · ${t('period')} ${p.period} ${tl('期','','')}
+          ${p.dataFixNote ? `<div style="font-size:11px;color:#78909c;margin-top:2px">${esc(p.dataFixNote)}</div>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <span style="font-weight:700;color:#1565c0">${tl('还差','Owes','នៅសល់')} ${fmt(p.shortfall||0)}</span>
+          <button onclick="navToPayment('${s.id}',${p.period})" class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 10px">${t('registerPayment')}</button>
+        </div>
+      </div>`).join('')}
+    </div>
+  </div>` : ''}
 
   <!-- 搜索 + 筛选 -->
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
