@@ -496,7 +496,8 @@ const I18N = {
     fullSchedule: '查看完整还款计划', longestDays: '最长', overdueCount: '笔逾期',
     overdueClients: '个客户', totalOwed: '合计欠款', searchPlaceholder: '搜索姓名 / 电话 / 合同号',
     periodLabel: '第', dueLabel: '到期', allStatus: '全部状态', filterAll: '全部天数',
-    filter7: '7天以内', filter15: '15-30天', filter30: '30天以上',
+    filter7: '7天以内', filter7to15: '7-15天', filter15: '15-30天', filter30: '30天以上',
+    loanDateLabel: '借款日期',
     daysOverdue: '逾期', period: '期',
     // Messages
     msgFillCustomer: '请填写客户姓名', msgFillPrice: '请填写贷款金额',
@@ -676,7 +677,8 @@ const I18N = {
     fullSchedule: 'Full Repayment Schedule', longestDays: 'Max', overdueCount: 'overdue',
     overdueClients: 'clients', totalOwed: 'Total Owed', searchPlaceholder: 'Search name / phone / contract',
     periodLabel: 'Period', dueLabel: 'Due', allStatus: 'All', filterAll: 'All',
-    filter7: 'Within 7d', filter15: '15-30d', filter30: '30d+',
+    filter7: 'Within 7d', filter7to15: '7-15d', filter15: '15-30d', filter30: '30d+',
+    loanDateLabel: 'Loan Date',
     daysOverdue: 'days overdue', period: 'Period',
     // Messages
     msgFillCustomer: 'Please enter customer name', msgFillPrice: 'Please enter loan amount',
@@ -857,7 +859,8 @@ const I18N = {
     fullSchedule: 'មើលផែនការបង់ប្រាក់ពេញ', longestDays: 'យូរបំផុត', overdueCount: 'ហួសកំណត់',
     overdueClients: 'អតិថិជន', totalOwed: 'សរុបជំពាក់', searchPlaceholder: 'ស្វែងរកឈ្មោះ / ទូរស័ព្ទ / លេខកិច្ចសន្យា',
     periodLabel: 'ខែ', dueLabel: 'ថ្ងៃផុតកំណត់', allStatus: 'ទាំងអស់', filterAll: 'ទាំងអស់',
-    filter7: 'ក្នុង 7ថ្ងៃ', filter15: '15-30ថ្ងៃ', filter30: '30ថ្ងៃ+',
+    filter7: 'ក្នុង 7ថ្ងៃ', filter7to15: '7-15ថ្ងៃ', filter15: '15-30ថ្ងៃ', filter30: '30ថ្ងៃ+',
+    loanDateLabel: 'ថ្ងៃខ្ចី',
     daysOverdue: 'ថ្ងៃហួសកំណត់', period: 'ខែ',
     // Messages
     msgFillCustomer: 'សូមបញ្ចូលឈ្មោះអតិថិជន', msgFillPrice: 'សូមបញ្ចូលចំនួនកម្ចី',
@@ -5179,12 +5182,37 @@ function renderReminderOverdue() {
     remaining: s.schedule.reduce((a,p) => a + (p.paid ? 0 : (+p.principalDue||0)+(+p.interestDue||0)), 0),
   }));
 
+  // 🔖 账龄分析：按逾期天数分4档，分别统计客户数+欠款合计（用每份合同"最长逾期天数"来归档，
+  // 跟下面详情列表、筛选器用的是同一个口径，点卡片能联动筛选列表）
+  const AGING_BUCKETS = [
+    { key:'d7',  test: d => d <= 7,           label: () => t('filter7'),     color:'#f57f17', bg:'#fffde7' },
+    { key:'d15', test: d => d > 7 && d <= 15, label: () => t('filter7to15'), color:'#ef6c00', bg:'#fff3e0' },
+    { key:'d30', test: d => d > 15 && d <= 30,label: () => t('filter15'),    color:'var(--amber)', bg:'#fff8e1' },
+    { key:'d31', test: d => d > 30,           label: () => t('filter30'),    color:'var(--red)', bg:'#ffebee' },
+  ];
+  const agingStats = AGING_BUCKETS.map(b => {
+    const inBucket = allContracts.filter(c => b.test(c.maxDays));
+    const sum = inBucket.reduce((a,c) => a + c.periods.reduce((s,{p})=>s+(+p.principalDue||0)+(+p.interestDue||0),0), 0);
+    return { ...b, count: inBucket.length, amount: sum };
+  });
+
   return `
   <div class="page-header"><div class="page-title">🚨 ${t('overdueTitle')}</div></div>
   <div id="overdueSummaryBar">
   ${items.length
     ? `<div class="alert alert-red">⚠️ <b>${allContracts.length}</b> ${t('overdueClients')} · <b>${items.length}</b> ${t('overdueCount')} · ${tl('逾期欠款','Overdue Owed','ជំពាក់​ហួស​កំណត់')} <b>${fmt(totalOwedAll)}</b> · ${tl('总欠款(含未到期)','Total Owed (incl. not-yet-due)','សរុប​ជំពាក់​(រួម​មិន​ទាន់​ដល់​កំណត់)')} <b>${fmt(totalRemainingAll)}</b></div>`
     : `<div class="alert alert-green">✅ ${t('noOverdue')}</div>`}
+  </div>
+
+  <!-- 🔖 逾期账龄分析：7天内 / 7-15天 / 15-30天 / 30天以上，点卡片可以直接联动下面的筛选 -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">
+    ${agingStats.map(b => `
+      <div onclick="document.getElementById('odDayFilter').value='${b.key}';filterOverdue()"
+        style="background:${b.bg};border:1.5px solid ${b.color}33;border-radius:12px;padding:14px;cursor:pointer">
+        <div style="font-size:12px;font-weight:700;color:${b.color}">${b.label()}</div>
+        <div style="font-size:22px;font-weight:800;color:${b.color};margin-top:4px">${b.count} <span style="font-size:12px;font-weight:600">${t('overdueClients')}</span></div>
+        <div style="font-size:13px;color:#546e7a;margin-top:2px">${fmt(b.amount)}</div>
+      </div>`).join('')}
   </div>
 
   <!-- 搜索 + 筛选 -->
@@ -5195,9 +5223,10 @@ function renderReminderOverdue() {
     <select id="odDayFilter" onchange="filterOverdue()"
       style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit">
       <option value="">${t('filterAll')}</option>
-      <option value="7">${t('filter7')}</option>
-      <option value="15">${t('filter15')}</option>
-      <option value="30">${t('filter30')}</option>
+      <option value="d7">${t('filter7')}</option>
+      <option value="d15">${t('filter7to15')}</option>
+      <option value="d30">${t('filter15')}</option>
+      <option value="d31">${t('filter30')}</option>
     </select>
   </div>
 
@@ -5219,6 +5248,8 @@ function renderReminderOverdue() {
             </div>
             <div style="font-size:12px;color:var(--muted);margin-top:2px">
               #${s.id} · ${s.modelName||'-'} · <b style="color:${color}">${periods.length}</b> ${t('overdueCount')}
+              · ${t('loanDateLabel')} ${s.date||'-'}
+              · ${t('periodLabel')}${[...periods].sort((a,b)=>a.p.period-b.p.period).map(({p})=>p.period).join(',')}${t('period')}
             </div>
           </div>
           <div style="text-align:right;flex-shrink:0">
@@ -5265,9 +5296,10 @@ window.filterOverdue = function() {
     const days = parseInt(el.dataset.days||'0');
     const matchQ = !q || name.includes(q) || phone.includes(q) || id.toLowerCase().includes(q);
     let matchD = true;
-    if (dayFilter==='7') matchD = days <= 7;
-    else if (dayFilter==='15') matchD = days > 7 && days <= 30;
-    else if (dayFilter==='30') matchD = days > 30;
+    if (dayFilter==='d7') matchD = days <= 7;
+    else if (dayFilter==='d15') matchD = days > 7 && days <= 15;
+    else if (dayFilter==='d30') matchD = days > 15 && days <= 30;
+    else if (dayFilter==='d31') matchD = days > 30;
     el.style.display = (matchQ && matchD) ? '' : 'none';
   });
 
@@ -5276,9 +5308,10 @@ window.filterOverdue = function() {
   const visible = all.filter(c => {
     const matchQ = !q || c.name.includes(q) || c.phone.includes(q) || String(c.id).toLowerCase().includes(q);
     let matchD = true;
-    if (dayFilter==='7') matchD = c.days <= 7;
-    else if (dayFilter==='15') matchD = c.days > 7 && c.days <= 30;
-    else if (dayFilter==='30') matchD = c.days > 30;
+    if (dayFilter==='d7') matchD = c.days <= 7;
+    else if (dayFilter==='d15') matchD = c.days > 7 && c.days <= 15;
+    else if (dayFilter==='d30') matchD = c.days > 15 && c.days <= 30;
+    else if (dayFilter==='d31') matchD = c.days > 30;
     return matchQ && matchD;
   });
   const bar = document.getElementById('overdueSummaryBar');
