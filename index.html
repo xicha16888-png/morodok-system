@@ -5389,23 +5389,29 @@ function renderReminderOverdue() {
     const partialTotalOwed = partialItems.reduce((a,{s,p})=>a+odRemainDue(s,p),0);
     return `
   <!-- 🔖 部分还款未结清：客户已经还了一部分，还差一点没结清——单独放一块，不混进上面
-       "完全没还"的逾期统计里，方便老板一眼分清哪些是真的一分钱都没还的 -->
+       "完全没还"的逾期统计里；默认折叠，点标题才展开，不占地方影响看其他内容 -->
   <div class="card" style="border-left:4px solid var(--amber);background:#fff8e1;margin-bottom:14px;padding:14px 16px">
-    <div style="font-weight:700;color:#e65100;font-size:13px;margin-bottom:6px">💰 ${tl('部分还款未结清','Partially Paid','បង់​ខ្លះ')}（${partialItems.length}${tl('笔','','')} · ${tl('还差','owes','នៅសល់')} ${fmt(partialTotalOwed)}）</div>
-    <div style="font-size:12px;color:#455a64;margin-bottom:10px">${tl('这些客户已经还了一部分，还差一点没结清，跟完全没还款的客户分开列，方便区分','These customers already paid part of it and still owe a bit — listed separately from customers who paid nothing at all','អតិថិជន​ទាំងនេះ​បាន​បង់​ខ្លះ​ហើយ')}</div>
-    <div style="display:flex;flex-direction:column;gap:6px">
-      ${partialItems.slice().sort((a,b)=>b.days-a.days).map(({s,p,days}) => `
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#fff;border-radius:8px;padding:8px 12px;border:1px solid #ffe082">
-        <div style="font-size:12px;min-width:0">
-          <b>${esc(s.customer)}</b> <span style="color:#90a4ae">#${s.id}</span> · ${t('period')} ${p.period} ${tl('期','','')}
-          <span style="font-size:11px;color:#90a4ae;margin-left:6px">${tl('已收','Received','បានទទួល')} ${fmt(odReceivedSoFar(s,p))}</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-          <span style="font-weight:700;color:var(--amber)">${tl('还差','Owes','នៅសល់')} ${fmt(odRemainDue(s,p))}</span>
-          <span style="background:#fff3e0;color:#e65100;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${days} ${t('days')}</span>
-          <button onclick="navToPayment('${s.id}',${p.period})" class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 10px">${t('registerPayment')}</button>
-        </div>
-      </div>`).join('')}
+    <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer"
+      onclick="const d=document.getElementById('partialPaidSection');const arr=this.querySelector('.partial-arr');const open=d.style.display==='none';d.style.display=open?'block':'none';arr.style.transform=open?'rotate(180deg)':'';">
+      <div style="font-weight:700;color:#e65100;font-size:13px">💰 ${tl('部分还款未结清','Partially Paid','បង់​ខ្លះ')}（${partialItems.length}${tl('笔','','')} · ${tl('还差','owes','នៅសល់')} ${fmt(partialTotalOwed)}）</div>
+      <div class="partial-arr" style="color:#e65100;font-size:14px;transition:transform .2s">▾</div>
+    </div>
+    <div id="partialPaidSection" style="display:none;margin-top:10px">
+      <div style="font-size:12px;color:#455a64;margin-bottom:10px">${tl('这些客户已经还了一部分，还差一点没结清，跟完全没还款的客户分开列，方便区分','These customers already paid part of it and still owe a bit — listed separately from customers who paid nothing at all','អតិថិជន​ទាំងនេះ​បាន​បង់​ខ្លះ​ហើយ')}</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${partialItems.slice().sort((a,b)=>b.days-a.days).map(({s,p,days}) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#fff;border-radius:8px;padding:8px 12px;border:1px solid #ffe082">
+          <div style="font-size:12px;min-width:0">
+            <b>${esc(s.customer)}</b> <span style="color:#90a4ae">#${s.id}</span> · ${t('period')} ${p.period} ${tl('期','','')}
+            <span style="font-size:11px;color:#90a4ae;margin-left:6px">${tl('已收','Received','បានទទួល')} ${fmt(odReceivedSoFar(s,p))}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+            <span style="font-weight:700;color:var(--amber)">${tl('还差','Owes','នៅសល់')} ${fmt(odRemainDue(s,p))}</span>
+            <span style="background:#fff3e0;color:#e65100;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${days} ${t('days')}</span>
+            <button onclick="navToPayment('${s.id}',${p.period})" class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 10px">${t('registerPayment')}</button>
+          </div>
+        </div>`).join('')}
+      </div>
     </div>
   </div>`;
   })() : ''}
