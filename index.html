@@ -2098,6 +2098,36 @@ window.viewPayReceipts = function(id) {
   `);
 };
 
+// 🔖 "疑似重复"核对：把同一份合同、同一期的所有收款记录（日期/金额/登记人/凭证照片）摆在一起，
+// 交给人看照片上的转账日期/金额/编号，判断是不是真的把同一笔钱登记了两次，而不是系统自动瞎判断
+window.compareSuspiciousReceipts = function(contractId, period) {
+  const pays = (DB_get('payments')||[])
+    .filter(p => String(p.contractId)===String(contractId) && +p.period===+period)
+    .slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  if (!pays.length) return;
+  const cardsHtml = pays.map((p,i) => {
+    const urls = (p.receiptUrls && p.receiptUrls.length) ? p.receiptUrls : (p.receiptUrl ? [p.receiptUrl] : []);
+    const total = (+p.principal||0)+(+p.interest||0)+(+p.penalty||0);
+    return `
+    <div style="border:1.5px solid var(--border);border-radius:10px;padding:12px;flex:1;min-width:220px">
+      <div style="font-size:12px;font-weight:700;color:#263238;margin-bottom:4px">${tl('第','#','')}${i+1}${tl('笔','','')} — ${p.date}</div>
+      <div style="font-size:12px;color:#546e7a;margin-bottom:8px">
+        ${tl('金额','Amount','ចំនួន')}：<b style="color:var(--green)">${fmt(total)}</b> ·
+        ${tl('登记人','By','')}：${esc(p.recordedBy||'-')}
+        ${p.shortfall>0?` · ${tl('差额','Shortfall','ខ្វះ')} <b style="color:var(--red)">${fmt(p.shortfall)}</b>`:''}
+      </div>
+      ${urls.length ? `
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${urls.map(u=>`<a href="${u}" target="_blank"><img src="${u}" style="width:120px;height:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"></a>`).join('')}
+      </div>` : `<div style="font-size:12px;color:var(--muted)">${tl('这笔没有上传凭证截图','No receipt uploaded','គ្មាន​វិក័យប័ត្រ')}</div>`}
+    </div>`;
+  }).join('');
+  showModal(`🔍 ${tl('核对是否重复收款','Verify Possible Duplicate','ផ្ទៀងផ្ទាត់')} — ${esc(pays[0].customer||'')} #${contractId} ${tl('第','#','')}${period}${tl('期','','')}`, `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${tl('把这一期所有收款记录的凭证截图放一起，看看截图上的转账日期/金额/编号是不是同一笔——如果确实是重复登记，删掉多余的那一笔；如果金额、编号不一样，说明是客户分批还款，不用管','Compare receipts to check the transaction date/amount/reference shown in each photo — if they match, it\'s the same transfer registered twice; if not, this is a legitimate installment payment','ប្រៀបធៀប​វិក័យប័ត្រ')}</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">${cardsHtml}</div>
+  `);
+};
+
 window.previewImg = function(input, catKey, slotKey) {
   const file = input.files[0];
   if (!file) return;
@@ -3881,12 +3911,16 @@ function buildPayTableGrouped(pays, isCollector) {
     if (!byContract[cid]) byContract[cid] = [];
     byContract[cid].push(p);
   });
+  // 🔖 只有"同一份合同 + 同一期"短期内出现多笔，才可能是真的重复登记；不同期的不算
+  // （比如客户一次补收了两期，或者一期分好几次还，都是正常情况，不该被打成"疑似重复"）
+  // 具体是不是重复，交给人看凭证截图核对——点这个标签能把这一期所有收款记录的照片摆一起对比
   function isSuspicious(p) {
     const list = byContract[String(p.contractId)] || [];
     const pd = new Date((p.date||'').replace(/\//g,'-'));
     if (isNaN(pd)) return false;
     return list.some(other => {
       if (other.id === p.id) return false;
+      if (+other.period !== +p.period) return false;
       const od = new Date((other.date||'').replace(/\//g,'-'));
       if (isNaN(od)) return false;
       const diffDays = Math.abs((pd - od) / 86400000);
@@ -3924,7 +3958,7 @@ function buildPayTableGrouped(pays, isCollector) {
                 ${p.isPartial ? `<span style="background:#fff3e0;color:#e65100;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">${tl("部分收款","Partial","ផ្នែក")}</span>` : ''}
                 ${isEarly ? `<span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">${tl("⚡提前还款","⚡Early","⚡សង​មុន")}</span>` : ''}
                 ${(+p.advanceDays||0)>30 ? `<span style="background:#ffebee;color:#c62828;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700" title="${tl('提前','Advance','មុន')}${p.advanceDays}${tl('天，超过1个月，建议核对','days, over 1 month, please verify','ថ្ងៃ')}">🔔${tl('提前','Advance','មុន')}${p.advanceDays}${tl('天','d','ថ្ងៃ')}</span>` : ''}
-                ${suspicious ? `<span style="background:#e65100;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700" title="${tl('该合同7天内有多笔还款记录，请核实是否重复登记','This contract has multiple payments within 7 days, please verify','សូមផ្ទៀងផ្ទាត់')}">⚠️ ${tl('疑似重复','Possible duplicate','ប្រហែលដដែល')}</span>` : ''}
+                ${suspicious ? `<span onclick="event.stopPropagation();compareSuspiciousReceipts('${p.contractId}',${p.period})" style="background:#e65100;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700;cursor:pointer" title="${tl('点击查看凭证照片核对','Click to compare receipt photos','ចុច​ដើម្បី​ផ្ទៀងផ្ទាត់')}">⚠️ ${tl('疑似重复','Possible duplicate','ប្រហែលដដែល')} 🔍</span>` : ''}
               </div>
               <div style="font-size:11px;color:#90a4ae">#${p.contractId} · ${tl('第','Period ','ខែ')}${p.period}${tl('期','','')}${p.shortfall>0?` · ${tl('差额','Shortfall','ខ្វះ')} <b style="color:var(--red)">${fmt(p.shortfall)}</b>`:''}</div>
             </div>
