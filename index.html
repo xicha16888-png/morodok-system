@@ -7143,41 +7143,185 @@ function staffTitleCase(s) {
   return (s||'').replace(/[A-Za-z]+/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase());
 }
 
+// ══════════════════════════════════════════════════════
+// 业务员姓名归并分组：存到数据库(staffAliasGroups)，老板可以在页面上手动合并/拆分/改名，
+// 不用再靠改代码。第一次用的时候，用代码里原本写死的 STAFF_ALIAS_GROUPS 当初始种子。
+// 分组格式：[{ name: '展示名字（英文）', aliases: ['所有原始写法', ...] }, ...]
+// ══════════════════════════════════════════════════════
+function getStaffAliasGroups() {
+  let groups = DB_get('staffAliasGroups');
+  if (!Array.isArray(groups)) {
+    groups = STAFF_ALIAS_GROUPS.map(g => {
+      const eng = g.find(a => /^[A-Za-z][A-Za-z\s]*$/.test(a));
+      return { name: staffTitleCase(eng || g[0]), aliases: [...g] };
+    });
+    DB_set('staffAliasGroups', groups);
+  }
+  return groups;
+}
+function saveStaffAliasGroups(groups) { DB_set('staffAliasGroups', groups); }
+
 // 给任意一个原始「业务员」字段值，返回统一后的展示名字：
-// 1) 如果这个写法命中花名册(STAFF_ALIAS_GROUPS)里的某一组，就统一显示这组里的英文名（优先选纯英文字母的那一项）
-// 2) 如果没命中花名册，就统一大小写格式后原样返回（不同大小写/空格写法此时已经在分组阶段被合并，见 groupStaffNames）
-function canonicalStaffDisplayName(raw) {
+// 1) 如果这个写法命中某个分组，就统一显示那个分组的名字
+// 2) 如果没命中任何分组，就统一大小写格式后原样返回
+function canonicalStaffDisplayName(raw, groups) {
   const s = (raw || '').trim();
   if (!s) return '';
+  groups = groups || getStaffAliasGroups();
   const n = staffNorm(s);
-  const group = STAFF_ALIAS_GROUPS.find(g => g.some(a => staffNorm(a) === n));
-  if (group) {
-    const eng = group.find(a => /^[A-Za-z][A-Za-z\s]*$/.test(a));
-    return staffTitleCase(eng || group[0]);
-  }
-  return staffTitleCase(s);
+  const group = groups.find(g => g.aliases.some(a => staffNorm(a) === n));
+  return group ? group.name : staffTitleCase(s);
 }
 
-// 把一批合同/记录，按「业务员」真实身份（花名册分组 + 大小写/空格无关去重）分组
+// 把一批合同/记录，按「业务员」真实身份（分组 + 大小写/空格无关去重）分组
 // getName: 从单条记录里取出原始业务员字符串的函数
-// 返回：[{ name, key, list }]，name 是统一后的展示名，key 是用来分组的标准化 key
+// 返回：[{ name, list }]，name 是统一后的展示名
 function groupStaffNames(records, getName) {
-  const usedRaw = new Set();
-  STAFF_ALIAS_GROUPS.forEach(group => group.forEach(a => usedRaw.add(staffNorm(a))));
+  const groups = getStaffAliasGroups();
+  const aliasIndex = {}; // 标准化后的写法 -> 分组下标
+  groups.forEach((g, i) => g.aliases.forEach(a => { aliasIndex[staffNorm(a)] = i; }));
 
-  const groups = {}; // key: 标准化后的 key -> { name, list }
+  const byKey = {};
   records.forEach(r => {
     const raw = (getName(r) || '').trim();
     if (!raw) return;
     const n = staffNorm(raw);
-    const aliasGroup = STAFF_ALIAS_GROUPS.find(g => g.some(a => staffNorm(a) === n));
-    const key = aliasGroup ? staffNorm(aliasGroup[0]) : n;
-    const name = aliasGroup ? canonicalStaffDisplayName(aliasGroup[0]) : canonicalStaffDisplayName(raw);
-    if (!groups[key]) groups[key] = { name, list: [] };
-    groups[key].list.push(r);
+    const gi = aliasIndex[n];
+    const key = gi !== undefined ? 'g' + gi : n;
+    const name = gi !== undefined ? groups[gi].name : staffTitleCase(raw);
+    if (!byKey[key]) byKey[key] = { name, list: [] };
+    byKey[key].list.push(r);
   });
-  return Object.values(groups);
+  return Object.values(byKey);
 }
+
+// ── 手动归并管理弹窗 ──
+window.openStaffAliasManager = function() {
+  showModal(tl('业务员姓名归并管理','Merge Salesperson Names',''), renderStaffAliasManagerBody());
+};
+
+function renderStaffAliasManagerBody() {
+  const allSales = DB_get('sales') || [];
+  const groups = getStaffAliasGroups();
+  const aliasIndex = {};
+  groups.forEach((g,i) => g.aliases.forEach(a => { aliasIndex[staffNorm(a)] = i; }));
+
+  // 统计每个"原始写法"（没做任何归并前的真实字符串）出现的次数
+  const rawCounts = {};
+  allSales.forEach(s => {
+    const raw = (s.salesperson||'').trim();
+    if (!raw) return;
+    rawCounts[raw] = (rawCounts[raw]||0) + 1;
+  });
+  const allRaw = Object.keys(rawCounts).sort((a,b)=>rawCounts[b]-rawCounts[a]);
+  const ungrouped = allRaw.filter(n => aliasIndex[staffNorm(n)] === undefined);
+  const groupOptionsHtml = groups.map((g,i)=>`<option value="${i}">${esc(g.name)}</option>`).join('');
+
+  let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+    ${tl('勾选下面几个"原始写法"，点"合并为一个人"，就会统一显示成同一个名字；已经归好的分组可以在下面改名/拆分。','Check a few raw spellings below and click "Merge" to treat them as one person. Existing groups can be renamed or split below.','')}
+  </div>`;
+
+  html += `<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:16px">
+    <div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:8px">📝 ${tl('未归并的写法','Ungrouped spellings','')} (${ungrouped.length})</div>
+    ${ungrouped.length ? `<div style="max-height:220px;overflow-y:auto">
+      ${ungrouped.map(n => `
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:13px;border-bottom:1px solid #f0f2f5;cursor:pointer">
+          <input type="checkbox" class="staffAliasPick" value="${esc(n)}" style="width:15px;height:15px;flex-shrink:0">
+          <span style="flex:1">${esc(n)}</span>
+          <span style="color:var(--muted);font-size:11px">${rawCounts[n]} ${tl('单','orders','')}</span>
+        </label>`).join('')}
+    </div>` : `<div style="color:var(--muted);font-size:12px">${tl('没有未归并的写法了','All spellings are grouped','')}</div>`}
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <input id="staffAliasNewName" type="text" placeholder="${tl('合并后显示的名字，比如 You Doliza','Display name after merging, e.g. You Doliza','')}" style="flex:1;min-width:200px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;box-sizing:border-box">
+      <button class="btn btn-primary" style="font-size:12px;padding:8px 14px" onclick="window.staffAliasMergeSelected()">➕ ${tl('合并为一个人','Merge as one person','')}</button>
+    </div>
+    ${groups.length ? `<div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--muted)">${tl('或并入已有的人：','Or merge into existing person:','')}</span>
+      <select id="staffAliasExistingGroup" style="padding:6px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:12px">${groupOptionsHtml}</select>
+      <button class="btn btn-outline" style="font-size:12px;padding:6px 12px" onclick="window.staffAliasMergeIntoExisting()">${tl('并入','Merge into','')}</button>
+    </div>` : ''}
+  </div>`;
+
+  html += `<div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:8px">✅ ${tl('已归并的人','Merged people','')} (${groups.length})</div>`;
+  html += !groups.length
+    ? `<div style="color:var(--muted);font-size:12px">${tl('还没有归并任何人','No merged groups yet','')}</div>`
+    : groups.map((g,i) => `
+      <div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+          <span style="font-weight:700;color:var(--navy);font-size:13px">👤 ${esc(g.name)}</span>
+          <span style="font-size:11px;color:var(--muted)">(${g.aliases.length} ${tl('种写法','spellings','')})</span>
+          <span style="margin-left:auto;display:flex;gap:6px">
+            <button style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer" onclick="window.staffAliasRenameGroup(${i})">✏️ ${tl('改名','Rename','')}</button>
+            <button style="font-size:11px;padding:3px 8px;border:1px solid #ffcdd2;color:#c62828;border-radius:6px;background:#fff;cursor:pointer" onclick="window.staffAliasDeleteGroup(${i})">🗑️ ${tl('取消归并','Ungroup','')}</button>
+          </span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${g.aliases.map(a => `<span style="display:inline-flex;align-items:center;gap:5px;background:#f0f4f9;border-radius:20px;padding:3px 8px 3px 10px;font-size:12px;color:#37474f">
+            ${esc(a)}${g.aliases.length>1 ? `<span style="cursor:pointer;color:#90a4ae;font-weight:700" onclick="window.staffAliasRemoveAlias(${i},'${esc(a).replace(/'/g,"\\'")}')">×</span>` : ''}
+          </span>`).join('')}
+        </div>
+      </div>`).join('');
+
+  html += `<div style="margin-top:14px;font-size:11px;color:var(--muted)">${tl('这里的改动会立刻生效，业务员业绩排行榜和明细表都会同步更新。','Changes take effect immediately across the leaderboard and detail table.','')}</div>`;
+  return html;
+}
+
+function _refreshAfterStaffAliasChange() {
+  showModal(tl('业务员姓名归并管理','Merge Salesperson Names',''), renderStaffAliasManagerBody());
+  nav(window._currentPage || 'my-performance');
+}
+
+window.staffAliasMergeSelected = function() {
+  const checks = [...document.querySelectorAll('.staffAliasPick:checked')].map(el => el.value);
+  if (checks.length < 2) { alert(tl('至少勾选2个写法才能合并','Select at least 2 spellings to merge','')); return; }
+  const nameInput = document.getElementById('staffAliasNewName');
+  const fallback = checks.slice().sort((a,b)=>b.length-a.length)[0];
+  const name = staffTitleCase(((nameInput?.value||'').trim()) || fallback);
+  const groups = getStaffAliasGroups();
+  groups.push({ name, aliases: checks });
+  saveStaffAliasGroups(groups);
+  _refreshAfterStaffAliasChange();
+};
+
+window.staffAliasMergeIntoExisting = function() {
+  const checks = [...document.querySelectorAll('.staffAliasPick:checked')].map(el => el.value);
+  if (!checks.length) { alert(tl('先勾选要合并的写法','Select spellings to merge first','')); return; }
+  const sel = document.getElementById('staffAliasExistingGroup');
+  const gi = +(sel?.value ?? -1);
+  const groups = getStaffAliasGroups();
+  if (!groups[gi]) return;
+  checks.forEach(c => { if (!groups[gi].aliases.some(a=>staffNorm(a)===staffNorm(c))) groups[gi].aliases.push(c); });
+  saveStaffAliasGroups(groups);
+  _refreshAfterStaffAliasChange();
+};
+
+window.staffAliasRenameGroup = function(i) {
+  const groups = getStaffAliasGroups();
+  const g = groups[i]; if (!g) return;
+  const nn = prompt(tl('输入新的显示名字','Enter new display name',''), g.name);
+  if (nn === null || !nn.trim()) return;
+  g.name = staffTitleCase(nn.trim());
+  saveStaffAliasGroups(groups);
+  _refreshAfterStaffAliasChange();
+};
+
+window.staffAliasDeleteGroup = function(i) {
+  const groups = getStaffAliasGroups();
+  if (!groups[i]) return;
+  if (!confirm(tl('确定要取消这个分组吗？里面的写法会变回各自独立显示。','Ungroup? Each spelling will show separately again.',''))) return;
+  groups.splice(i,1);
+  saveStaffAliasGroups(groups);
+  _refreshAfterStaffAliasChange();
+};
+
+window.staffAliasRemoveAlias = function(i, alias) {
+  const groups = getStaffAliasGroups();
+  const g = groups[i]; if (!g) return;
+  g.aliases = g.aliases.filter(a => a !== alias);
+  if (!g.aliases.length) groups.splice(i,1);
+  saveStaffAliasGroups(groups);
+  _refreshAfterStaffAliasChange();
+};
 
 function renderMyPerformance() {
   const u = getCurrentUser();
@@ -7329,9 +7473,12 @@ function renderMyPerformance() {
   }
 
   return `
-  <div class="page-header">
-    <div class="page-title">📊 ${tl('业务员业绩','Sales Performance','សមិទ្ធិផលភ្នាក់ងារលក់')}</div>
-    <div class="page-sub">${tl('点击业务员姓名查看每日/每月出单明细','Click a name to see daily/monthly breakdown','ចុចឈ្មោះដើម្បីមើលព័ត៌មានលម្អិត')}</div>
+  <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <div>
+      <div class="page-title">📊 ${tl('业务员业绩','Sales Performance','សមិទ្ធិផលភ្នាក់ងារលក់')}</div>
+      <div class="page-sub">${tl('点击业务员姓名查看每日/每月出单明细','Click a name to see daily/monthly breakdown','ចុចឈ្មោះដើម្បីមើលព័ត៌មានលម្អិត')}</div>
+    </div>
+    <button class="btn btn-outline" style="font-size:12px;padding:8px 14px;white-space:nowrap" onclick="window.openStaffAliasManager()">🔧 ${tl('姓名归并管理','Merge Names','')}</button>
   </div>
   ${kpiCardsHtml([
     ['👥', tl('业务员数','Salespeople','ចំនួន'), board.length, 'var(--sky)'],
