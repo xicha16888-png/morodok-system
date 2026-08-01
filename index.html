@@ -275,6 +275,7 @@ tr:hover td{background:#f8faff}
 }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 </head>
 <body>
 
@@ -8419,99 +8420,236 @@ function renderFundMonthlyTable(groupId) {
   <div style="margin-top:6px;font-size:13px;font-weight:700">${tl('合计','Total','សរុប')} ${tl('已收','Collected','')} ${totalCount} ${tl('笔','','')} <span class="text-green">${fmt(totalAmt)}</span> · ${tl('逾期','Overdue','')} ${totalOverdueCount} ${tl('笔','','')} <span class="text-red">${fmt(totalOverdueAmt)}</span></div>`;
 }
 
+// 🔖 用ExcelJS生成"看起来像正式财务报表"的漂亮表格：抬头+副标题、深蓝表头白字、
+// 金额列货币格式、隔行浅色底纹、合计行加粗、列宽足够不会挤在一起、冻结表头方便滚动查看
+function _addPrettySheet(wb, sheetName, opts) {
+  const cols = opts.columns;
+  const ws = wb.addWorksheet(String(sheetName).slice(0,31), { views: [{ state: 'frozen', ySplit: opts.title ? 4 : 1 }] });
+  ws.columns = cols.map(c => ({ width: c.width || 14 }));
+
+  let r = 1;
+  if (opts.title) {
+    ws.mergeCells(r, 1, r, cols.length);
+    const tc = ws.getCell(r, 1);
+    tc.value = opts.title;
+    tc.font = { bold: true, size: 14, color: { argb: 'FF0F2D5C' } };
+    r++;
+    if (opts.subtitle) {
+      ws.mergeCells(r, 1, r, cols.length);
+      const sc = ws.getCell(r, 1);
+      sc.value = opts.subtitle;
+      sc.font = { size: 10, color: { argb: 'FF78909C' } };
+      r++;
+    }
+    r++; // 空一行
+  }
+
+  const headerRowNum = r;
+  const headerRow = ws.getRow(headerRowNum);
+  cols.forEach((c, i) => {
+    const cell = headerRow.getCell(i+1);
+    cell.value = c.header;
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F2D5C' } };
+    cell.alignment = { horizontal: c.align || 'left', vertical: 'middle' };
+  });
+  headerRow.height = 22;
+  ws.autoFilter = { from: { row: headerRowNum, column: 1 }, to: { row: headerRowNum, column: cols.length } };
+  r++;
+
+  opts.rows.forEach((row, idx) => {
+    const excelRow = ws.getRow(r);
+    cols.forEach((c, i) => {
+      const cell = excelRow.getCell(i+1);
+      cell.value = row[c.key];
+      if (c.numFmt) cell.numFmt = c.numFmt;
+      cell.alignment = { horizontal: c.align || 'left' };
+      cell.border = { bottom: { style: 'hair', color: { argb: 'FFE8EAED' } } };
+      if (idx % 2 === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF7F9FC' } };
+    });
+    r++;
+  });
+
+  if (opts.totalRow) {
+    const excelRow = ws.getRow(r);
+    cols.forEach((c, i) => {
+      const cell = excelRow.getCell(i+1);
+      cell.font = { bold: true, color: { argb: 'FF0F2D5C' } };
+      cell.border = { top: { style: 'medium', color: { argb: 'FF0F2D5C' } } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6F1FB' } };
+      cell.alignment = { horizontal: c.align || 'left' };
+      if (opts.totalRow[c.key] !== undefined) {
+        cell.value = opts.totalRow[c.key];
+        if (c.numFmt) cell.numFmt = c.numFmt;
+      }
+    });
+  }
+  return ws;
+}
+
+async function _downloadWorkbook(wb, filename) {
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+}
+
+// 各个明细表格的列定义，导出单月/全部月份都复用同一套，保证格式统一
+const FUND_ONTIME_COLS = [
+  { header:'日期', key:'date', width:14 },
+  { header:'客户', key:'customer', width:20 },
+  { header:'合同号', key:'contractId', width:20 },
+  { header:'期次', key:'period', width:8, align:'center' },
+  { header:'含提前结清', key:'early', width:12, align:'center' },
+  { header:'金额', key:'amt', width:14, numFmt:'"$"#,##0.00', align:'right' },
+];
+const FUND_CATCHUP_COLS = [
+  { header:'收款日期', key:'date', width:14 },
+  { header:'客户', key:'customer', width:20 },
+  { header:'合同号', key:'contractId', width:20 },
+  { header:'期次', key:'period', width:8, align:'center' },
+  { header:'原到期月份', key:'dueMonth', width:14, align:'center' },
+  { header:'逾期天数', key:'daysLate', width:12, align:'center' },
+  { header:'金额', key:'amt', width:14, numFmt:'"$"#,##0.00', align:'right' },
+];
+const FUND_EARLY_COLS = [
+  { header:'收款日期', key:'date', width:14 },
+  { header:'客户', key:'customer', width:20 },
+  { header:'合同号', key:'contractId', width:20 },
+  { header:'期次', key:'period', width:8, align:'center' },
+  { header:'实际到期月份', key:'dueMonth', width:14, align:'center' },
+  { header:'提前天数', key:'daysEarly', width:12, align:'center' },
+  { header:'金额', key:'amt', width:14, numFmt:'"$"#,##0.00', align:'right' },
+];
+const FUND_OVERDUE_COLS = [
+  { header:'客户', key:'customer', width:20 },
+  { header:'合同号', key:'contractId', width:20 },
+  { header:'期次', key:'period', width:8, align:'center' },
+  { header:'到期日', key:'dueDate', width:14 },
+  { header:'逾期天数', key:'days', width:12, align:'center' },
+  { header:'欠款', key:'owed', width:14, numFmt:'"$"#,##0.00', align:'right' },
+  { header:'电话', key:'phone', width:16 },
+];
+
+function _addFundOnTimeSheet(wb, sheetName, company, groupLabel, month, onTime) {
+  _addPrettySheet(wb, sheetName, {
+    title: `${company} · ${groupLabel}`, subtitle: `${month} 当期正常已收明细`,
+    columns: FUND_ONTIME_COLS,
+    rows: onTime.map(p => ({ date:p.date, customer:p.customer, contractId:'#'+p.contractId, period:p.period||'-', early:p.isEarlySettlement?'是':'', amt:+p.total||0 })),
+    totalRow: { customer:'合计', amt: onTime.reduce((a,p)=>a+(+p.total||0),0) }
+  });
+}
+function _addFundCatchupSheet(wb, sheetName, company, groupLabel, month, catchup) {
+  _addPrettySheet(wb, sheetName, {
+    title: `${company} · ${groupLabel}`, subtitle: `${month} 补收以前月份逾期明细`,
+    columns: FUND_CATCHUP_COLS,
+    rows: catchup.map(p => ({ date:p.date, customer:p.customer, contractId:'#'+p.contractId, period:p.period||'-', dueMonth:p.dueMonth, daysLate:p.daysLate||0, amt:+p.total||0 })),
+    totalRow: { customer:'合计', amt: catchup.reduce((a,p)=>a+(+p.total||0),0) }
+  });
+}
+function _addFundEarlySheet(wb, sheetName, company, groupLabel, month, early) {
+  _addPrettySheet(wb, sheetName, {
+    title: `${company} · ${groupLabel}`, subtitle: `${month} 提前还款明细`,
+    columns: FUND_EARLY_COLS,
+    rows: early.map(p => ({ date:p.date, customer:p.customer, contractId:'#'+p.contractId, period:p.period||'-', dueMonth:p.dueMonth, daysEarly:Math.abs(p.daysLate||0), amt:+p.total||0 })),
+    totalRow: { customer:'合计', amt: early.reduce((a,p)=>a+(+p.total||0),0) }
+  });
+}
+function _addFundOverdueSheet(wb, sheetName, company, groupLabel, month, overdue) {
+  _addPrettySheet(wb, sheetName, {
+    title: `${company} · ${groupLabel}`, subtitle: `${month} 仍然逾期未还明细（按今天最新状态）`,
+    columns: FUND_OVERDUE_COLS,
+    rows: overdue.map(o => ({ customer:o.customer, contractId:'#'+o.contractId, period:o.period, dueDate:o.dueDate, days:o.days, owed:+o.owed||0, phone:o.phone||'' })),
+    totalRow: { customer:'合计', owed: overdue.reduce((a,o)=>a+(+o.owed||0),0) }
+  });
+}
+
 // 🔖 只导出某一个月的对账明细（不是全部月份一起导），财务核对哪个月就导哪个月，避免一次给一堆sheet
-window.exportFundSingleMonth = function(groupId, month) {
+window.exportFundSingleMonth = async function(groupId, month) {
   const groups = DB_get('fundGroups') || [];
   const g = groups.find(x => x.id === groupId) || {};
   const groupLabel = g.label || '';
-  const wb = XLSX.utils.book_new();
+  const company = (DB_get('company')||{}).name || 'MORODOK';
 
-  const onTimeRows = getFundMonthOnTimeRows(groupId, month).map(p => ({
-    '日期': p.date, '客户': p.customer, '合同号': p.contractId, '期次': p.period||'',
-    '含提前结清': p.isEarlySettlement?'是':'', '金额': p.total
-  }));
-  if (onTimeRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(onTimeRows), '当期已收');
+  const onTime = getFundMonthOnTimeRows(groupId, month);
+  const catchup = getFundMonthCatchupRows(groupId, month);
+  const early = getFundMonthEarlyRows(groupId, month);
+  const overdue = getFundMonthOverdueRows(groupId, month);
 
-  const catchupRows = getFundMonthCatchupRows(groupId, month).map(p => ({
-    '收款日期': p.date, '客户': p.customer, '合同号': p.contractId, '期次': p.period||'',
-    '原到期月份': p.dueMonth, '逾期天数': p.daysLate||0, '金额': p.total
-  }));
-  if (catchupRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(catchupRows), '补收以前逾期');
+  if (!onTime.length && !catchup.length && !early.length && !overdue.length) {
+    alert(tl('这个月没有数据可导出','No data to export','គ្មានទិន្នន័យ')); return;
+  }
 
-  const earlyRows = getFundMonthEarlyRows(groupId, month).map(p => ({
-    '收款日期': p.date, '客户': p.customer, '合同号': p.contractId, '期次': p.period||'',
-    '实际到期月份': p.dueMonth, '提前天数': Math.abs(p.daysLate||0), '金额': p.total
-  }));
-  if (earlyRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(earlyRows), '提前还款');
+  const wb = new ExcelJS.Workbook();
+  wb.creator = company;
+  wb.created = new Date();
 
-  const overdueRows = getFundMonthOverdueRows(groupId, month).map(o => ({
-    '客户': o.customer, '合同号': o.contractId, '期次': o.period, '到期日': o.dueDate,
-    '逾期天数': o.days, '欠款': o.owed, '电话': o.phone
-  }));
-  if (overdueRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(overdueRows), '仍然逾期');
+  if (onTime.length) _addFundOnTimeSheet(wb, '当期已收', company, groupLabel, month, onTime);
+  if (catchup.length) _addFundCatchupSheet(wb, '补收以前逾期', company, groupLabel, month, catchup);
+  if (early.length) _addFundEarlySheet(wb, '提前还款', company, groupLabel, month, early);
+  if (overdue.length) _addFundOverdueSheet(wb, '仍然逾期', company, groupLabel, month, overdue);
 
-  if (wb.SheetNames.length === 0) { alert(tl('这个月没有数据可导出','No data to export','គ្មានទិន្នន័យ')); return; }
-  XLSX.writeFile(wb, `${groupLabel}_${month}_对账明细.xlsx`);
+  await _downloadWorkbook(wb, `${groupLabel}_${month}_对账明细.xlsx`);
 };
 
-window.exportFundMonthly = function(groupId, groupLabel) {
+window.exportFundMonthly = async function(groupId, groupLabel) {
   const rows = getFundMonthlyRows(groupId);
   if (!rows.length) { alert(tl('没有数据可导出','No data to export','គ្មានទិន្នន័យ')); return; }
   const groups = DB_get('fundGroups') || [];
   const g = groups.find(x => x.id === groupId) || {};
   const settledMonths = g.settledMonths || {};
-  const wb = XLSX.utils.book_new();
-  const summaryRows = rows.map(r => ({
-    '月份': r.month, '应收笔数': r.dueCount, '应收金额': r.dueAmt,
-    '已收笔数': r.count, '已收金额': r.total,
-    '逾期笔数': r.overdueCount, '逾期金额': r.overdueAmt,
-    '结算状态': settledMonths[r.month] ? `已结算(${settledMonths[r.month].by} ${settledMonths[r.month].date})` : '未结算'
-  }));
+  const company = (DB_get('company')||{}).name || 'MORODOK';
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = company;
+  wb.created = new Date();
+
   const totalCount = rows.reduce((a,r) => a + r.count, 0);
   const totalAmt = rows.reduce((a,r) => a + r.total, 0);
   const totalDueCount = rows.reduce((a,r) => a + r.dueCount, 0);
   const totalDueAmt = rows.reduce((a,r) => a + r.dueAmt, 0);
   const totalOverdueCount = rows.reduce((a,r) => a + r.overdueCount, 0);
   const totalOverdueAmt = rows.reduce((a,r) => a + r.overdueAmt, 0);
-  summaryRows.push({ '月份': '合计', '应收笔数': totalDueCount, '应收金额': totalDueAmt, '已收笔数': totalCount, '已收金额': totalAmt, '逾期笔数': totalOverdueCount, '逾期金额': totalOverdueAmt, '结算状态': '' });
-  const ws1 = XLSX.utils.json_to_sheet(summaryRows);
-  XLSX.utils.book_append_sheet(wb, ws1, '按月汇总');
-  // 每月三张sheet：当期正常已收 + 补收以前月份逾期 + 仍然逾期未还
-  rows.forEach(r => {
-    const onTimeRows = getFundMonthOnTimeRows(groupId, r.month).map(p => ({
-      '日期': p.date, '客户': p.customer, '合同号': p.contractId, '期次': p.period||'',
-      '含提前结清': p.isEarlySettlement?'是':'', '金额': p.total
-    }));
-    if (onTimeRows.length) {
-      const ws = XLSX.utils.json_to_sheet(onTimeRows);
-      XLSX.utils.book_append_sheet(wb, ws, r.month.replace('-','年')+'月-已收');
-    }
-    const catchupRows = getFundMonthCatchupRows(groupId, r.month).map(p => ({
-      '收款日期': p.date, '客户': p.customer, '合同号': p.contractId, '期次': p.period||'',
-      '原到期月份': p.dueMonth, '逾期天数': p.daysLate||0, '金额': p.total
-    }));
-    if (catchupRows.length) {
-      const wsC = XLSX.utils.json_to_sheet(catchupRows);
-      XLSX.utils.book_append_sheet(wb, wsC, r.month.replace('-','年')+'月-补收逾期');
-    }
-    const earlyRows = getFundMonthEarlyRows(groupId, r.month).map(p => ({
-      '收款日期': p.date, '客户': p.customer, '合同号': p.contractId, '期次': p.period||'',
-      '实际到期月份': p.dueMonth, '提前天数': Math.abs(p.daysLate||0), '金额': p.total
-    }));
-    if (earlyRows.length) {
-      const wsE = XLSX.utils.json_to_sheet(earlyRows);
-      XLSX.utils.book_append_sheet(wb, wsE, r.month.replace('-','年')+'月-提前还款');
-    }
-    const overdueRows = getFundMonthOverdueRows(groupId, r.month).map(o => ({
-      '客户': o.customer, '合同号': o.contractId, '期次': o.period, '到期日': o.dueDate,
-      '逾期天数': o.days, '欠款': o.owed, '电话': o.phone
-    }));
-    if (overdueRows.length) {
-      const ws2 = XLSX.utils.json_to_sheet(overdueRows);
-      XLSX.utils.book_append_sheet(wb, ws2, r.month.replace('-','年')+'月-逾期');
-    }
+
+  _addPrettySheet(wb, '按月汇总', {
+    title: `${company} · ${groupLabel}`,
+    subtitle: `按月回款对账汇总（生成时间：${today()}）`,
+    columns: [
+      { header:'月份', key:'month', width:12 },
+      { header:'应收笔数', key:'dueCount', width:10, align:'center' },
+      { header:'应收金额', key:'dueAmt', width:14, numFmt:'"$"#,##0.00', align:'right' },
+      { header:'已收笔数', key:'count', width:10, align:'center' },
+      { header:'已收金额', key:'total', width:14, numFmt:'"$"#,##0.00', align:'right' },
+      { header:'逾期笔数', key:'overdueCount', width:10, align:'center' },
+      { header:'逾期金额', key:'overdueAmt', width:14, numFmt:'"$"#,##0.00', align:'right' },
+      { header:'结算状态', key:'settled', width:24 },
+    ],
+    rows: rows.map(r => ({
+      month:r.month, dueCount:r.dueCount, dueAmt:r.dueAmt, count:r.count, total:r.total,
+      overdueCount:r.overdueCount, overdueAmt:r.overdueAmt,
+      settled: settledMonths[r.month] ? `已结算(${settledMonths[r.month].by} ${settledMonths[r.month].date})` : '未结算'
+    })),
+    totalRow: { month:'合计', dueCount:totalDueCount, dueAmt:totalDueAmt, count:totalCount, total:totalAmt, overdueCount:totalOverdueCount, overdueAmt:totalOverdueAmt, settled:'' }
   });
-  XLSX.writeFile(wb, `${groupLabel}_按月对账明细_${today()}.xlsx`);
+
+  // 每月最多四张sheet：当期正常已收 + 补收以前月份逾期 + 提前还款 + 仍然逾期未还
+  rows.forEach(r => {
+    const onTime = getFundMonthOnTimeRows(groupId, r.month);
+    const catchup = getFundMonthCatchupRows(groupId, r.month);
+    const early = getFundMonthEarlyRows(groupId, r.month);
+    const overdue = getFundMonthOverdueRows(groupId, r.month);
+    const mLabel = r.month.replace('-','年')+'月';
+
+    if (onTime.length) _addFundOnTimeSheet(wb, `${mLabel}-已收`, company, groupLabel, r.month, onTime);
+    if (catchup.length) _addFundCatchupSheet(wb, `${mLabel}-补收逾期`, company, groupLabel, r.month, catchup);
+    if (early.length) _addFundEarlySheet(wb, `${mLabel}-提前还款`, company, groupLabel, r.month, early);
+    if (overdue.length) _addFundOverdueSheet(wb, `${mLabel}-逾期`, company, groupLabel, r.month, overdue);
+  });
+
+  await _downloadWorkbook(wb, `${groupLabel}_按月对账明细_${today()}.xlsx`);
 };
 
 window.toggleFundDetail = function(groupId) {
