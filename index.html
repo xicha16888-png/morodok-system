@@ -8432,13 +8432,15 @@ function _addPrettySheet(wb, sheetName, opts) {
     ws.mergeCells(r, 1, r, cols.length);
     const tc = ws.getCell(r, 1);
     tc.value = opts.title;
-    tc.font = { bold: true, size: 14, color: { argb: 'FF0F2D5C' } };
+    tc.font = { bold: true, size: 16, color: { argb: 'FF0F2D5C' } };
+    ws.getRow(r).height = 26;
     r++;
     if (opts.subtitle) {
       ws.mergeCells(r, 1, r, cols.length);
       const sc = ws.getCell(r, 1);
       sc.value = opts.subtitle;
-      sc.font = { size: 10, color: { argb: 'FF78909C' } };
+      sc.font = { size: 12, color: { argb: 'FF78909C' } };
+      ws.getRow(r).height = 20;
       r++;
     }
     r++; // 空一行
@@ -8449,21 +8451,23 @@ function _addPrettySheet(wb, sheetName, opts) {
   cols.forEach((c, i) => {
     const cell = headerRow.getCell(i+1);
     cell.value = c.header;
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' } };
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F2D5C' } };
     cell.alignment = { horizontal: c.align || 'left', vertical: 'middle' };
   });
-  headerRow.height = 22;
+  headerRow.height = 28;
   ws.autoFilter = { from: { row: headerRowNum, column: 1 }, to: { row: headerRowNum, column: cols.length } };
   r++;
 
   opts.rows.forEach((row, idx) => {
     const excelRow = ws.getRow(r);
+    excelRow.height = 22;
     cols.forEach((c, i) => {
       const cell = excelRow.getCell(i+1);
       cell.value = row[c.key];
       if (c.numFmt) cell.numFmt = c.numFmt;
-      cell.alignment = { horizontal: c.align || 'left' };
+      cell.font = { size: 12 };
+      cell.alignment = { horizontal: c.align || 'left', vertical: 'middle' };
       cell.border = { bottom: { style: 'hair', color: { argb: 'FFE8EAED' } } };
       if (idx % 2 === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF7F9FC' } };
     });
@@ -8472,12 +8476,13 @@ function _addPrettySheet(wb, sheetName, opts) {
 
   if (opts.totalRow) {
     const excelRow = ws.getRow(r);
+    excelRow.height = 24;
     cols.forEach((c, i) => {
       const cell = excelRow.getCell(i+1);
-      cell.font = { bold: true, color: { argb: 'FF0F2D5C' } };
+      cell.font = { bold: true, size: 13, color: { argb: 'FF0F2D5C' } };
       cell.border = { top: { style: 'medium', color: { argb: 'FF0F2D5C' } } };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6F1FB' } };
-      cell.alignment = { horizontal: c.align || 'left' };
+      cell.alignment = { horizontal: c.align || 'left', vertical: 'middle' };
       if (opts.totalRow[c.key] !== undefined) {
         cell.value = opts.totalRow[c.key];
         if (c.numFmt) cell.numFmt = c.numFmt;
@@ -8497,41 +8502,42 @@ async function _downloadWorkbook(wb, filename) {
   setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
 }
 
-// 各个明细表格的列定义，导出单月/全部月份都复用同一套，保证格式统一
+// 各个明细表格的列定义，导出单月/全部月份都复用同一套，保证格式统一——统一居中对齐，
+// 日期列改成精确到天，方便一笔一笔核对
 const FUND_ONTIME_COLS = [
-  { header:'日期', key:'date', width:14 },
-  { header:'客户', key:'customer', width:20 },
-  { header:'合同号', key:'contractId', width:20 },
-  { header:'期次', key:'period', width:8, align:'center' },
-  { header:'含提前结清', key:'early', width:12, align:'center' },
-  { header:'金额', key:'amt', width:14, numFmt:'"$"#,##0.00', align:'right' },
+  { header:'日期', key:'date', width:16, align:'center' },
+  { header:'客户', key:'customer', width:22, align:'center' },
+  { header:'合同号', key:'contractId', width:22, align:'center' },
+  { header:'期次', key:'period', width:10, align:'center' },
+  { header:'含提前结清', key:'early', width:14, align:'center' },
+  { header:'金额', key:'amt', width:16, numFmt:'"$"#,##0.00', align:'center' },
 ];
 const FUND_CATCHUP_COLS = [
-  { header:'收款日期', key:'date', width:14 },
-  { header:'客户', key:'customer', width:20 },
-  { header:'合同号', key:'contractId', width:20 },
-  { header:'期次', key:'period', width:8, align:'center' },
-  { header:'原到期月份', key:'dueMonth', width:14, align:'center' },
-  { header:'逾期天数', key:'daysLate', width:12, align:'center' },
-  { header:'金额', key:'amt', width:14, numFmt:'"$"#,##0.00', align:'right' },
+  { header:'收款日期', key:'date', width:16, align:'center' },
+  { header:'客户', key:'customer', width:22, align:'center' },
+  { header:'合同号', key:'contractId', width:22, align:'center' },
+  { header:'期次', key:'period', width:10, align:'center' },
+  { header:'原到期日', key:'dueDateFull', width:16, align:'center' },
+  { header:'逾期天数', key:'daysLate', width:14, align:'center' },
+  { header:'金额', key:'amt', width:16, numFmt:'"$"#,##0.00', align:'center' },
 ];
 const FUND_EARLY_COLS = [
-  { header:'收款日期', key:'date', width:14 },
-  { header:'客户', key:'customer', width:20 },
-  { header:'合同号', key:'contractId', width:20 },
-  { header:'期次', key:'period', width:8, align:'center' },
-  { header:'实际到期月份', key:'dueMonth', width:14, align:'center' },
-  { header:'提前天数', key:'daysEarly', width:12, align:'center' },
-  { header:'金额', key:'amt', width:14, numFmt:'"$"#,##0.00', align:'right' },
+  { header:'收款日期', key:'date', width:16, align:'center' },
+  { header:'客户', key:'customer', width:22, align:'center' },
+  { header:'合同号', key:'contractId', width:22, align:'center' },
+  { header:'期次', key:'period', width:10, align:'center' },
+  { header:'实际到期日', key:'dueDateFull', width:16, align:'center' },
+  { header:'提前天数', key:'daysEarly', width:14, align:'center' },
+  { header:'金额', key:'amt', width:16, numFmt:'"$"#,##0.00', align:'center' },
 ];
 const FUND_OVERDUE_COLS = [
-  { header:'客户', key:'customer', width:20 },
-  { header:'合同号', key:'contractId', width:20 },
-  { header:'期次', key:'period', width:8, align:'center' },
-  { header:'到期日', key:'dueDate', width:14 },
-  { header:'逾期天数', key:'days', width:12, align:'center' },
-  { header:'欠款', key:'owed', width:14, numFmt:'"$"#,##0.00', align:'right' },
-  { header:'电话', key:'phone', width:16 },
+  { header:'客户', key:'customer', width:22, align:'center' },
+  { header:'合同号', key:'contractId', width:22, align:'center' },
+  { header:'期次', key:'period', width:10, align:'center' },
+  { header:'到期日', key:'dueDate', width:16, align:'center' },
+  { header:'逾期天数', key:'days', width:14, align:'center' },
+  { header:'欠款', key:'owed', width:16, numFmt:'"$"#,##0.00', align:'center' },
+  { header:'电话', key:'phone', width:18, align:'center' },
 ];
 
 function _addFundOnTimeSheet(wb, sheetName, company, groupLabel, month, onTime) {
@@ -8546,7 +8552,7 @@ function _addFundCatchupSheet(wb, sheetName, company, groupLabel, month, catchup
   _addPrettySheet(wb, sheetName, {
     title: `${company} · ${groupLabel}`, subtitle: `${month} 补收以前月份逾期明细`,
     columns: FUND_CATCHUP_COLS,
-    rows: catchup.map(p => ({ date:p.date, customer:p.customer, contractId:'#'+p.contractId, period:p.period||'-', dueMonth:p.dueMonth, daysLate:p.daysLate||0, amt:+p.total||0 })),
+    rows: catchup.map(p => ({ date:p.date, customer:p.customer, contractId:'#'+p.contractId, period:p.period||'-', dueDateFull:p.dueDateFull||p.dueMonth, daysLate:p.daysLate||0, amt:+p.total||0 })),
     totalRow: { customer:'合计', amt: catchup.reduce((a,p)=>a+(+p.total||0),0) }
   });
 }
@@ -8554,7 +8560,7 @@ function _addFundEarlySheet(wb, sheetName, company, groupLabel, month, early) {
   _addPrettySheet(wb, sheetName, {
     title: `${company} · ${groupLabel}`, subtitle: `${month} 提前还款明细`,
     columns: FUND_EARLY_COLS,
-    rows: early.map(p => ({ date:p.date, customer:p.customer, contractId:'#'+p.contractId, period:p.period||'-', dueMonth:p.dueMonth, daysEarly:Math.abs(p.daysLate||0), amt:+p.total||0 })),
+    rows: early.map(p => ({ date:p.date, customer:p.customer, contractId:'#'+p.contractId, period:p.period||'-', dueDateFull:p.dueDateFull||p.dueMonth, daysEarly:Math.abs(p.daysLate||0), amt:+p.total||0 })),
     totalRow: { customer:'合计', amt: early.reduce((a,p)=>a+(+p.total||0),0) }
   });
 }
@@ -8618,14 +8624,14 @@ window.exportFundMonthly = async function(groupId, groupLabel) {
     title: `${company} · ${groupLabel}`,
     subtitle: `按月回款对账汇总（生成时间：${today()}）`,
     columns: [
-      { header:'月份', key:'month', width:12 },
-      { header:'应收笔数', key:'dueCount', width:10, align:'center' },
-      { header:'应收金额', key:'dueAmt', width:14, numFmt:'"$"#,##0.00', align:'right' },
-      { header:'已收笔数', key:'count', width:10, align:'center' },
-      { header:'已收金额', key:'total', width:14, numFmt:'"$"#,##0.00', align:'right' },
-      { header:'逾期笔数', key:'overdueCount', width:10, align:'center' },
-      { header:'逾期金额', key:'overdueAmt', width:14, numFmt:'"$"#,##0.00', align:'right' },
-      { header:'结算状态', key:'settled', width:24 },
+      { header:'月份', key:'month', width:14, align:'center' },
+      { header:'应收笔数', key:'dueCount', width:12, align:'center' },
+      { header:'应收金额', key:'dueAmt', width:16, numFmt:'"$"#,##0.00', align:'center' },
+      { header:'已收笔数', key:'count', width:12, align:'center' },
+      { header:'已收金额', key:'total', width:16, numFmt:'"$"#,##0.00', align:'center' },
+      { header:'逾期笔数', key:'overdueCount', width:12, align:'center' },
+      { header:'逾期金额', key:'overdueAmt', width:16, numFmt:'"$"#,##0.00', align:'center' },
+      { header:'结算状态', key:'settled', width:26, align:'center' },
     ],
     rows: rows.map(r => ({
       month:r.month, dueCount:r.dueCount, dueAmt:r.dueAmt, count:r.count, total:r.total,
@@ -8788,6 +8794,14 @@ function renderFundStats() {
     if (!sched || !sched.dueDate) return null;
     return sched.dueDate.replace(/\//g,'-').slice(0,7);
   }
+  // 🔖 精确到天的原始到期日（导出Excel时用，比只显示月份更方便核对）
+  function getDueDateFull(p) {
+    const s = salesById[String(p.contractId)];
+    if (!s) return null;
+    const sched = (s.schedule||[]).find(x => x.period === p.period);
+    if (!sched || !sched.dueDate) return null;
+    return sched.dueDate.replace(/\//g,'-');
+  }
 
   // 读取账户组配置，默认两组
   let groups = DB_get('fundGroups');
@@ -8821,7 +8835,7 @@ function renderFundStats() {
       isEarlySettlement: true
     }));
     const gPays = [
-      ...gPaysRaw.map(p => ({ ...p, total: (+p.principal||0)+(+p.interest||0)+(+p.serviceFee||0)+(+p.penalty||0), daysLate: getDaysLate(p), dueMonth: getDueMonth(p) })),
+      ...gPaysRaw.map(p => ({ ...p, total: (+p.principal||0)+(+p.interest||0)+(+p.serviceFee||0)+(+p.penalty||0), daysLate: getDaysLate(p), dueMonth: getDueMonth(p), dueDateFull: getDueDateFull(p) })),
       ...gEarlyPays
     ];
     const recovered = gPaysRaw.reduce((a,p) => a + (+p.principal||0), 0);
