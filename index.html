@@ -8187,22 +8187,70 @@ window.toggleFundMonthly = function(groupId) {
 };
 
 function getFundMonthlyRows(groupId) {
-  const list = (window._fundGroupPays && window._fundGroupPays[groupId]) || [];
-  const byMonth = {};
-  list.forEach(p => {
-    const d = p.date || '';
-    const month = d.slice(0, 7); // YYYY-MM
-    if (!month) return;
-    if (!byMonth[month]) byMonth[month] = { month, count: 0, total: 0, minDate: d, maxDate: d };
-    const m = byMonth[month];
-    m.count += 1;
-    m.total += (+p.total||0);
-    if (d < m.minDate) m.minDate = d;
-    if (d > m.maxDate) m.maxDate = d;
+  const gSales = window._fundGroupSales?.[groupId] || [];
+  const gPays  = (window._fundGroupPays && window._fundGroupPays[groupId]) || [];
+  const td = today();
+
+  // 🔖 月份列表以"这份合同的期次到期日"和"实际收款日期"取并集——这样即使某个月完全没收到钱
+  // （全部逾期），这个月也会出现一行，不会因为_fundGroupPays里没有当月记录就被漏掉
+  const monthsSet = new Set();
+  gSales.forEach(s => (s.schedule||[]).forEach(p => {
+    const m = (p.dueDate||'').replace(/\//g,'-').slice(0,7);
+    if (m) monthsSet.add(m);
+  }));
+  gPays.forEach(p => { const m=(p.date||'').slice(0,7); if (m) monthsSet.add(m); });
+
+  return Array.from(monthsSet).sort().map(month => {
+    const duePairs = [];
+    gSales.forEach(s => (s.schedule||[]).forEach(p => {
+      if ((p.dueDate||'').replace(/\//g,'-').slice(0,7) === month) duePairs.push({s,p});
+    }));
+    const dueCount = duePairs.length;
+    const dueAmt = duePairs.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0)+(+p.serviceFeeDue||0),0);
+
+    // 🔖 逾期按"现在最新状态"算：这个月到期、到今天还没还的期次（客户后续补上了就不会再算进来）
+    const overduePairs = duePairs.filter(({p}) => !p.paid && p.dueDate && p.dueDate.replace(/\//g,'-') < td);
+    const overdueCount = overduePairs.length;
+    const overdueAmt = overduePairs.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
+
+    const monthPays = gPays.filter(p => (p.date||'').slice(0,7) === month);
+    const count = monthPays.length;
+    const total = monthPays.reduce((a,p)=>a+(+p.total||0),0);
+    const dates = monthPays.map(p=>p.date).filter(Boolean).sort();
+
+    return { month, count, total, minDate: dates[0]||'', maxDate: dates[dates.length-1]||'',
+      dueCount, dueAmt, overdueCount, overdueAmt };
   });
-  return Object.values(byMonth).sort((a,b) => a.month.localeCompare(b.month));
 }
 
+// 🔖 已收明细——逐笔列，不按客户合并，方便跟银行流水一笔一笔对账
+function getFundMonthPaymentRows(groupId, month) {
+  const list = (window._fundGroupPays && window._fundGroupPays[groupId]) || [];
+  return list.filter(p => (p.date||'').slice(0,7) === month)
+    .slice().sort((a,b) => (a.date||'').localeCompare(b.date||''));
+}
+
+// 🔖 逾期明细——这个月到期、现在还没还的每一期，单独一行（客户名/合同号/期次/到期日/逾期天数/欠款）
+function getFundMonthOverdueRows(groupId, month) {
+  const gSales = window._fundGroupSales?.[groupId] || [];
+  const td = today();
+  const rows = [];
+  gSales.forEach(s => (s.schedule||[]).forEach(p => {
+    if ((p.dueDate||'').replace(/\//g,'-').slice(0,7) !== month) return;
+    if (p.paid) return;
+    const dd = (p.dueDate||'').replace(/\//g,'-');
+    if (!dd || dd >= td) return;
+    rows.push({
+      customer: s.customer, contractId: s.id, period: p.period, dueDate: p.dueDate,
+      phone: s.customerPhone||'',
+      owed: (+p.principalDue||0)+(+p.interestDue||0),
+      days: Math.floor((new Date(td)-new Date(dd))/86400000)
+    });
+  }));
+  return rows.sort((a,b) => b.days - a.days);
+}
+
+// 保留一份按客户合并的辅助函数（导出Excel时用得到，界面明细改逐笔展示）
 function getFundMonthCustomerRows(groupId, month) {
   const list = (window._fundGroupPays && window._fundGroupPays[groupId]) || [];
   const inMonth = list.filter(p => (p.date||'').slice(0,7) === month);
@@ -8220,24 +8268,88 @@ function getFundMonthCustomerRows(groupId, month) {
   return Object.values(byContract).sort((a,b) => a.customer.localeCompare(b.customer));
 }
 
+// 🔖 把这个月收到的钱拆成两类：dueMonth===当月 → 当期正常已收；dueMonth是更早的月份 → 补收之前月份的逾期
+// （提前结清/找不到对应期次的，dueMonth是null，归到"当期正常已收"，不当补收处理）
+function getFundMonthOnTimeRows(groupId, month) {
+  return getFundMonthPaymentRows(groupId, month).filter(p => !p.dueMonth || p.dueMonth === month);
+}
+function getFundMonthCatchupRows(groupId, month) {
+  return getFundMonthPaymentRows(groupId, month).filter(p => p.dueMonth && p.dueMonth !== month);
+}
+
 window.toggleFundMonthRow = function(groupId, month) {
   const el = document.getElementById(`fundMonthCust_${groupId}_${month}`);
   if (!el) return;
   const willShow = el.style.display === 'none';
   el.style.display = willShow ? 'table-row' : 'none';
   if (willShow) {
-    const rows = getFundMonthCustomerRows(groupId, month);
+    const onTimeRows = getFundMonthOnTimeRows(groupId, month);
+    const catchupRows = getFundMonthCatchupRows(groupId, month);
+    const catchupTotal = catchupRows.reduce((a,p)=>a+(+p.total||0),0);
+    const overdueRows = getFundMonthOverdueRows(groupId, month);
+    const overdueTotal = overdueRows.reduce((a,r)=>a+r.owed,0);
     const inner = el.querySelector('td');
-    inner.innerHTML = `<div style="padding:10px;background:#fafbfc"><table style="width:100%">
-      <tr><th>${t('colCustomer')}</th><th>#</th><th>${tl('还款日期','Payment Dates','ថ្ងៃទូទាត់')}</th><th>${tl('金额','Amount','ចំនួន')}</th></tr>
-      ${rows.map(r => `<tr>
-        <td class="fw700">${esc(r.customer||'')}${r.hasEarly?` <span style="background:#f3e5f5;color:#9c27b0;font-size:10px;padding:1px 6px;border-radius:8px">⚡${tl('提前结清','early','មុន')}</span>`:''}</td>
-        <td class="text-blue">#${esc(String(r.contractId||''))}</td>
-        <td style="font-size:12px;${r.maxDaysLate>0?'color:var(--red)':''}">${r.dates.join(', ')}</td>
-        <td class="fw700 text-green">${fmt(r.total)}</td>
-      </tr>`).join('')}
-    </table></div>`;
+    inner.innerHTML = `
+      <div style="padding:12px;background:#fafbfc">
+        <div style="font-weight:700;font-size:12px;color:#2e7d32;margin-bottom:6px">💰 ${tl('当期正常已收（逐笔）','Collected on time','ប្រមូលបានទាន់ពេល')}（${onTimeRows.length}${tl('笔','','')}）</div>
+        ${onTimeRows.length ? `<table style="width:100%;margin-bottom:16px">
+          <tr><th>${tl('日期','Date','ថ្ងៃ')}</th><th>${t('colCustomer')}</th><th>#</th><th>${t('period')}</th><th>${tl('金额','Amount','ចំនួន')}</th></tr>
+          ${onTimeRows.map(p => `<tr>
+            <td style="font-size:12px">${p.date}</td>
+            <td class="fw700">${esc(p.customer||'')}${p.isEarlySettlement?` <span style="background:#f3e5f5;color:#9c27b0;font-size:10px;padding:1px 6px;border-radius:8px">⚡${tl('提前结清','early','មុន')}</span>`:''}</td>
+            <td class="text-blue">#${esc(String(p.contractId||''))}</td>
+            <td>${p.period||'-'}</td>
+            <td class="fw700 text-green">${fmt(p.total)}</td>
+          </tr>`).join('')}
+        </table>` : `<div style="font-size:12px;color:var(--muted);margin-bottom:16px">${tl('这个月没有当期正常到账的收款','No on-time payments this month','គ្មានទិន្នន័យ')}</div>`}
+
+        <div style="font-weight:700;font-size:12px;color:#e65100;margin-bottom:6px">🔄 ${tl('补收以前月份逾期','Late catch-up (from earlier months)','ប្រមូល​បាន​ក្រោយ')}（${catchupRows.length}${tl('笔','','')} · ${fmt(catchupTotal)}）</div>
+        ${catchupRows.length ? `<table style="width:100%;margin-bottom:16px">
+          <tr><th>${tl('收款日期','Paid Date','ថ្ងៃ​ទូទាត់')}</th><th>${t('colCustomer')}</th><th>#</th><th>${t('period')}</th><th>${tl('原到期月份','Originally Due','ខែ​ត្រូវ​ដល់​កំណត់​ដើម')}</th><th>${tl('逾期天数','Days Late','ថ្ងៃ​ហួស')}</th><th>${tl('金额','Amount','ចំនួន')}</th></tr>
+          ${catchupRows.map(p => `<tr style="background:#fff8e1">
+            <td style="font-size:12px">${p.date}</td>
+            <td class="fw700">${esc(p.customer||'')}</td>
+            <td class="text-blue">#${esc(String(p.contractId||''))}</td>
+            <td>${p.period||'-'}</td>
+            <td style="font-weight:700;color:#e65100">${p.dueMonth}</td>
+            <td style="color:var(--red)">${p.daysLate||0} ${tl('天','d','ថ្ងៃ')}</td>
+            <td class="fw700 text-green">${fmt(p.total)}</td>
+          </tr>`).join('')}
+        </table>` : `<div style="font-size:12px;color:var(--muted);margin-bottom:16px">${tl('这个月没有补收以前月份的逾期','No late catch-up payments this month','គ្មានទិន្នន័យ')}</div>`}
+
+        <div style="font-weight:700;font-size:12px;color:var(--red);margin-bottom:6px">⚠️ ${tl('仍然逾期未还（按今天最新状态）','Still overdue (as of today)','ជំពាក់​ហួស​កំណត់')}（${overdueRows.length}${tl('笔','','')} · ${fmt(overdueTotal)}）</div>
+        ${overdueRows.length ? `<table style="width:100%">
+          <tr><th>${t('colCustomer')}</th><th>#</th><th>${t('period')}</th><th>${tl('到期日','Due Date','ថ្ងៃ​ដល់​កំណត់')}</th><th>${tl('逾期天数','Days Late','ថ្ងៃ​ហួស')}</th><th>${tl('欠款','Owed','ជំពាក់')}</th></tr>
+          ${overdueRows.map(r => `<tr>
+            <td class="fw700">${esc(r.customer||'')}</td>
+            <td class="text-blue">#${esc(String(r.contractId||''))}</td>
+            <td>${r.period}</td>
+            <td style="font-size:12px">${r.dueDate}</td>
+            <td style="color:var(--red)">${r.days} ${tl('天','d','ថ្ងៃ')}</td>
+            <td class="fw700 text-red">${fmt(r.owed)}</td>
+          </tr>`).join('')}
+        </table>` : `<div style="font-size:12px;color:var(--muted)">${tl('这个月到期的期次都已经还清了','All periods due this month are settled','ទូទាត់​អស់​ហើយ')}</div>`}
+      </div>`;
   }
+};
+
+// 🔖 结算状态：跟投资人对完账、钱转过去之后，标记这个月"已结算"，记下操作人和时间，
+// 避免后面搞不清这个月的钱有没有跟投资人结过——状态存在 fundGroups 里，跟着账户组走
+window.toggleMonthSettled = function(groupId, month) {
+  const groups = DB_get('fundGroups') || [];
+  const g = groups.find(x => x.id === groupId);
+  if (!g) return;
+  g.settledMonths = g.settledMonths || {};
+  if (g.settledMonths[month]) {
+    if (!confirm(tl(`确认取消"${month}"的已结算标记吗？`,`Unmark ${month} as settled?`,''))) return;
+    delete g.settledMonths[month];
+  } else {
+    const u = getCurrentUser();
+    if (!confirm(tl(`确认标记"${month}"已经跟投资人结算完毕吗？`,`Confirm ${month} has been settled with the investor?`,''))) return;
+    g.settledMonths[month] = { by: u?.displayName || u?.username || '', date: today() };
+  }
+  DB_set('fundGroups', groups);
+  renderFundMonthlyTable(groupId);
 };
 
 function renderFundMonthlyTable(groupId) {
@@ -8248,47 +8360,92 @@ function renderFundMonthlyTable(groupId) {
     wrap.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted)">${tl('暂无还款数据','No payment data','គ្មានទិន្នន័យ')}</div>`;
     return;
   }
+  const groups = DB_get('fundGroups') || [];
+  const g = groups.find(x => x.id === groupId) || {};
+  const settledMonths = g.settledMonths || {};
   const totalCount = rows.reduce((a,r) => a + r.count, 0);
   const totalAmt = rows.reduce((a,r) => a + r.total, 0);
+  const totalOverdueCount = rows.reduce((a,r) => a + r.overdueCount, 0);
+  const totalOverdueAmt = rows.reduce((a,r) => a + r.overdueAmt, 0);
   wrap.innerHTML = `
-  <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${tl('注：还款笔数按每笔流水记录计算，同一客户当月还款多次会分别计入；点击月份行可展开查看该月客户明细','Note: click a month row to see customer breakdown','កំណត់ចំណាំ')}</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${tl('注：应收=这个月到期的所有期次；已收=这个月实际收到的（含补收以前月份逾期）；逾期=到期但截至今天还没还的（按最新状态算，客户后续补上就不会再算）。点击月份行展开逐笔明细，跟投资人结完账后点"标记已结算"','Note: click a month row to expand transaction-level detail','កំណត់ចំណាំ')}</div>
   <div class="table-wrap"><table>
-    <tr><th>${tl('月份','Month','ខែ')}</th><th>${tl('日期范围','Date Range','ចន្លោះកាលបរិច្ឆេទ')}</th><th>${tl('还款笔数','Payment Count','ចំនួនដង')}</th><th>${tl('回款总额','Total','សរុប')}</th><th></th></tr>
-    ${rows.map(r => `
+    <tr><th>${tl('月份','Month','ខែ')}</th><th>${tl('应收笔数','Due Count','ចំនួន​ត្រូវ​ទទួល')}</th><th>${tl('应收金额','Due Amount','ចំនួន​ត្រូវ​ទទួល')}</th><th>${tl('已收笔数','Collected Count','ចំនួន​ប្រមូល​បាន')}</th><th>${tl('已收金额','Collected','ប្រមូល​បាន')}</th><th>${tl('逾期笔数','Overdue Count','ចំនួន​ហួស​កំណត់')}</th><th>${tl('逾期金额','Overdue Amount','ចំនួន​ហួស​កំណត់')}</th><th>${tl('结算状态','Settlement','ការ​សង')}</th><th></th></tr>
+    ${rows.map(r => {
+      const settled = settledMonths[r.month];
+      return `
       <tr onclick="toggleFundMonthRow(${groupId}, '${r.month}')" style="cursor:pointer">
         <td class="fw700">${r.month}</td>
-        <td>${r.minDate} ~ ${r.maxDate}</td>
+        <td>${r.dueCount}</td>
+        <td>${fmt(r.dueAmt)}</td>
         <td>${r.count}</td>
         <td class="fw700 text-green">${fmt(r.total)}</td>
+        <td style="${r.overdueCount>0?'color:var(--red);font-weight:700':''}">${r.overdueCount}</td>
+        <td style="${r.overdueAmt>0?'color:var(--red);font-weight:700':''}">${fmt(r.overdueAmt)}</td>
+        <td onclick="event.stopPropagation()">
+          ${settled
+            ? `<span onclick="toggleMonthSettled(${groupId},'${r.month}')" style="background:#e8f5e9;color:#2e7d32;font-size:11px;padding:3px 10px;border-radius:10px;cursor:pointer;font-weight:700" title="${esc(settled.by)} ${settled.date}">✅ ${tl('已结算','Settled','សង​រួច')}</span>`
+            : `<button class="btn btn-outline btn-sm" style="font-size:11px" onclick="toggleMonthSettled(${groupId},'${r.month}')">${tl('标记已结算','Mark Settled','សម្គាល់​សង​រួច')}</button>`}
+        </td>
         <td style="color:var(--blue);font-size:12px">▼ ${tl('展开','Expand','ពង្រីក')}</td>
       </tr>
-      <tr id="fundMonthCust_${groupId}_${r.month}" style="display:none"><td colspan="5"></td></tr>
-    `).join('')}
+      <tr id="fundMonthCust_${groupId}_${r.month}" style="display:none"><td colspan="9"></td></tr>
+    `;
+    }).join('')}
   </table></div>
-  <div style="margin-top:6px;font-size:13px;font-weight:700">${tl('合计','Total','សរុប')} ${totalCount} ${tl('笔，回款总额','payments, total','ដង, សរុប')} <span class="text-green">${fmt(totalAmt)}</span></div>`;
+  <div style="margin-top:6px;font-size:13px;font-weight:700">${tl('合计','Total','សរុប')} ${tl('已收','Collected','')} ${totalCount} ${tl('笔','','')} <span class="text-green">${fmt(totalAmt)}</span> · ${tl('逾期','Overdue','')} ${totalOverdueCount} ${tl('笔','','')} <span class="text-red">${fmt(totalOverdueAmt)}</span></div>`;
 }
 
 window.exportFundMonthly = function(groupId, groupLabel) {
   const rows = getFundMonthlyRows(groupId);
   if (!rows.length) { alert(tl('没有数据可导出','No data to export','គ្មានទិន្នន័យ')); return; }
+  const groups = DB_get('fundGroups') || [];
+  const g = groups.find(x => x.id === groupId) || {};
+  const settledMonths = g.settledMonths || {};
   const wb = XLSX.utils.book_new();
-  const summaryRows = rows.map(r => ({ '月份': r.month, '日期范围': `${r.minDate} ~ ${r.maxDate}`, '还款笔数': r.count, '回款总额': r.total }));
+  const summaryRows = rows.map(r => ({
+    '月份': r.month, '应收笔数': r.dueCount, '应收金额': r.dueAmt,
+    '已收笔数': r.count, '已收金额': r.total,
+    '逾期笔数': r.overdueCount, '逾期金额': r.overdueAmt,
+    '结算状态': settledMonths[r.month] ? `已结算(${settledMonths[r.month].by} ${settledMonths[r.month].date})` : '未结算'
+  }));
   const totalCount = rows.reduce((a,r) => a + r.count, 0);
   const totalAmt = rows.reduce((a,r) => a + r.total, 0);
-  summaryRows.push({ '月份': '合计', '日期范围': '', '还款笔数': totalCount, '回款总额': totalAmt });
+  const totalDueCount = rows.reduce((a,r) => a + r.dueCount, 0);
+  const totalDueAmt = rows.reduce((a,r) => a + r.dueAmt, 0);
+  const totalOverdueCount = rows.reduce((a,r) => a + r.overdueCount, 0);
+  const totalOverdueAmt = rows.reduce((a,r) => a + r.overdueAmt, 0);
+  summaryRows.push({ '月份': '合计', '应收笔数': totalDueCount, '应收金额': totalDueAmt, '已收笔数': totalCount, '已收金额': totalAmt, '逾期笔数': totalOverdueCount, '逾期金额': totalOverdueAmt, '结算状态': '' });
   const ws1 = XLSX.utils.json_to_sheet(summaryRows);
   XLSX.utils.book_append_sheet(wb, ws1, '按月汇总');
-  // 每月客户明细单独一张sheet
+  // 每月三张sheet：当期正常已收 + 补收以前月份逾期 + 仍然逾期未还
   rows.forEach(r => {
-    const custRows = getFundMonthCustomerRows(groupId, r.month).map(c => ({
-      '客户': c.customer, '合同号': c.contractId, '还款日期': c.dates.join(', '), '含提前结清': c.hasEarly?'是':'', '金额': c.total
+    const onTimeRows = getFundMonthOnTimeRows(groupId, r.month).map(p => ({
+      '日期': p.date, '客户': p.customer, '合同号': p.contractId, '期次': p.period||'',
+      '含提前结清': p.isEarlySettlement?'是':'', '金额': p.total
     }));
-    if (custRows.length) {
-      const ws = XLSX.utils.json_to_sheet(custRows);
-      XLSX.utils.book_append_sheet(wb, ws, r.month.replace('-','年')+'月');
+    if (onTimeRows.length) {
+      const ws = XLSX.utils.json_to_sheet(onTimeRows);
+      XLSX.utils.book_append_sheet(wb, ws, r.month.replace('-','年')+'月-已收');
+    }
+    const catchupRows = getFundMonthCatchupRows(groupId, r.month).map(p => ({
+      '收款日期': p.date, '客户': p.customer, '合同号': p.contractId, '期次': p.period||'',
+      '原到期月份': p.dueMonth, '逾期天数': p.daysLate||0, '金额': p.total
+    }));
+    if (catchupRows.length) {
+      const wsC = XLSX.utils.json_to_sheet(catchupRows);
+      XLSX.utils.book_append_sheet(wb, wsC, r.month.replace('-','年')+'月-补收逾期');
+    }
+    const overdueRows = getFundMonthOverdueRows(groupId, r.month).map(o => ({
+      '客户': o.customer, '合同号': o.contractId, '期次': o.period, '到期日': o.dueDate,
+      '逾期天数': o.days, '欠款': o.owed, '电话': o.phone
+    }));
+    if (overdueRows.length) {
+      const ws2 = XLSX.utils.json_to_sheet(overdueRows);
+      XLSX.utils.book_append_sheet(wb, ws2, r.month.replace('-','年')+'月-逾期');
     }
   });
-  XLSX.writeFile(wb, `${groupLabel}_按月回款统计_${today()}.xlsx`);
+  XLSX.writeFile(wb, `${groupLabel}_按月对账明细_${today()}.xlsx`);
 };
 
 window.toggleFundDetail = function(groupId) {
@@ -8419,6 +8576,14 @@ function renderFundStats() {
     const days = Math.round((paid - due) / 86400000);
     return days; // 正数=逾期几天，0或负数=按时/提前
   }
+  // 🔖 这一笔钱，原本对应的期次应该是哪个月到期的——用来判断"这笔钱是不是补收以前月份的逾期"
+  function getDueMonth(p) {
+    const s = salesById[String(p.contractId)];
+    if (!s) return null;
+    const sched = (s.schedule||[]).find(x => x.period === p.period);
+    if (!sched || !sched.dueDate) return null;
+    return sched.dueDate.replace(/\//g,'-').slice(0,7);
+  }
 
   // 读取账户组配置，默认两组
   let groups = DB_get('fundGroups');
@@ -8452,7 +8617,7 @@ function renderFundStats() {
       isEarlySettlement: true
     }));
     const gPays = [
-      ...gPaysRaw.map(p => ({ ...p, total: (+p.principal||0)+(+p.interest||0)+(+p.serviceFee||0)+(+p.penalty||0), daysLate: getDaysLate(p) })),
+      ...gPaysRaw.map(p => ({ ...p, total: (+p.principal||0)+(+p.interest||0)+(+p.serviceFee||0)+(+p.penalty||0), daysLate: getDaysLate(p), dueMonth: getDueMonth(p) })),
       ...gEarlyPays
     ];
     const recovered = gPaysRaw.reduce((a,p) => a + (+p.principal||0), 0);
