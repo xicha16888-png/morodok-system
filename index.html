@@ -7122,17 +7122,62 @@ window.toggleDetailRow = function(rowId, arrowId) {
 // 同一个人可能被打成英文名、昵称、大小写不同、有无空格等各种写法，这里统一收编）
 // 有新员工入职、或者发现某人还有别的叫法没被识别到，往对应数组里加一项字符串即可
 const STAFF_ALIAS_GROUPS = [
-  ['希哈', 'Nea Seyha'],
+  ['希哈', 'Nea Seyha', 'Nea Seiha'], // Nea Seiha 是 Nea Seyha 的拼写变体（ei/ey 打错），确认为同一人
   ['小B', 'SUN VITA'],
   ['碧色', 'Som Piseth'],
   ['李冲', 'Ly Chong'],
   ['普提', 'KEO PUTHI'],
   ['娟娟', 'SOK CHANNA'],
-  ['谢海', 'Sea Seanghai', 'Sea Seanghal'], // 正确拼写是 Seanghai；Seanghal 是之前打错的，保留以防旧合同用了错拼写
+  ['谢海', 'Seanghai', 'Sea Seanghai', 'Sea Seanghal'], // 正确拼写是 Seanghai；Sea Seanghai/Seanghal 是之前打错/多打的写法，保留以防旧合同用了这些写法
   ['阿说', 'Thuon Chansreychess'],
   ['利莎', 'You Doliza'],
+  ['Heng Bunthan', 'Heng Bonphan'], // 确认为同一人，Bonphan 是打错的写法
   ['Ny Sokminea'], // 新人，昵称还不知道，先用英文名
 ];
+
+// 名字规范化：去掉所有空格 + 转小写，"Seang Hai"/"SEANGHAI"/"seanghai" 会被认成同一个字符串
+const staffNorm = s => (s||'').replace(/\s+/g,'').toLowerCase();
+
+// 把每个单词首字母大写，其余小写："KEO PUTHI" -> "Keo Puthi"，用来统一展示格式（都用英文/规范大小写）
+function staffTitleCase(s) {
+  return (s||'').replace(/[A-Za-z]+/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase());
+}
+
+// 给任意一个原始「业务员」字段值，返回统一后的展示名字：
+// 1) 如果这个写法命中花名册(STAFF_ALIAS_GROUPS)里的某一组，就统一显示这组里的英文名（优先选纯英文字母的那一项）
+// 2) 如果没命中花名册，就统一大小写格式后原样返回（不同大小写/空格写法此时已经在分组阶段被合并，见 groupStaffNames）
+function canonicalStaffDisplayName(raw) {
+  const s = (raw || '').trim();
+  if (!s) return '';
+  const n = staffNorm(s);
+  const group = STAFF_ALIAS_GROUPS.find(g => g.some(a => staffNorm(a) === n));
+  if (group) {
+    const eng = group.find(a => /^[A-Za-z][A-Za-z\s]*$/.test(a));
+    return staffTitleCase(eng || group[0]);
+  }
+  return staffTitleCase(s);
+}
+
+// 把一批合同/记录，按「业务员」真实身份（花名册分组 + 大小写/空格无关去重）分组
+// getName: 从单条记录里取出原始业务员字符串的函数
+// 返回：[{ name, key, list }]，name 是统一后的展示名，key 是用来分组的标准化 key
+function groupStaffNames(records, getName) {
+  const usedRaw = new Set();
+  STAFF_ALIAS_GROUPS.forEach(group => group.forEach(a => usedRaw.add(staffNorm(a))));
+
+  const groups = {}; // key: 标准化后的 key -> { name, list }
+  records.forEach(r => {
+    const raw = (getName(r) || '').trim();
+    if (!raw) return;
+    const n = staffNorm(raw);
+    const aliasGroup = STAFF_ALIAS_GROUPS.find(g => g.some(a => staffNorm(a) === n));
+    const key = aliasGroup ? staffNorm(aliasGroup[0]) : n;
+    const name = aliasGroup ? canonicalStaffDisplayName(aliasGroup[0]) : canonicalStaffDisplayName(raw);
+    if (!groups[key]) groups[key] = { name, list: [] };
+    groups[key].list.push(r);
+  });
+  return Object.values(groups);
+}
 
 function renderMyPerformance() {
   const u = getCurrentUser();
@@ -7154,6 +7199,29 @@ function renderMyPerformance() {
     const candidates = (Array.isArray(nameOrNames) ? nameOrNames : [nameOrNames]).map(norm).filter(Boolean);
     const list = allSales.filter(s => candidates.includes(norm(s.salesperson)));
     const name = Array.isArray(nameOrNames) ? (nameOrNames.find(Boolean) || '') : nameOrNames;
+    const byDate = {}, byMonth = {};
+    list.forEach(s => {
+      const d = (s.date||'').replace(/\//g,'-');
+      const m = d.slice(0,7);
+      (byDate[d] = byDate[d] || []).push(s);
+      (byMonth[m] = byMonth[m] || []).push(s);
+    });
+    const dailyRows = Object.keys(byDate).sort().reverse().slice(0,30).map(d => ({
+      date: d, count: byDate[d].length, loan: byDate[d].reduce((a,s)=>a+(+s.installmentAmount||0),0)
+    }));
+    const monthlyRows = Object.keys(byMonth).sort().reverse().map(m => ({
+      month: m, count: byMonth[m].length, loan: byMonth[m].reduce((a,s)=>a+(+s.installmentAmount||0),0)
+    }));
+    return {
+      name, total: list.length,
+      todayCount: (byDate[td]||[]).length,
+      thisMonthCount: (byMonth[td.slice(0,7)]||[]).length,
+      dailyRows, monthlyRows
+    };
+  }
+
+  // 跟 statsFor 逻辑一样，只是直接传入已经分好组的记录列表（用于花名册去重后的分组结果），不再按名字重新过滤
+  function statsForList(list, name) {
     const byDate = {}, byMonth = {};
     list.forEach(s => {
       const d = (s.date||'').replace(/\//g,'-');
@@ -7224,19 +7292,12 @@ function renderMyPerformance() {
   }
 
   // 业务主管 / 主管 / 老板：团队排行榜
-  // 先按花名册分组统计（同一个人多种叫法自动合并），花名册以外的叫法各自单独一行，
-  // 完全没填「业务员」的合同单独归到"未填写"，固定放最后一行，不参与排行
-  const usedRaw = new Set();
-  const board = STAFF_ALIAS_GROUPS.map(group => {
-    const s = statsFor(group);
-    s.name = group[0]; // 显示昵称（组里第一项）
-    return s;
-  }).filter(s => s.total > 0);
-  STAFF_ALIAS_GROUPS.forEach(group => group.forEach(a => usedRaw.add(norm(a))));
-
-  const otherNames = [...new Set(allSales.map(s => (s.salesperson||'').trim()).filter(Boolean))]
-    .filter(n => !usedRaw.has(norm(n)));
-  otherNames.forEach(n => board.push(statsFor(n)));
+  // 按「花名册分组 + 大小写/空格无关」双重规则合并同一个人的所有写法（groupStaffNames），
+  // 统一用英文名展示；完全没填「业务员」的合同单独归到"未填写"，固定放最后一行，不参与排行
+  const filledSales = allSales.filter(s => (s.salesperson||'').trim());
+  const board = groupStaffNames(filledSales, s => s.salesperson)
+    .map(g => statsForList(g.list, g.name))
+    .filter(s => s.total > 0);
   board.sort((a,b) => b.total - a.total);
 
   const unfilledList = allSales.filter(s => !((s.salesperson||'').trim()));
@@ -7340,11 +7401,12 @@ function buildSalespersonStats() {
     return true;
   });
 
+  // 跟"业务员业绩"排行榜用同一套花名册合并逻辑（大小写/空格无关 + 昵称统一显示英文名），避免两个页面数字对不上
+  const unfilledSales = sales.filter(s => !((s.salesperson||'').trim()));
   const byPerson = {};
-  sales.forEach(s => {
-    const name = (s.salesperson||'').trim() || tl('未填写','Unassigned','មិន​បាន​បញ្ជាក់');
-    (byPerson[name] = byPerson[name] || []).push(s);
-  });
+  groupStaffNames(sales.filter(s => (s.salesperson||'').trim()), s => s.salesperson)
+    .forEach(g => { byPerson[g.name] = g.list; });
+  if (unfilledSales.length) byPerson[tl('未填写','Unassigned','មិន​បាន​បញ្ជាក់')] = unfilledSales;
 
   if (!Object.keys(byPerson).length) {
     return monthSelectHtml + `<div class="card"><div class="empty-state"><div class="ei">💼</div><p>${tl('该范围内暂无数据','No data in this range','គ្មាន​ទិន្នន័យ')}</p></div></div>`;
