@@ -8268,13 +8268,17 @@ function getFundMonthCustomerRows(groupId, month) {
   return Object.values(byContract).sort((a,b) => a.customer.localeCompare(b.customer));
 }
 
-// 🔖 把这个月收到的钱拆成两类：dueMonth===当月 → 当期正常已收；dueMonth是更早的月份 → 补收之前月份的逾期
-// （提前结清/找不到对应期次的，dueMonth是null，归到"当期正常已收"，不当补收处理）
+// 🔖 把这个月收到的钱拆成三类，按"到期月份"跟"收款月份"比较：
+// dueMonth===当月 → 当期正常已收；dueMonth比当月早 → 补收以前月份的逾期；dueMonth比当月晚 → 提前还款
+// （提前结清/找不到对应期次的，dueMonth是null，归到"当期正常已收"）
 function getFundMonthOnTimeRows(groupId, month) {
   return getFundMonthPaymentRows(groupId, month).filter(p => !p.dueMonth || p.dueMonth === month);
 }
 function getFundMonthCatchupRows(groupId, month) {
-  return getFundMonthPaymentRows(groupId, month).filter(p => p.dueMonth && p.dueMonth !== month);
+  return getFundMonthPaymentRows(groupId, month).filter(p => p.dueMonth && p.dueMonth < month);
+}
+function getFundMonthEarlyRows(groupId, month) {
+  return getFundMonthPaymentRows(groupId, month).filter(p => p.dueMonth && p.dueMonth > month);
 }
 
 window.toggleFundMonthRow = function(groupId, month) {
@@ -8286,6 +8290,8 @@ window.toggleFundMonthRow = function(groupId, month) {
     const onTimeRows = getFundMonthOnTimeRows(groupId, month);
     const catchupRows = getFundMonthCatchupRows(groupId, month);
     const catchupTotal = catchupRows.reduce((a,p)=>a+(+p.total||0),0);
+    const earlyRows = getFundMonthEarlyRows(groupId, month);
+    const earlyTotal = earlyRows.reduce((a,p)=>a+(+p.total||0),0);
     const overdueRows = getFundMonthOverdueRows(groupId, month);
     const overdueTotal = overdueRows.reduce((a,r)=>a+r.owed,0);
     const inner = el.querySelector('td');
@@ -8316,6 +8322,20 @@ window.toggleFundMonthRow = function(groupId, month) {
             <td class="fw700 text-green">${fmt(p.total)}</td>
           </tr>`).join('')}
         </table>` : `<div style="font-size:12px;color:var(--muted);margin-bottom:16px">${tl('这个月没有补收以前月份的逾期','No late catch-up payments this month','គ្មានទិន្នន័យ')}</div>`}
+
+        <div style="font-weight:700;font-size:12px;color:#1565c0;margin-bottom:6px">⏩ ${tl('提前还款（还的是以后月份的）','Early payments (for future periods)','ទូទាត់​មុន')}（${earlyRows.length}${tl('笔','','')} · ${fmt(earlyTotal)}）</div>
+        ${earlyRows.length ? `<table style="width:100%;margin-bottom:16px">
+          <tr><th>${tl('收款日期','Paid Date','ថ្ងៃ​ទូទាត់')}</th><th>${t('colCustomer')}</th><th>#</th><th>${t('period')}</th><th>${tl('原到期月份','Actually Due','ខែ​ត្រូវ​ដល់​កំណត់')}</th><th>${tl('提前天数','Days Early','ថ្ងៃ​មុន')}</th><th>${tl('金额','Amount','ចំនួន')}</th></tr>
+          ${earlyRows.map(p => `<tr style="background:#e3f2fd">
+            <td style="font-size:12px">${p.date}</td>
+            <td class="fw700">${esc(p.customer||'')}</td>
+            <td class="text-blue">#${esc(String(p.contractId||''))}</td>
+            <td>${p.period||'-'}</td>
+            <td style="font-weight:700;color:#1565c0">${p.dueMonth}</td>
+            <td style="color:#1565c0">${Math.abs(p.daysLate||0)} ${tl('天','d','ថ្ងៃ')}</td>
+            <td class="fw700 text-green">${fmt(p.total)}</td>
+          </tr>`).join('')}
+        </table>` : `<div style="font-size:12px;color:var(--muted);margin-bottom:16px">${tl('这个月没有提前收到的还款','No early payments this month','គ្មានទិន្នន័យ')}</div>`}
 
         <div style="font-weight:700;font-size:12px;color:var(--red);margin-bottom:6px">⚠️ ${tl('仍然逾期未还（按今天最新状态）','Still overdue (as of today)','ជំពាក់​ហួស​កំណត់')}（${overdueRows.length}${tl('笔','','')} · ${fmt(overdueTotal)}）</div>
         ${overdueRows.length ? `<table style="width:100%">
@@ -8435,6 +8455,14 @@ window.exportFundMonthly = function(groupId, groupLabel) {
     if (catchupRows.length) {
       const wsC = XLSX.utils.json_to_sheet(catchupRows);
       XLSX.utils.book_append_sheet(wb, wsC, r.month.replace('-','年')+'月-补收逾期');
+    }
+    const earlyRows = getFundMonthEarlyRows(groupId, r.month).map(p => ({
+      '收款日期': p.date, '客户': p.customer, '合同号': p.contractId, '期次': p.period||'',
+      '实际到期月份': p.dueMonth, '提前天数': Math.abs(p.daysLate||0), '金额': p.total
+    }));
+    if (earlyRows.length) {
+      const wsE = XLSX.utils.json_to_sheet(earlyRows);
+      XLSX.utils.book_append_sheet(wb, wsE, r.month.replace('-','年')+'月-提前还款');
     }
     const overdueRows = getFundMonthOverdueRows(groupId, r.month).map(o => ({
       '客户': o.customer, '合同号': o.contractId, '期次': o.period, '到期日': o.dueDate,
