@@ -8297,6 +8297,9 @@ window.toggleFundMonthRow = function(groupId, month) {
     const inner = el.querySelector('td');
     inner.innerHTML = `
       <div style="padding:12px;background:#fafbfc">
+        <div style="margin-bottom:12px">
+          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();exportFundSingleMonth(${groupId}, '${month}')">📥 ${tl('导出本月Excel','Export this month','ទាញ​យក​ខែ​នេះ')}</button>
+        </div>
         <div style="font-weight:700;font-size:12px;color:#2e7d32;margin-bottom:6px">💰 ${tl('当期正常已收（逐笔）','Collected on time','ប្រមូលបានទាន់ពេល')}（${onTimeRows.length}${tl('笔','','')}）</div>
         ${onTimeRows.length ? `<table style="width:100%;margin-bottom:16px">
           <tr><th>${tl('日期','Date','ថ្ងៃ')}</th><th>${t('colCustomer')}</th><th>#</th><th>${t('period')}</th><th>${tl('金额','Amount','ចំនួន')}</th></tr>
@@ -8415,6 +8418,41 @@ function renderFundMonthlyTable(groupId) {
   </table></div>
   <div style="margin-top:6px;font-size:13px;font-weight:700">${tl('合计','Total','សរុប')} ${tl('已收','Collected','')} ${totalCount} ${tl('笔','','')} <span class="text-green">${fmt(totalAmt)}</span> · ${tl('逾期','Overdue','')} ${totalOverdueCount} ${tl('笔','','')} <span class="text-red">${fmt(totalOverdueAmt)}</span></div>`;
 }
+
+// 🔖 只导出某一个月的对账明细（不是全部月份一起导），财务核对哪个月就导哪个月，避免一次给一堆sheet
+window.exportFundSingleMonth = function(groupId, month) {
+  const groups = DB_get('fundGroups') || [];
+  const g = groups.find(x => x.id === groupId) || {};
+  const groupLabel = g.label || '';
+  const wb = XLSX.utils.book_new();
+
+  const onTimeRows = getFundMonthOnTimeRows(groupId, month).map(p => ({
+    '日期': p.date, '客户': p.customer, '合同号': p.contractId, '期次': p.period||'',
+    '含提前结清': p.isEarlySettlement?'是':'', '金额': p.total
+  }));
+  if (onTimeRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(onTimeRows), '当期已收');
+
+  const catchupRows = getFundMonthCatchupRows(groupId, month).map(p => ({
+    '收款日期': p.date, '客户': p.customer, '合同号': p.contractId, '期次': p.period||'',
+    '原到期月份': p.dueMonth, '逾期天数': p.daysLate||0, '金额': p.total
+  }));
+  if (catchupRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(catchupRows), '补收以前逾期');
+
+  const earlyRows = getFundMonthEarlyRows(groupId, month).map(p => ({
+    '收款日期': p.date, '客户': p.customer, '合同号': p.contractId, '期次': p.period||'',
+    '实际到期月份': p.dueMonth, '提前天数': Math.abs(p.daysLate||0), '金额': p.total
+  }));
+  if (earlyRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(earlyRows), '提前还款');
+
+  const overdueRows = getFundMonthOverdueRows(groupId, month).map(o => ({
+    '客户': o.customer, '合同号': o.contractId, '期次': o.period, '到期日': o.dueDate,
+    '逾期天数': o.days, '欠款': o.owed, '电话': o.phone
+  }));
+  if (overdueRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(overdueRows), '仍然逾期');
+
+  if (wb.SheetNames.length === 0) { alert(tl('这个月没有数据可导出','No data to export','គ្មានទិន្នន័យ')); return; }
+  XLSX.writeFile(wb, `${groupLabel}_${month}_对账明细.xlsx`);
+};
 
 window.exportFundMonthly = function(groupId, groupLabel) {
   const rows = getFundMonthlyRows(groupId);
