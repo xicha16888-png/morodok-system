@@ -398,7 +398,7 @@ const I18N = {
     remarks: '备注', remarkPlaceholder: '可选备注',
     saveContract: '✅ 保存合同', viewList: '📋 查看合同列表',
     // Sale list
-    saleListTitle: '销售查询', searchPlaceholder: '搜索客户姓名 / 合同号 / 手机型号...',
+    saleListTitle: '销售查询', saleSearchPlaceholder: '搜索姓名 / 电话 / 合同号 / 型号...',
     newContractBtn: '➕ 新建合同',
     colNo: '#', colDate: '日期', colCustomer: '客户', colModel: '型号',
     colSalePrice: '售价', colDeposit: '首付', colPrincipal: '分期本金',
@@ -496,7 +496,7 @@ const I18N = {
     overduePeriodDetail: '逾期期次明细', contactLabel: '联系人', noContact: '暂无紧急联系人',
     fullSchedule: '查看完整还款计划', longestDays: '最长', overdueCount: '笔逾期',
     overdueClients: '个客户', totalOwed: '合计欠款', searchPlaceholder: '搜索姓名 / 电话 / 合同号',
-    periodLabel: '第', dueLabel: '到期', allStatus: '全部状态', filterAll: '全部天数',
+    periodLabel: '第', dueLabel: '到期', filterAll: '全部天数',
     filter7: '7天以内', filter7to15: '7-15天', filter15: '15-30天', filter30: '30天以上',
     loanDateLabel: '借款日期',
     daysOverdue: '逾期', period: '期',
@@ -579,7 +579,7 @@ const I18N = {
     remarks: 'Remarks', remarkPlaceholder: 'Optional remarks',
     saveContract: '✅ Save Contract', viewList: '📋 View Contracts',
     // Sale list
-    saleListTitle: 'Sales Query', searchPlaceholder: 'Search customer / contract # / model...',
+    saleListTitle: 'Sales Query', saleSearchPlaceholder: 'Search name / phone / contract # / model...',
     newContractBtn: '➕ New Contract',
     colNo: '#', colDate: 'Date', colCustomer: 'Customer', colModel: 'Model',
     colSalePrice: 'Sale Price', colDeposit: 'Deposit', colPrincipal: 'Principal',
@@ -677,7 +677,7 @@ const I18N = {
     overduePeriodDetail: 'Overdue Installments', contactLabel: 'Contact', noContact: 'No emergency contacts',
     fullSchedule: 'Full Repayment Schedule', longestDays: 'Max', overdueCount: 'overdue',
     overdueClients: 'clients', totalOwed: 'Total Owed', searchPlaceholder: 'Search name / phone / contract',
-    periodLabel: 'Period', dueLabel: 'Due', allStatus: 'All', filterAll: 'All',
+    periodLabel: 'Period', dueLabel: 'Due', filterAll: 'All',
     filter7: 'Within 7d', filter7to15: '7-15d', filter15: '15-30d', filter30: '30d+',
     loanDateLabel: 'Loan Date',
     daysOverdue: 'days overdue', period: 'Period',
@@ -738,7 +738,7 @@ const I18N = {
     remarks: 'កំណត់ចំណាំ', remarkPlaceholder: 'កំណត់ចំណាំ (ស្រេចចិត្ត)',
     saveContract: '✅ រក្សាទុककិច្ចសន្យា', viewList: '📋 មើលបញ្ជីកិច្ចសន្យា',
     // Sale list
-    saleListTitle: 'ស្វែងរកការលក់', searchPlaceholder: 'ស្វែងរកឈ្មោះអតិថិជន / លេខកិច្ចសន្យា / គំរូ...',
+    saleListTitle: 'ស្វែងរកការលក់', saleSearchPlaceholder: 'ស្វែងរកឈ្មោះ / ទូរស័ព្ទ / លេខកិច្ចសន្យា / គំរូ...',
     newContractBtn: '➕ កិច្ចសន្យាថ្មី',
     colNo: '#', colDate: 'កាលបរិច្ឆេទ', colCustomer: 'អតិថិជន', colModel: 'គំរូ',
     colSalePrice: 'តម្លៃលក់', colDeposit: 'ប្រាក់កក់', colPrincipal: 'ប្រាក់ដើម',
@@ -859,7 +859,7 @@ const I18N = {
     overduePeriodDetail: 'ពត៌មានលម្អិតរយៈពេលហួស', contactLabel: 'អ្នកទំនាក់ទំនង', noContact: 'គ្មានអ្នកទំនាក់ទំនងបន្ទាន់',
     fullSchedule: 'មើលផែនការបង់ប្រាក់ពេញ', longestDays: 'យូរបំផុត', overdueCount: 'ហួសកំណត់',
     overdueClients: 'អតិថិជន', totalOwed: 'សរុបជំពាក់', searchPlaceholder: 'ស្វែងរកឈ្មោះ / ទូរស័ព្ទ / លេខកិច្ចសន្យា',
-    periodLabel: 'ខែ', dueLabel: 'ថ្ងៃផុតកំណត់', allStatus: 'ទាំងអស់', filterAll: 'ទាំងអស់',
+    periodLabel: 'ខែ', dueLabel: 'ថ្ងៃផុតកំណត់', filterAll: 'ទាំងអស់',
     filter7: 'ក្នុង 7ថ្ងៃ', filter7to15: '7-15ថ្ងៃ', filter15: '15-30ថ្ងៃ', filter30: '30ថ្ងៃ+',
     loanDateLabel: 'ថ្ងៃខ្ចី',
     daysOverdue: 'ថ្ងៃហួសកំណត់', period: 'ខែ',
@@ -3108,7 +3108,7 @@ function renderSaleList() {
   </div>
   <div class="card">
     <div class="search-row">
-      <input id="saleSearch" placeholder="${t('searchPlaceholder')}" oninput="filterSales()">
+      <input id="saleSearch" placeholder="${t('saleSearchPlaceholder')}" oninput="filterSales()">
       <select id="saleStatusFilter" onchange="filterSales()">
         <option value="">${t('allStatus')}</option>
         <option value="进行中">${t('active')}</option>
@@ -3218,7 +3218,8 @@ window.filterSales = function() {
     matchesSearchQuery(s.customer, q) ||
     String(s.id).includes(q) ||
     (s.modelName||'').toLowerCase().includes(q) ||
-    (s.shopName||'').toLowerCase().includes(q)
+    (s.shopName||'').toLowerCase().includes(q) ||
+    (s.customerPhone||'').includes(q)
   );
   if (st) sales = sales.filter(s => s.status === st);
   const month = document.getElementById('saleMonthFilter')?.value||'';
@@ -10672,7 +10673,7 @@ window.filterActivityLog = function() {
   const dateTo = document.getElementById('logDateTo')?.value || '';
   const all = window._activityLogAll || [];
   const filtered = all.filter(l => {
-    const matchKw = !kw || (l.userDisplay||'').toLowerCase().includes(kw) || (l.target||'').toLowerCase().includes(kw) || (l.detail||'').toLowerCase().includes(kw);
+    const matchKw = !kw || matchesSearchQuery(l.userDisplay, kw) || matchesSearchQuery(l.target, kw) || (l.detail||'').toLowerCase().includes(kw);
     const matchAction = !actionFilter || l.action === actionFilter;
     const logDate = (l.time||'').slice(0,10);
     const matchDate = (!dateFrom || logDate >= dateFrom) && (!dateTo || logDate <= dateTo);
