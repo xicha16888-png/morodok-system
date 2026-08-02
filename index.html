@@ -1214,10 +1214,26 @@ function _schedulePaymentsSave() {
   _paymentsSyncTimer = setTimeout(_savePaymentsDelta, 500);
 }
 
+// 🔒 本地持久化队列：跟服务器确认保存成功之前，先把"还没确认存上"的改动写进 localStorage。
+// 目的是防止这种情况——刚提交完收款，页面立刻显示"已结清"，但真正传到服务器还要再等几百毫秒；
+// 如果这时候操作员立刻切出去拍照上传凭证（手机浏览器切到后台经常会把这类"稍后执行"的任务直接冻结/杀掉）
+// 或者直接关闭页面，这几百毫秒的保存就可能永远送不到服务器，排期表却已经显示"已还"了。
+// localStorage 存在磁盘上，哪怕整个页面被系统杀掉，下次重新打开系统时（见 loadDB 里的
+// recoverPendingLocalSaves）还能把这些没保存成功的改动找回来，自动重新尝试上传。
+const PENDING_SALES_KEY = 'morodok_pending_sales';
+const PENDING_PAYMENTS_KEY = 'morodok_pending_payments';
+function _savePendingToLocal(key, arr) {
+  try {
+    if (arr && arr.length) localStorage.setItem(key, JSON.stringify(arr));
+    else localStorage.removeItem(key);
+  } catch(e) { /* 存储满了之类的极端情况，不影响主流程，正常的重试机制还在 */ }
+}
+
 async function _saveSalesDelta() {
   if (!_dbReady || !_db || !Array.isArray(_db.sales)) { _salesDirty = false; return; }
   const changed = _db.sales.filter(s => s && s.id != null && JSON.stringify(s) !== _salesBaseline[s.id]);
-  if (!changed.length) { _salesDirty = false; return; }
+  if (!changed.length) { _salesDirty = false; _savePendingToLocal(PENDING_SALES_KEY, null); return; }
+  _savePendingToLocal(PENDING_SALES_KEY, changed); // 先落地本地，再尝试联网保存
   setSyncStatus('syncing');
   try {
     const res = await fetch('/api/data', {
@@ -1228,6 +1244,7 @@ async function _saveSalesDelta() {
     if (!res.ok) throw new Error('服务器返回错误: ' + res.status);
     changed.forEach(s => { _salesBaseline[s.id] = JSON.stringify(s); });
     _salesDirty = false;
+    _savePendingToLocal(PENDING_SALES_KEY, null); // 确认存到服务器了，本地暂存的可以清掉
     setSyncStatus('ok');
   } catch(e) {
     setSyncStatus('error');
@@ -1240,7 +1257,8 @@ async function _saveSalesDelta() {
 async function _savePaymentsDelta() {
   if (!_dbReady || !_db || !Array.isArray(_db.payments)) { _paymentsDirty = false; return; }
   const changed = _db.payments.filter(p => p && p.id != null && JSON.stringify(p) !== _paymentsBaseline[p.id]);
-  if (!changed.length) { _paymentsDirty = false; return; }
+  if (!changed.length) { _paymentsDirty = false; _savePendingToLocal(PENDING_PAYMENTS_KEY, null); return; }
+  _savePendingToLocal(PENDING_PAYMENTS_KEY, changed); // 先落地本地，再尝试联网保存
   setSyncStatus('syncing');
   try {
     const res = await fetch('/api/data', {
@@ -1251,6 +1269,7 @@ async function _savePaymentsDelta() {
     if (!res.ok) throw new Error('服务器返回错误: ' + res.status);
     changed.forEach(p => { _paymentsBaseline[p.id] = JSON.stringify(p); });
     _paymentsDirty = false;
+    _savePendingToLocal(PENDING_PAYMENTS_KEY, null); // 确认存到服务器了，本地暂存的可以清掉
     setSyncStatus('ok');
   } catch(e) {
     setSyncStatus('error');
@@ -1258,6 +1277,38 @@ async function _savePaymentsDelta() {
     clearTimeout(_paymentsSyncTimer);
     _paymentsSyncTimer = setTimeout(_savePaymentsDelta, 3000); // _paymentsDirty 保持 true，直到重试成功
   }
+}
+
+// 🔁 开机自救：如果上次关闭/崩溃时，localStorage 里还留着没保存成功的合同/收款改动，
+// 说明上次那笔操作没真正送达服务器——把它们叠加回最新数据上，标记为"待保存"，
+// 立刻重新尝试上传一次。必须在 _snapshotBaseline（记录服务器当前真实状态）之后调用，
+// 这样这些"待恢复"的记录才会被正确识别成"跟服务器不一样，需要保存"，而不是被当成已经是最新状态。
+function recoverPendingLocalSaves() {
+  try {
+    const pendingSales = JSON.parse(localStorage.getItem(PENDING_SALES_KEY) || 'null');
+    if (Array.isArray(pendingSales) && pendingSales.length) {
+      console.warn(`🔁 发现 ${pendingSales.length} 条合同改动上次可能没保存成功，正在重新尝试上传...`);
+      pendingSales.forEach(rec => {
+        const idx = _db.sales.findIndex(s => String(s.id) === String(rec.id));
+        if (idx >= 0) _db.sales[idx] = rec; else _db.sales.push(rec);
+      });
+      _salesDirty = true;
+      _saveSalesDelta();
+    }
+  } catch(e) { console.error('恢复合同待保存队列失败:', e.message); }
+
+  try {
+    const pendingPayments = JSON.parse(localStorage.getItem(PENDING_PAYMENTS_KEY) || 'null');
+    if (Array.isArray(pendingPayments) && pendingPayments.length) {
+      console.warn(`🔁 发现 ${pendingPayments.length} 条收款记录上次可能没保存成功，正在重新尝试上传...`);
+      pendingPayments.forEach(rec => {
+        const idx = _db.payments.findIndex(p => String(p.id) === String(rec.id));
+        if (idx >= 0) _db.payments[idx] = rec; else _db.payments.push(rec);
+      });
+      _paymentsDirty = true;
+      _savePaymentsDelta();
+    }
+  } catch(e) { console.error('恢复收款待保存队列失败:', e.message); }
 }
 
 async function loadDB() {
@@ -1282,6 +1333,7 @@ async function loadDB() {
     _dbReady = true;
     _snapshotBaseline(_db.sales, _salesBaseline);
     _snapshotBaseline(_db.payments, _paymentsBaseline);
+    recoverPendingLocalSaves(); // 🔁 找回上次可能没保存成功、还留在本地的改动，必须在snapshotBaseline之后调用
     _lastSyncTime = Date.now();
     try { const el=document.getElementById('companyName'); if(el&&data.company?.name) el.textContent=data.company.name; } catch(e2){}
     return {ok:true};
@@ -1337,6 +1389,18 @@ async function flushPendingSave() {
   clearTimeout(_paymentsSyncTimer);
   await _savePaymentsDelta();
 }
+
+// 🔒 防止"登记完收款后马上关掉页面/App，改动还没真正传到服务器就丢了"这类问题：
+// 只要还有没保存成功的改动（比如网络卡顿导致还款记录还在重试上传），关闭/刷新页面前弹出系统自带的确认提示，
+// 拦一下操作员，提醒"还在保存中，先别关"。这不是100%万无一失（比如强制断电/杀进程还是拦不住），
+// 但能挡住"看到提示秒关"这种最常见的情况。
+window.addEventListener('beforeunload', function(e) {
+  if (_hasPendingLocalChanges()) {
+    e.preventDefault();
+    e.returnValue = '';
+    return '';
+  }
+});
 
 function setSyncStatus(state) {
   const el = document.getElementById('syncStatus');
@@ -3956,6 +4020,7 @@ function buildPayTableGrouped(pays, isCollector) {
           return `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:${bg};${borderLeft}border-bottom:1px solid #f0f0f0;flex-wrap:wrap">
             <div style="flex:1;min-width:120px">
               <div style="font-weight:700;font-size:13px">${esc(p.customer)}
+                ${p.reconstructed ? `<span style="background:#ede7f6;color:#5e35b1;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700;cursor:help" title="${esc(p.reconstructedNote||'')}">🔧 ${tl("系统补录","Reconstructed","")}</span>` : ''}
                 ${p.isPartial ? `<span style="background:#fff3e0;color:#e65100;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">${tl("部分收款","Partial","ផ្នែក")}</span>` : ''}
                 ${isEarly ? `<span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">${tl("⚡提前还款","⚡Early","⚡សង​មុន")}</span>` : ''}
                 ${(+p.advanceDays||0)>30 ? `<span style="background:#ffebee;color:#c62828;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700" title="${tl('提前','Advance','មុន')}${p.advanceDays}${tl('天，超过1个月，建议核对','days, over 1 month, please verify','ថ្ងៃ')}">🔔${tl('提前','Advance','មុន')}${p.advanceDays}${tl('天','d','ថ្ងៃ')}</span>` : ''}
