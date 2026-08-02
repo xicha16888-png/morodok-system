@@ -1457,6 +1457,19 @@ function addDays(d, n) { const dt = new Date(d); dt.setDate(dt.getDate() + n); r
 function fmt(v) { return '$' + (+(v || 0)).toFixed(2); }
 function esc(s) { return String(s || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
 
+// 姓名/合同搜索通用匹配：客户姓名有时候被不同的人以不同的姓名顺序打进系统（比如"TOUCH SREYRET"
+// 在这份合同里这么打，另一份记录里被打成"SREYRET TOUCH"，姓和名顺序反了），直接按整段搜索会因为
+// 顺序不一样而搜不到，让人误以为"查无此人"。这里先试完整包含（最常见、最快），找不到的话
+// 再把搜索词按空格拆成几个词，不管顺序，只要每个词都能在目标字符串里找到就算命中。
+function matchesSearchQuery(target, query) {
+  const t = (target||'').toLowerCase();
+  const q = (query||'').toLowerCase().trim();
+  if (!q) return true;
+  if (t.includes(q)) return true;
+  const words = q.split(/\s+/).filter(Boolean);
+  return words.length > 1 && words.every(w => t.includes(w));
+}
+
 function showMsg(id, text, type) {
   const el = document.getElementById(id); if (!el) return;
   const cls = {green:'alert-green',red:'alert-red',amber:'alert-amber',blue:'alert-blue'}[type] || 'alert-green';
@@ -3202,7 +3215,7 @@ window.filterSales = function() {
   const shop = document.getElementById('saleShopFilter')?.value||'';
   let sales = DB_get('sales')||[];
   if (q) sales = sales.filter(s =>
-    s.customer.toLowerCase().includes(q) ||
+    matchesSearchQuery(s.customer, q) ||
     String(s.id).includes(q) ||
     (s.modelName||'').toLowerCase().includes(q) ||
     (s.shopName||'').toLowerCase().includes(q)
@@ -3765,7 +3778,7 @@ window.filterPays = function() {
   const isC = u?.role === 'collector';
 
   let pays = (DB_get('payments')||[]).slice().reverse();
-  if (q)  pays = pays.filter(p => (p.customer||'').toLowerCase().includes(q) || String(p.contractId).includes(q));
+  if (q)  pays = pays.filter(p => matchesSearchQuery(p.customer, q) || String(p.contractId).includes(q));
   if (df === 'today') pays = pays.filter(p => (p.date||'').replace(/\//g,'-') === td);
   else if (df === 'week')  { const w=addDays(td,-6); pays=pays.filter(p=>{const d=(p.date||'').replace(/\//g,'-');return d>=w&&d<=td;}); }
   else if (df === 'month') pays=pays.filter(p=>(p.date||'').replace(/\//g,'-').slice(0,7)===td.slice(0,7));
@@ -4381,7 +4394,7 @@ function refreshPayTable() {
   const df = document.getElementById('payDateFilter')?.value||'';
   const td = today();
   let pays = (DB_get('payments')||[]).slice().reverse();
-  if (q) pays = pays.filter(p => (p.customer||'').toLowerCase().includes(q) || String(p.contractId).includes(q));
+  if (q) pays = pays.filter(p => matchesSearchQuery(p.customer, q) || String(p.contractId).includes(q));
   if (df==='today') pays = pays.filter(p=>(p.date||'').replace(/\//g,'-')===td);
   else if (df==='week') { const w=addDays(td,-6); pays=pays.filter(p=>{const d=(p.date||'').replace(/\//g,'-');return d>=w&&d<=td;}); }
   else if (df==='month') pays=pays.filter(p=>(p.date||'').replace(/\//g,'-').slice(0,7)===td.slice(0,7));
@@ -5617,7 +5630,7 @@ window.filterOverdue = function() {
     const phone = el.dataset.phone||'';
     const id = el.dataset.id||'';
     const days = parseInt(el.dataset.days||'0');
-    const matchQ = !q || name.includes(q) || phone.includes(q) || id.toLowerCase().includes(q);
+    const matchQ = !q || matchesSearchQuery(name, q) || phone.includes(q) || id.toLowerCase().includes(q);
     let matchD = true;
     if (dayFilter==='d7') matchD = days <= 7;
     else if (dayFilter==='d15') matchD = days > 7 && days <= 15;
@@ -5629,7 +5642,7 @@ window.filterOverdue = function() {
   // 🔧 联动重算顶部汇总数字（客户数/逾期笔数/逾期欠款/总欠款），不再是打开页面时算一次就不变
   const all = window._overdueContracts || [];
   const visible = all.filter(c => {
-    const matchQ = !q || c.name.includes(q) || c.phone.includes(q) || String(c.id).toLowerCase().includes(q);
+    const matchQ = !q || matchesSearchQuery(c.name, q) || c.phone.includes(q) || String(c.id).toLowerCase().includes(q);
     let matchD = true;
     if (dayFilter==='d7') matchD = c.days <= 7;
     else if (dayFilter==='d15') matchD = c.days > 7 && c.days <= 15;
@@ -5904,9 +5917,9 @@ window.filterEpContracts = function() {
   wrap.innerHTML = window._epAllOptionsHtml;
   const all = [...wrap.querySelectorAll('option')];
   const matched = kw ? all.filter(opt => {
-    const text = opt.textContent.toLowerCase();
-    const customer = (opt.dataset.customer || '').toLowerCase();
-    return text.includes(kw) || customer.includes(kw);
+    const text = opt.textContent;
+    const customer = opt.dataset.customer || '';
+    return matchesSearchQuery(text, kw) || matchesSearchQuery(customer, kw);
   }) : all;
 
   if (!matched.length) {
@@ -6033,7 +6046,7 @@ window.filterEarlyRecords = function() {
   const kw = (document.getElementById('earlyRecordSearch')?.value || '').trim().toLowerCase();
   const all = window._earlyListAll || [];
   const filtered = kw ? all.filter(r =>
-    (r.customer||'').toLowerCase().includes(kw) ||
+    matchesSearchQuery(r.customer, kw) ||
     String(r.contractId||'').toLowerCase().includes(kw)
   ) : all;
   const wrap = document.getElementById('earlyRecordTableWrap');
@@ -8950,7 +8963,7 @@ function getFundDetailRows(groupId, keyword) {
   const kw = (keyword||'').trim().toLowerCase();
   if (kw) {
     list = list.filter(p =>
-      (p.customer||'').toLowerCase().includes(kw) ||
+      matchesSearchQuery(p.customer, kw) ||
       String(p.contractId||'').toLowerCase().includes(kw)
     );
   }
@@ -10228,7 +10241,7 @@ window.renderAuditList = async function() {
     const m = (s.date||'').replace(/\//g,'-').slice(0,7);
     if (!m || m < AUDIT_START_MONTH) return false;
     if (mf && m !== mf) return false;
-    if (q && !s.customer?.toLowerCase().includes(q) && !s.id?.toLowerCase().includes(q)) return false;
+    if (q && !matchesSearchQuery(s.customer, q) && !s.id?.toLowerCase().includes(q)) return false;
     return true;
   });
 
