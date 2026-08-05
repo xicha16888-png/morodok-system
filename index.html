@@ -2475,10 +2475,15 @@ function renderSaleAdd() {
             <input type="date" id="oFirstDue" onchange="validateFirstDue()">
           </div>
         </div>
-        <div class="form-group" style="margin-top:12px">
-          <label>${tl('每期利息+手续费合计 ($) *（业务员直接填一个总数，不用分开算）','Interest + Fee per period ($) *','ការប្រាក់+កម្រៃប្រចាំដំណាក់')}</label>
-          <input type="number" id="oMonthlyIntFee" placeholder="0.00" step="0.01" oninput="calcInstallOld()" style="font-size:18px;font-weight:700;width:100%">
+        <div class="form-grid" style="margin-top:12px">
+          <div class="form-group"><label>${tl('每期利息 ($) *','Monthly Interest ($) *','ការប្រាក់ប្រចាំខែ')}</label>
+            <input type="number" id="oMonthlyInt" placeholder="0.00" step="0.01" oninput="calcInstallOld()" style="font-size:18px;font-weight:700">
+          </div>
+          <div class="form-group"><label>${t('monthlyServiceFee')} ($)</label>
+            <input type="number" id="oMonthlyFee" placeholder="0.00" step="0.01" oninput="calcInstallOld()" style="font-size:18px;font-weight:700">
+          </div>
         </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">${tl('利息和手续费分开填，系统会自动加总成"每期还款"，不用自己心算合计——这样才不会跟排期表对不上','Fill in interest and fee separately; the system adds them up automatically','')}</div>
         <div class="form-grid" style="margin-top:12px">
           <div class="form-group"><label>${tl('每日滞纳金 ($)','Daily Late Fee ($)','ពិន័យប្រចាំថ្ងៃ')}</label>
             <input type="number" id="oDailyFee" placeholder="0.00" step="0.01">
@@ -2511,6 +2516,10 @@ function renderSaleAdd() {
         <div style="background:#fff;border-radius:8px;padding:12px;text-align:center">
           <div style="font-size:11px;color:#888;margin-bottom:4px">${t('monthlyIntLbl')}</div>
           <div id="sMonthlyInt" style="font-size:22px;font-weight:800;color:var(--amber)">—</div>
+        </div>
+        <div id="sMonthlyFeeTile" style="background:#fff;border-radius:8px;padding:12px;text-align:center;display:none">
+          <div style="font-size:11px;color:#888;margin-bottom:4px">${t('monthlyServiceFee')}</div>
+          <div id="sMonthlyFeeDisp" style="font-size:22px;font-weight:800;color:#7b1fa2">—</div>
         </div>
         <div style="background:#fff8e1;border-radius:8px;padding:12px;text-align:center">
           <div style="font-size:11px;color:#888;margin-bottom:4px">${t('rebateLbl')}</div>
@@ -2606,12 +2615,13 @@ window.selectLoanMethod = function(method) {
   if (method === 'new') { calcInstall(); } else { calcInstallOld(); }
 };
 
-// 老方式计算：售价-首付=本金，利息+手续费由业务员直接填一个合计数
+// 老方式计算：售价-首付=本金，利息和手续费分开填(不用业务员心算合计，避免加错数)
 window.calcInstallOld = function() {
   const price = +(document.getElementById('oSalePrice')?.value || 0);
   const dep   = +(document.getElementById('oDeposit')?.value || 0);
   const periods = +(document.getElementById('oPeriods')?.value || 3);
-  const monthlyIntFee = +(document.getElementById('oMonthlyIntFee')?.value || 0);
+  const monthlyInt = +(document.getElementById('oMonthlyInt')?.value || 0);
+  const monthlyFee = +(document.getElementById('oMonthlyFee')?.value || 0);
   const principal = Math.max(0, price - dep);
 
   const resultCard = document.getElementById('calcResultCard');
@@ -2620,17 +2630,21 @@ window.calcInstallOld = function() {
 
   const actualPeriods = periods === 3 ? 3 : periods - 1;
   const monthlyPrincipal = actualPeriods > 0 ? Math.ceil(principal / actualPeriods) : 0;
-  const monthly = monthlyPrincipal + monthlyIntFee;
-  const totalIntFee = monthlyIntFee * actualPeriods;
+  // 🔧 每期还款 = 本金 + 利息 + 手续费，系统自动加总(这正是防止业务员手填合计数算错的关键)
+  const monthly = monthlyPrincipal + monthlyInt + monthlyFee;
+  const totalIntFee = (monthlyInt + monthlyFee) * actualPeriods;
   const netProfit = (monthly * actualPeriods) - principal - (+(document.getElementById('oRebate')?.value || 0));
 
   const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = '$' + v; };
   setText('sInstAmt', principal.toFixed(2));
   setText('sMonthly', monthly.toFixed(2));
   setText('sMonthlyPrincipal', monthlyPrincipal.toFixed(2));
-  setText('sMonthlyInt', monthlyIntFee.toFixed(2));
+  setText('sMonthlyInt', monthlyInt.toFixed(2));
   setText('sRebate', (+(document.getElementById('oRebate')?.value || 0)).toFixed(2));
   setText('sDailyFee', (+(document.getElementById('oDailyFee')?.value || 0)).toFixed(2));
+  const feeTile = document.getElementById('sMonthlyFeeTile');
+  if (feeTile) feeTile.style.display = 'block';
+  setText('sMonthlyFeeDisp', monthlyFee.toFixed(2));
 
   const setHidden = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
   setHidden('sActualPeriods', actualPeriods);
@@ -2649,6 +2663,8 @@ window.calcInstall = function() {
     return;
   }
   if (resultCard) resultCard.style.display = 'block';
+  const feeTile = document.getElementById('sMonthlyFeeTile');
+  if (feeTile) feeTile.style.display = 'none'; // 新方式没有单独的手续费，隐藏这个格子
 
   // MORODOK 公式（跟 phone888.netlify.app 计算器完全一致）
   const actualPeriods  = periods === 3 ? 3 : periods - 1;
@@ -2932,9 +2948,10 @@ window.submitSale = function() {
     condition   = document.getElementById('sCondition')?.value || '全新';
     periods     = +(document.getElementById('oPeriods')?.value || 3);
     firstDue    = document.getElementById('oFirstDue')?.value || '';
-    const monthlyIntFee = +(document.getElementById('oMonthlyIntFee')?.value || 0);
-    monthlyInt  = monthlyIntFee; // 老方式：利息+手续费合并为一个数，全部记在"利息"里，手续费记0
-    monthlySvc  = 0;
+    // 🔧 老方式：利息和手续费分开填，不再让业务员自己心算合计(这是之前"每期还款"跟排期表
+    // 对不上的根因之一——业务员合计数算错了，系统却拿这个算错的数直接生成排期表)
+    monthlyInt  = +(document.getElementById('oMonthlyInt')?.value || 0);
+    monthlySvc  = +(document.getElementById('oMonthlyFee')?.value || 0);
     rebate      = +(document.getElementById('oRebate')?.value || 0);
     dailyFee    = +(document.getElementById('oDailyFee')?.value || 0);
   } else {
@@ -2984,10 +3001,11 @@ window.submitSale = function() {
     dailyFee    = Math.ceil(principal * 0.02);
   }
   const intRate     = principal > 0 ? monthlyInt / principal : 0;
-  const svcRate     = 0;
+  const svcRate     = principal > 0 ? monthlySvc / principal : 0;
   const totalInt    = monthlyInt * actualPeriods;
-  const totalSvc    = 0;
-  const monthly     = Math.ceil(principal / actualPeriods) + monthlyInt;
+  const totalSvc    = monthlySvc * actualPeriods;
+  // 🔧 每期还款 = 本金 + 利息 + 手续费，三项都是系统自动加总，不再依赖业务员手填的合计数
+  const monthly     = Math.ceil(principal / actualPeriods) + monthlyInt + monthlySvc;
   const contractNetProfit = (monthly * actualPeriods) - principal - rebate;
 
   // Generate schedule
@@ -2999,8 +3017,8 @@ window.submitSale = function() {
       dueDate: d.toISOString().slice(0, 10),
       principalDue: Math.ceil(principal / actualPeriods),
       interestDue:  monthlyInt,
-      serviceFeeDue: 0,
-      totalDue: +((principal / actualPeriods) + monthlyInt).toFixed(2),
+      serviceFeeDue: monthlySvc,
+      totalDue: +((principal / actualPeriods) + monthlyInt + monthlySvc).toFixed(2),
       paid: false, paidDate: null,
       paidPrincipal: 0, paidInterest: 0, paidServiceFee: 0, penalty: 0
     });
@@ -3030,7 +3048,7 @@ window.submitSale = function() {
     logActivity('店铺未匹配官方列表', `#${sale.id} ${cust}`, `业务员手打了"${shopName}"，未从店铺列表选中，请核对是否需要补充到官方店铺列表`);
   }
   showMsg('saleMsg', `✅ ${t('saved')} #${sale.id} — ${cust}，${periods}${t('period')}，${fmt(monthly)}/${t('period')}`, 'green');
-  ['sCust','sCustPhone','sSalePrice','sRetailPrice','sNote','oSalePrice','oDeposit','oMonthlyIntFee','oDailyFee','oRebate'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['sCust','sCustPhone','sSalePrice','sRetailPrice','sNote','oSalePrice','oDeposit','oMonthlyInt','oMonthlyFee','oDailyFee','oRebate'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const rc = document.getElementById('calcResultCard');
   if (rc) rc.style.display = 'none';
   ['sInstAmt','sMonthly','sMonthlyPrincipal','sMonthlyInt','sRebate','sDailyFee'].forEach(id => {
