@@ -1104,6 +1104,7 @@ const MOB_MORE_ITEMS = [
   {page:'early-payment',    icon:'⚡', label:'earlyPayment'},
   {page:'payment-query',    icon:'📋', label:'paymentQuery'},
   {page:'reminder-tomorrow',icon:'⏰', label:'reminderTomorrow'},
+  {page:'my-performance',   icon:'📊', label:'myPerformance'},
   {divider:true},
   {page:'audit',            icon:'📋', label:'合同审核'},
   {page:'staff-stats',      icon:'🏆', label:'员工绩效',        lock:true},
@@ -1152,9 +1153,13 @@ function buildMobileMore(activePage) {
     MOB_MORE_ITEMS.filter(item => item.divider || canSee(item.page)).map(item => {
       if (item.divider) return '<div class="mob-more-divider"></div>';
       const isActive = item.page === activePage;
+      // "业务员业绩"这一项跟桌面端侧栏一样，业务员自己看到的叫"我的业绩"，其他角色看到"业务员业绩"
+      const label = item.page === 'my-performance'
+        ? (role==='sales' ? tl('我的业绩','My Performance','សមិទ្ធិផលរបស់ខ្ញុំ') : tl('业务员业绩','Sales Performance','សមិទ្ធិផលភ្នាក់ងារលក់'))
+        : (t(item.label)||item.label);
       return `<button class="mob-more-item" onclick="closeMobMore();nav('${item.page}')" style="${isActive?'background:#f0f7ff;':''}">
         <span class="mmi">${item.icon}</span>
-        <div class="mmn">${t(item.label)||item.label}${item.lock?' 🔐':''}</div>
+        <div class="mmn">${label}${item.lock?' 🔐':''}</div>
       </button>`;
     }).join('');
 }
