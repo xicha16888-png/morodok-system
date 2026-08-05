@@ -3372,11 +3372,11 @@ window.editSale = function(id) {
       <div><label style="font-size:11px;color:var(--muted)">${tl('首付金额','Deposit','ប្រាក់ដាក់ដំបូង')} ($)</label><input id="eDeposit" type="number" value="${s.deposit}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('分期期数','Periods','ដំណាក់កាល')}</label><select id="ePeriods" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${periodOpts}</select></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('首次还款日','First Due Date','ថ្ងៃដល់កំណត់ដំបូង')}</label><input id="eFirstDue" type="date" value="${s.firstDue||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">${tl("每期本金","Monthly Principal","ដើមទុនប្រចាំខែ")} ($)</label><input id="eMonthlyPrincipal" type="number" value="${s.schedule&&s.schedule.length?(s.schedule[0].principalDue||0):(s.installmentAmount&&s.periods?(+s.installmentAmount/(s.periods===3?3:s.periods-1)).toFixed(2):0)}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">${tl("每期利息","Monthly Interest","ការ​ប្រាក់​ប្រចាំ​ខែ")} ($)</label><input id="eMonthlyInt" type="number" value="${s.totalInterest&&s.periods?(+s.totalInterest/s.periods).toFixed(2):0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl("每期本金","Monthly Principal","ដើមទុនប្រចាំខែ")} ($)</label><input id="eMonthlyPrincipal" type="number" value="${s.schedule&&s.schedule.length?(s.schedule[0].principalDue||0):(s.installmentAmount&&s.periods?(+s.installmentAmount/(s.periods===3?3:s.periods-1)).toFixed(2):0)}" step="0.01" oninput="recalcEditMonthly()" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl("每期利息","Monthly Interest","ការ​ប្រាក់​ប្រចាំ​ខែ")} ($)</label><input id="eMonthlyInt" type="number" value="${s.totalInterest&&s.periods?(+s.totalInterest/(s.periods===3?3:s.periods-1)).toFixed(2):0}" step="0.01" oninput="recalcEditMonthly()" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('手续费期数','Fee Periods','ដំណាក់កម្រៃ')}</label><select id="eSvcPeriods" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${svcPeriodOpts}</select></div>
-      <div><label style="font-size:11px;color:var(--muted)">${tl('每期手续费','Monthly Fee','កម្រៃប្រចាំខែ')} ($)</label><input id="eMonthlySvc" type="number" value="${s.totalServiceFee&&s.svcPeriods?(+s.totalServiceFee/(s.svcPeriods||s.periods)).toFixed(2):0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">${tl("每期还款合计","Monthly Total","សរុប​ប្រចាំ​ខែ")} ($)</label><input id="eMonthly" type="number" value="${s.monthlyPayment||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('每期手续费','Monthly Fee','កម្រៃប្រចាំខែ')} ($)</label><input id="eMonthlySvc" type="number" value="${s.totalServiceFee&&s.svcPeriods?(+s.totalServiceFee/(s.svcPeriods||s.periods)).toFixed(2):0}" step="0.01" oninput="recalcEditMonthly()" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl("每期还款合计","Monthly Total","សរុប​ប្រចាំ​ខែ")} ($) <span style="font-weight:400;color:var(--muted)">${tl('（自动=本金+利息+手续费，不能单独改）','(auto = principal+interest+fee, not editable)','')}</span></label><input id="eMonthly" type="number" value="${s.monthlyPayment||0}" step="0.01" readonly style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:#eceff1;color:var(--text);cursor:not-allowed"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl("每日滞纳金","Daily Late Fee","ពិន័យ​ប្រចាំ​ថ្ងៃ")} ($)</label><input id="eDailyFee" type="number" value="${s.dailyLateFee||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('店家返点','Store Rebate','កម្រៃហាង')} ($)</label><input id="eRebate" type="number" value="${s.storeRebate||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div style="grid-column:span 3"><label style="font-size:11px;color:var(--muted)">${tl('备注','Remarks','ចំណាំ')}</label><input id="eNote" value="${s.note||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
@@ -3387,6 +3387,18 @@ window.editSale = function(id) {
       <button class="btn btn-outline" onclick="closeModal()" style="flex:1">${tl('取消','Cancel','បោះបង់')}</button>
     </div>`
   );
+  setTimeout(recalcEditMonthly, 50); // 弹窗刚打开时，先按当前三个字段算一次，避免"每期还款合计"显示的还是旧值
+};
+
+// 🔧 编辑合同弹窗里"每期还款合计"改成自动算(本金+利息+手续费)，不再单独手动填。
+// 这是从根上修复"排期表跟每期还款总额对不上"这个bug的关键——以前这四个数字互不联动，
+// 编辑时只改了本金/利息，忘了同步改总额，保存后总额字段就跟真实排期对不上了
+window.recalcEditMonthly = function() {
+  const p = +(document.getElementById('eMonthlyPrincipal')?.value || 0);
+  const i = +(document.getElementById('eMonthlyInt')?.value || 0);
+  const f = +(document.getElementById('eMonthlySvc')?.value || 0);
+  const el = document.getElementById('eMonthly');
+  if (el) el.value = (p + i + f).toFixed(2);
 };
 
 window.saveEditSale = function(id) {
@@ -3406,7 +3418,6 @@ window.saveEditSale = function(id) {
   const monthlyPrincipalManual = +(document.getElementById('eMonthlyPrincipal')?.value || 0);
   const monthlyInt  = +(document.getElementById('eMonthlyInt')?.value || 0);
   const monthlySvc  = +(document.getElementById('eMonthlySvc')?.value || 0);
-  const manualMonthly = +(document.getElementById('eMonthly')?.value || 0);
   const rebate      = +(document.getElementById('eRebate')?.value || 0);
   const modelId     = +(document.getElementById('eModel')?.value || s.modelId);
   const ph          = phones.find(p => p.id === modelId);
@@ -3419,8 +3430,9 @@ window.saveEditSale = function(id) {
 
   const totalInt    = monthlyInt * actualPeriods;
   const totalSvc    = monthlySvc * svcPeriods;
-  const autoMonthly = monthlyPrincipal + monthlyInt + monthlySvc;
-  const monthly     = manualMonthly > 0 ? manualMonthly : autoMonthly;
+  // 🔧 每期还款合计永远=本金+利息+手续费，现算现用，不再单独信一个可能没同步更新的手填总额
+  // （这正是"列表显示的每期还款"跟"排期表里的真实金额"对不上的根因——以前这两处各存各的，编辑时容易漏改其中一个）
+  const monthly     = monthlyPrincipal + monthlyInt + monthlySvc;
   const intRate     = principal > 0 ? (monthlyInt / principal) * 100 : 0;
   const svcRate     = principal > 0 ? (monthlySvc / principal) * 100 : 0;
   const contractNetProfit = (monthly * actualPeriods) - principal - rebate;
@@ -7466,6 +7478,52 @@ function renderMyPerformance() {
     };
   }
 
+  // 业务员×月份 单量矩阵表：每人一行，每个月一列，一眼看出每个月每个人出了多少单
+  function monthlyMatrixHtml(board, td) {
+    const thisMonth = td.slice(0,7);
+    const monthSet = new Set();
+    board.forEach(d => (d.monthlyRows||[]).forEach(r => monthSet.add(r.month)));
+    const months = [...monthSet].sort(); // 从早到晚
+    if (!months.length) return '';
+
+    const rowsHtml = board.map(d => {
+      const isUnfilled = d.name === tl('未填写','Unassigned','មិន​បាន​បញ្ជាក់');
+      const byMonth = {};
+      (d.monthlyRows||[]).forEach(r => byMonth[r.month] = r.count);
+      return `<tr style="${isUnfilled?'background:#fafafa;color:#90a4ae':''}">
+        <td style="font-weight:600;position:sticky;left:0;background:${isUnfilled?'#fafafa':'#fff'};${isUnfilled?'color:#90a4ae':'color:var(--navy)'}">${esc(d.name)}</td>
+        ${months.map(m => {
+          const c = byMonth[m] || 0;
+          const isCur = m === thisMonth;
+          return `<td style="text-align:center;${isCur?'background:#e3f2fd;font-weight:700;':''}${c?'':'color:var(--muted)'}">${c || '—'}</td>`;
+        }).join('')}
+        <td style="text-align:center;font-weight:800;color:var(--amber)">${d.total}</td>
+      </tr>`;
+    }).join('');
+
+    const colTotals = months.map(m => board.reduce((a,d) => a + ((d.monthlyRows||[]).find(r=>r.month===m)?.count || 0), 0));
+
+    return `
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+      <div class="card-title" style="margin:14px 16px 10px">🗓️ ${tl('业务员月度单量总览','Monthly Orders by Salesperson','ចំនួនប្រចាំខែតាមភ្នាក់ងារ')}</div>
+      <div class="table-wrap" style="max-height:420px">
+        <table style="font-size:12px">
+          <tr style="position:sticky;top:0;z-index:2">
+            <th style="min-width:120px;position:sticky;left:0;background:var(--navy);z-index:3">${tl('业务员','Salesperson','ភ្នាក់ងារ')}</th>
+            ${months.map(m => `<th style="text-align:center;min-width:56px;${m===thisMonth?'color:var(--sky)':''}">${m}</th>`).join('')}
+            <th style="text-align:center;min-width:60px">${tl('合计','Total','សរុប')}</th>
+          </tr>
+          ${rowsHtml}
+          <tr style="background:#f5f7fa;font-weight:700">
+            <td style="position:sticky;left:0;background:#f5f7fa">${tl('月合计','Month Total','សរុបប្រចាំខែ')}</td>
+            ${colTotals.map(c => `<td style="text-align:center">${c}</td>`).join('')}
+            <td style="text-align:center;color:var(--amber)">${colTotals.reduce((a,c)=>a+c,0)}</td>
+          </tr>
+        </table>
+      </div>
+    </div>`;
+  }
+
   function kpiCardsHtml(items) {
     return `<div style="display:grid;grid-template-columns:repeat(${items.length},1fr);gap:12px;margin-bottom:16px">
       ${items.map(([icon,label,val,color])=>`
@@ -7565,6 +7623,7 @@ function renderMyPerformance() {
     ['📆', tl('团队本月出单','Team This Month','ខែនេះ'), teamMonth, 'var(--navy)'],
     ['🏆', tl('团队累计出单','Team Total','សរុប'), teamTotal, 'var(--amber)'],
   ])}
+  ${monthlyMatrixHtml(board, td)}
   <div class="card" style="padding:0;overflow:hidden">
     <div class="table-wrap">
       <table>
