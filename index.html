@@ -10570,7 +10570,8 @@ window.openAuditDetail = async function(contractId) {
       </div>
       <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
         <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('签约日期','Sign Date','ថ្ងៃចុះកិច្ចសន្យា')}</div>
-        <div style="font-weight:600;font-size:13px;color:#263238">${s.date||'—'}</div>
+        <input id="auditEdit_date_${contractId}" type="text" value="${esc(s.date||'')}" readonly
+          style="width:100%;box-sizing:border-box;border:none;background:transparent;font-weight:600;font-size:13px;color:#263238;padding:0;font-family:inherit">
       </div>
       <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
         <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('期数','Periods','ចំនួនខែ')}</div>
@@ -10596,7 +10597,7 @@ window.openAuditDetail = async function(contractId) {
           style="width:100%;box-sizing:border-box;border:none;background:transparent;font-weight:600;font-size:13px;color:#263238;padding:0;font-family:inherit">
       </div>
     </div>
-    <div style="font-size:11px;color:#90a4ae;margin:-14px 0 20px 2px">${tl('💡 只能修改客户姓名/手机号/型号/店铺/业务员/备注；金额和还款计划请找业务员/主管处理。每次修改都会自动记录在"操作日志"里。','💡 Only customer name / phone / model / store / salesperson / note can be edited here. Contact sales/manager for amount or schedule changes. Every edit is automatically logged in Activity Log.','💡 អាចកែបានតែ ឈ្មោះអតិថិជន/ទូរស័ព្ទ/ម៉ូដែល/ហាង/ភ្នាក់ងារលក់/កំណត់ចំណាំ។ ចំនួនទឹកប្រាក់និងកាលវិភាគសូមទាក់ទងភ្នាក់ងារលក់/អ្នកគ្រប់គ្រង។ រាល់ការកែប្រែនឹងកត់ត្រាទុកស្វ័យប្រវត្តិ។')}</div>
+    <div style="font-size:11px;color:#90a4ae;margin:-14px 0 20px 2px">${tl('💡 只能修改客户姓名/手机号/型号/店铺/业务员/备注/签约日期；金额和还款计划请找业务员/主管处理。改签约日期只影响这份合同在审核列表里按天分组的位置，不会影响还款计划。每次修改都会自动记录在"操作日志"里。','💡 Only customer name / phone / model / store / salesperson / note / sign date can be edited here. Contact sales/manager for amount or schedule changes. Changing the sign date only moves which day-group this contract appears under in the audit list — it does not affect the repayment schedule. Every edit is automatically logged in Activity Log.','💡 អាចកែបានតែ ឈ្មោះអតិថិជន/ទូរស័ព្ទ/ម៉ូដែល/ហាង/ភ្នាក់ងារលក់/កំណត់ចំណាំ/ថ្ងៃចុះកិច្ចសន្យា។ ចំនួនទឹកប្រាក់និងកាលវិភាគសូមទាក់ទងភ្នាក់ងារលក់/អ្នកគ្រប់គ្រង។ រាល់ការកែប្រែនឹងកត់ត្រាទុកស្វ័យប្រវត្តិ។')}</div>
 
     <!-- 还款计划 -->
     <div style="margin-bottom:20px">
@@ -10654,10 +10655,11 @@ window.openAuditDetail = async function(contractId) {
 // 每次修改都记一条操作日志（谁、什么时候、改之前是什么、改之后是什么），供老板事后核查
 // ══════════════════════════════════════════════════════
 window.startAuditBasicEdit = function(contractId) {
-  ['customer','customerPhone','modelName','storeName','salesperson','note'].forEach(f => {
+  ['customer','customerPhone','modelName','storeName','salesperson','note','date'].forEach(f => {
     const el = document.getElementById(`auditEdit_${f}_${contractId}`);
     if (el) {
       el.readOnly = false;
+      if (f === 'date') el.type = 'date'; // 签约日期改成日期选择器，方便挪到正确的天数分组里
       el.style.background = '#fff';
       el.style.border = '1.5px solid #1565c0';
       el.style.borderRadius = '5px';
@@ -10686,10 +10688,15 @@ window.saveAuditBasicEdit = async function(contractId) {
     modelName:     document.getElementById(`auditEdit_modelName_${contractId}`)?.value?.trim() || '',
     storeName:     document.getElementById(`auditEdit_storeName_${contractId}`)?.value?.trim() || '',
     salesperson:   document.getElementById(`auditEdit_salesperson_${contractId}`)?.value?.trim() || '',
-    note:          document.getElementById(`auditEdit_note_${contractId}`)?.value?.trim() || ''
+    note:          document.getElementById(`auditEdit_note_${contractId}`)?.value?.trim() || '',
+    date:          document.getElementById(`auditEdit_date_${contractId}`)?.value?.trim() || ''
   };
   if (!newVals.customer) {
     alert(tl('客户姓名不能为空','Customer name cannot be empty','ឈ្មោះអតិថិជនមិនអាចទទេបានទេ'));
+    return;
+  }
+  if (!newVals.date) {
+    alert(tl('签约日期不能为空','Sign date cannot be empty','ថ្ងៃចុះកិច្ចសន្យាមិនអាចទទេបានទេ'));
     return;
   }
 
@@ -10699,7 +10706,8 @@ window.saveAuditBasicEdit = async function(contractId) {
     modelName: tl('型号','Model','ម៉ូដែល'),
     storeName: tl('店铺','Store','ហាង'),
     salesperson: tl('业务员','Salesperson','ភ្នាក់ងារ​លក់'),
-    note: tl('备注','Note','កំណត់ចំណាំ')
+    note: tl('备注','Note','កំណត់ចំណាំ'),
+    date: tl('签约日期','Sign Date','ថ្ងៃចុះកិច្ចសន្យា')
   };
   const changed = [];
   Object.keys(newVals).forEach(k => {
@@ -10724,6 +10732,7 @@ window.saveAuditBasicEdit = async function(contractId) {
   await flushPendingSave();
   alert('✅ ' + tl('已保存','Saved','បានរក្សាទុក'));
   openAuditDetail(contractId);
+  if (typeof renderAuditList === 'function') renderAuditList(); // 日期改了要重新按天分组，背后列表也刷新一下
 };
 
 window.setAuditStatus = function(contractId, status, btn) {
