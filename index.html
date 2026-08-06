@@ -988,6 +988,7 @@ function buildSidebar() {
       <div style="padding:4px 0">
         <div class="nav-item" data-page="audit"><span class="nav-icon">📋</span>${tl('合同审核','Contract Audit','ត្រួតពិនិត្យកិច្ចសន្យា')}</div>
         ${canViewSaleListSpecial() ? `<div class="nav-item" data-page="sale-list"><span class="nav-icon">🔍</span>${tl('销售查询','Sale Query','ស្វែងរកការលក់')}</div>` : ''}
+        ${canViewMyPerformanceSpecial() ? `<div class="nav-item" data-page="my-performance"><span class="nav-icon">📊</span>${tl('业务员业绩','Sales Performance','សមិទ្ធិផលភ្នាក់ងារលក់')}</div>` : ''}
       </div>
       <div style="height:16px"></div>`;
     sidebar.querySelectorAll('.nav-item[data-page]').forEach(el => {
@@ -1148,7 +1149,7 @@ function buildMobileMore(activePage) {
   const u = getCurrentUser();
   const role = u?.role || 'boss';
   const allowed = role === 'boss' ? null : (ROLE_PAGES[role] || []);
-  const canSee = page => allowed === null || allowed.includes(page);
+  const canSee = page => allowed === null || allowed.includes(page) || (page === 'my-performance' && role === 'auditor' && canViewMyPerformanceSpecial());
   menu.innerHTML = '<div style="width:40px;height:4px;background:#e0e0e0;border-radius:2px;margin:8px auto 12px"></div>' +
     MOB_MORE_ITEMS.filter(item => item.divider || canSee(item.page)).map(item => {
       if (item.divider) return '<div class="mob-more-divider"></div>';
@@ -1859,6 +1860,7 @@ function canAccess(page) {
   if (!u) return false;
   if (u.role === 'boss') return true;
   if (page === 'sale-list' && u.role === 'auditor' && canViewSaleListSpecial()) return true;
+  if (page === 'my-performance' && u.role === 'auditor' && canViewMyPerformanceSpecial()) return true;
   const allowed = ROLE_PAGES[u.role] || [];
   return Array.isArray(allowed) && allowed.includes(page);
 }
@@ -3151,7 +3153,7 @@ function renderSaleList() {
         ${shopOpts}
       </select>
       <button class="btn btn-primary btn-sm" onclick="nav('sale-add')">${t('newContractBtn')}</button>
-      ${canAddStoreCode() ? `<button class="btn btn-outline btn-sm" onclick="openAddStoreCodeModal()">🏪+ ${tl('新增店铺','Add Store','បន្ថែមហាង')}</button>` : ''}
+      ${canAddStoreCode() ? `<button class="btn btn-outline btn-sm" onclick="openManageStoreCodesModal()">🔧 ${tl('店铺编号管理','Manage Store Codes','គ្រប់គ្រងលេខកូដហាង')}</button>` : ''}
     </div>
     <div id="saleShopBadge" style="margin-bottom:8px"></div>
     <div id="saleTableWrap">${buildSalesTable(allSales)}</div>
@@ -3554,70 +3556,150 @@ function canDeleteSale() {
   return SPECIAL_DELETE_USERNAMES.includes((u?.username || '').toLowerCase());
 }
 
-// 🔒 特批：SREYNET（小美）单独获批可以在"销售查询"页面手动新增店铺编号+店名
-// 随着业务增多、新店铺不断出现，让她能自己录入，不用每次都等老板发计算器/脚本
+// 🔒 特批：SREYNET（小美）单独获批可以在"销售查询"页面管理店铺编号——新增、改名、删除
+// 随着业务增多、新店铺不断出现，让她能自己维护，不用每次都等老板发计算器/脚本
+// （这个开关现在管的是"新增+编辑+删除"这一整套店铺编号权限，不再只是新增）
 const SPECIAL_ADD_STORE_USERNAMES = ['sreynet'];
 function canAddStoreCode() {
   const u = getCurrentUser();
   return SPECIAL_ADD_STORE_USERNAMES.includes((u?.username || '').toLowerCase());
 }
 
-window.openAddStoreCodeModal = function() {
+// 店铺编号管理主弹窗：列出所有已有编号(可编辑/删除)，顶部有"新增"入口
+window.openManageStoreCodesModal = function() {
   if (!canAddStoreCode()) return;
-  showModal(`🏪 ${tl('新增店铺编号','Add Store Code','បន្ថែមលេខកូដហាង')}`, `
+  showModal(`🔧 ${tl('店铺编号管理','Manage Store Codes','គ្រប់គ្រងលេខកូដហាង')}`, renderStoreCodeManagerBody());
+  setTimeout(() => document.getElementById('storeCodeSearchBox')?.focus(), 100);
+};
+
+function renderStoreCodeManagerBody() {
+  const stores = (DB_get('stores') || []).filter(s => s.code).sort((a,b) => (a.code||'').localeCompare(b.code||''));
+  return `
+    <div style="margin-bottom:10px;display:flex;gap:8px">
+      <input id="storeCodeSearchBox" placeholder="${tl('按编号或名称搜索…','Search by code or name…','ស្វែងរក…')}" oninput="renderStoreCodeManagerList()" style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px">
+      <button class="btn btn-primary btn-sm" onclick="openAddOrEditStoreCodeForm(null)">➕ ${tl('新增','Add','បន្ថែម')}</button>
+    </div>
+    <div id="storeCodeManagerList" style="max-height:340px;overflow-y:auto">
+      ${storeCodeListHtml(stores)}
+    </div>
+    <div style="text-align:right;margin-top:12px">
+      <button onclick="closeModal()" class="btn btn-outline">${t('cancel')}</button>
+    </div>`;
+}
+
+function storeCodeListHtml(stores) {
+  if (!stores.length) return `<div style="color:var(--muted);font-size:12px;padding:14px;text-align:center">${tl('暂无店铺编号','No store codes yet','គ្មានទិន្នន័យ')}</div>`;
+  return `<table style="width:100%;font-size:12px">
+    <tr><th>${tl('编号','Code','លេខកូដ')}</th><th>${tl('名称（高棉语）','Name (Khmer)','ឈ្មោះ')}</th><th>${tl('英文名','English','ឈ្មោះឡាតាំង')}</th><th></th></tr>
+    ${stores.map(s => `<tr>
+      <td style="font-weight:700;color:var(--blue)">${esc(s.code)}</td>
+      <td>${esc(s.nameKm||'')}</td>
+      <td>${esc(s.nameEn||'')}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px" onclick="openAddOrEditStoreCodeForm('${s.id}')">✏️</button>
+        <button class="btn btn-danger btn-sm" style="padding:3px 8px;font-size:11px" onclick="deleteStoreCodeEntry('${s.id}')">🗑️</button>
+      </td>
+    </tr>`).join('')}
+  </table>`;
+}
+
+window.renderStoreCodeManagerList = function() {
+  const q = (document.getElementById('storeCodeSearchBox')?.value || '').trim().toLowerCase();
+  const stores = (DB_get('stores') || []).filter(s => s.code).sort((a,b) => (a.code||'').localeCompare(b.code||''));
+  const filtered = q ? stores.filter(s => (s.code||'').toLowerCase().includes(q) || (s.nameKm||'').toLowerCase().includes(q) || (s.nameEn||'').toLowerCase().includes(q)) : stores;
+  const listEl = document.getElementById('storeCodeManagerList');
+  if (listEl) listEl.innerHTML = storeCodeListHtml(filtered);
+};
+
+// 新增/编辑共用一个小表单：id为null是新增，否则是编辑对应记录
+window.openAddOrEditStoreCodeForm = function(id) {
+  if (!canAddStoreCode()) return;
+  const stores = DB_get('stores') || [];
+  const s = id ? stores.find(x => x.id === id) : null;
+  showModal(s ? `✏️ ${tl('编辑店铺编号','Edit Store Code','កែសម្រួលលេខកូដហាង')}` : `➕ ${tl('新增店铺编号','Add Store Code','បន្ថែមលេខកូដហាង')}`, `
     <div class="form-group">
       <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('店铺编号','Store Code','លេខកូដហាង')} *</label>
-      <input id="newStoreCode" placeholder="${tl('比如 MPIN00099','e.g. MPIN00099','ឧ. MPIN00099')}"
+      <input id="scCode" value="${esc(s?.code||'')}" placeholder="${tl('比如 MPIN00099','e.g. MPIN00099','ឧ. MPIN00099')}"
         style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
     </div>
     <div class="form-group" style="margin-top:10px">
       <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('店铺名称（高棉语）','Store Name (Khmer)','ឈ្មោះហាង (ខ្មែរ)')} *</label>
-      <input id="newStoreNameKm" placeholder="${tl('店铺名称','Store name','ឈ្មោះហាង')}"
+      <input id="scNameKm" value="${esc(s?.nameKm||'')}" placeholder="${tl('店铺名称','Store name','ឈ្មោះហាង')}"
         style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
     </div>
     <div class="form-group" style="margin-top:10px">
       <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('店主英文名（可选）','Owner English Name (optional)','ឈ្មោះជាអក្សរឡាតាំង (ស្រេចចិត្ត)')}</label>
-      <input id="newStoreNameEn" placeholder="${tl('可选','Optional','ស្រេចចិត្ត')}"
+      <input id="scNameEn" value="${esc(s?.nameEn||'')}" placeholder="${tl('可选','Optional','ស្រេចចិត្ត')}"
         style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
     </div>
-    <div id="newStoreMsg" style="margin:10px 0;font-size:12px"></div>
+    <div id="scMsg" style="margin:10px 0;font-size:12px"></div>
     <div style="display:flex;gap:10px;margin-top:8px">
-      <button onclick="submitNewStoreCode()" class="btn btn-primary">➕ ${tl('新增','Add','បន្ថែម')}</button>
-      <button onclick="closeModal()" class="btn btn-outline">${t('cancel')}</button>
+      <button onclick="submitStoreCodeForm(${s ? `'${s.id}'` : 'null'})" class="btn btn-primary">${s ? '💾 '+tl('保存','Save','រក្សាទុក') : '➕ '+tl('新增','Add','បន្ថែម')}</button>
+      <button onclick="openManageStoreCodesModal()" class="btn btn-outline">${tl('返回列表','Back','ត្រឡប់')}</button>
     </div>
   `);
-  setTimeout(() => document.getElementById('newStoreCode')?.focus(), 100);
+  setTimeout(() => document.getElementById('scCode')?.focus(), 100);
 };
 
-window.submitNewStoreCode = function() {
+window.submitStoreCodeForm = function(id) {
   if (!canAddStoreCode()) return;
-  const msgEl = document.getElementById('newStoreMsg');
-  const code = document.getElementById('newStoreCode')?.value?.trim() || '';
-  const nameKm = document.getElementById('newStoreNameKm')?.value?.trim() || '';
-  const nameEn = document.getElementById('newStoreNameEn')?.value?.trim() || '';
+  const msgEl = document.getElementById('scMsg');
+  const code = document.getElementById('scCode')?.value?.trim() || '';
+  const nameKm = document.getElementById('scNameKm')?.value?.trim() || '';
+  const nameEn = document.getElementById('scNameEn')?.value?.trim() || '';
   if (!code || !nameKm) {
     if (msgEl) { msgEl.textContent = tl('店铺编号和名称都要填','Store code and name are required','សូមបំពេញលេខកូដ និងឈ្មោះ'); msgEl.style.color = 'red'; }
     return;
   }
   const stores = DB_get('stores') || [];
-  if (stores.some(s => (s.code||'').toLowerCase() === code.toLowerCase())) {
+  const dup = stores.find(s => (s.code||'').toLowerCase() === code.toLowerCase() && s.id !== id);
+  if (dup) {
     if (msgEl) { msgEl.textContent = tl('这个店铺编号已经存在了','This store code already exists','លេខកូដនេះមានរួចហើយ'); msgEl.style.color = 'red'; }
     return;
   }
-  stores.push({
-    id: 'st_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
-    code, name: `${code} - ${nameKm}`, nameKm, nameEn
+  if (id) {
+    const idx = stores.findIndex(s => s.id === id);
+    if (idx >= 0) {
+      const oldCode = stores[idx].code;
+      stores[idx] = { ...stores[idx], code, name: `${code} - ${nameKm}`, nameKm, nameEn };
+      DB_set('stores', stores);
+      logActivity('编辑店铺编号', `${oldCode} → ${code}`, nameKm);
+    }
+  } else {
+    stores.push({
+      id: 'st_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+      code, name: `${code} - ${nameKm}`, nameKm, nameEn
+    });
+    DB_set('stores', stores);
+    logActivity('新增店铺', code, nameKm);
+  }
+  openManageStoreCodesModal();
+};
+
+window.deleteStoreCodeEntry = function(id) {
+  if (!canAddStoreCode()) return;
+  const stores = DB_get('stores') || [];
+  const s = stores.find(x => x.id === id);
+  if (!s) return;
+  confirmDelete(`${tl('删除店铺编号：','Delete store code: ','លុបលេខកូដ:')} ${s.code} - ${s.nameKm||''}？`, function() {
+    DB_set('stores', stores.filter(x => x.id !== id));
+    logActivity('删除店铺编号', s.code, s.nameKm||'');
+    openManageStoreCodesModal();
   });
-  DB_set('stores', stores);
-  logActivity('新增店铺', code, nameKm);
-  closeModal();
-  alert(`✅ ${tl('已新增店铺','Store added','បានបន្ថែមហាង')}：${code} - ${nameKm}`);
 };
 
 // 🔓 2026-07：老板确认，所有内审员都能看"销售查询"页面，方便核对业务员单子（原来只批给SREYNET一个人）
 function canViewSaleListSpecial() {
   const u = getCurrentUser();
   return (u?.role || '') === 'auditor';
+}
+
+// 🔒 特批：SREYNET（小美）单独获批可以查看"业务员业绩"（团队排行榜，不只是她自己的），
+// 内审员角色本身默认看不到这个页面，只针对这一个用户名开放
+const SPECIAL_VIEW_PERFORMANCE_USERNAMES = ['sreynet'];
+function canViewMyPerformanceSpecial() {
+  const u = getCurrentUser();
+  return SPECIAL_VIEW_PERFORMANCE_USERNAMES.includes((u?.username || '').toLowerCase());
 }
 
 // 🔓 2026-07：老板确认，所有内审员都能完整编辑合同（金额/期数/利息/返点等，会重新生成还款排期），
@@ -7440,7 +7522,8 @@ window.staffAliasRemoveAlias = function(i, alias) {
 function renderMyPerformance() {
   const u = getCurrentUser();
   const role = u?.role || '';
-  const canViewAll = ['salesManager','manager','boss'].includes(role);
+  // SREYNET(内审员小美)单独获批查看团队排行榜(不是她自己的个人业绩)，其他内审员默认没有这个页面
+  const canViewAll = ['salesManager','manager','boss'].includes(role) || (role === 'auditor' && canViewMyPerformanceSpecial());
   const allSales = DB_get('sales') || [];
   const td = today();
   // 去空格（不只是首尾，是全部空格都去掉）+ 转小写，"Thuon Chansreychess" 和 "Thuonchansreychess" 会被认成同一个人
