@@ -7110,7 +7110,10 @@ function renderStoreStats() {
   // 之前是按shopName原文一字不差地分组，导致同一家店被拆成好几行，单量、坏账率全部被稀释算错。
   // 这里改成优先按"店铺编号"分组(MPIN00067这种前缀)——编号才是真正唯一的店铺身份，名字怎么写都算一家。
   function extractStoreKey(nameOrCode) {
-    const raw = (nameOrCode || '').trim();
+    // 手机键盘（尤其高棉语输入法）经常在店铺编号中间夹带看不见的零宽字符(U+200B等)，
+    // 肉眼完全看不出来，但会把"MPIN00054"拆成"MPIN0005"+隐形字符+"4"，
+    // 导致这一条合同单独变成一个不存在的"新店铺"，没法跟同一家店的其他合同合并——这里统一先去掉这些隐形字符再分组
+    const raw = (nameOrCode || '').replace(/[​‌‍﻿­]/g, '').trim();
     if (!raw) return '';
     const m = raw.match(/^([A-Za-z]+\s*\d+)/); // 编号前缀，比如 MPIN00067
     if (m) return m[1].replace(/\s+/g, '').toUpperCase();
