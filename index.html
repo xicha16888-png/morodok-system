@@ -3128,8 +3128,10 @@ function renderSaleList() {
           <span style="font-size:18px;font-weight:700;color:var(--navy)">${totalAll}</span>
           <span style="color:var(--muted);font-size:12px"> ${tl('单','orders','ដំណើរ')}</span>
         </div>
+        <a href="#" onclick="window.toggleSaleMonthlyBreakdown();return false" style="margin-left:auto;font-size:12px;color:var(--sky);text-decoration:none;white-space:nowrap">📊 <span id="saleMonthlyToggleLabel">${tl('按月单量核对','Monthly breakdown','')} ▾</span></a>
       </div>`;
     })()}
+    <div id="saleMonthlyBreakdown" style="display:none;margin-top:10px">${buildSaleMonthlyBreakdown()}</div>
   </div>
   <div class="card">
     <div class="search-row">
@@ -3158,6 +3160,46 @@ function renderSaleList() {
     <div id="saleShopBadge" style="margin-bottom:8px"></div>
     <div id="saleTableWrap">${buildSalesTable(allSales)}</div>
   </div>`;
+}
+
+window.toggleSaleMonthlyBreakdown = function() {
+  const wrap = document.getElementById('saleMonthlyBreakdown');
+  const label = document.getElementById('saleMonthlyToggleLabel');
+  if (!wrap) return;
+  const opening = wrap.style.display === 'none';
+  wrap.style.display = opening ? '' : 'none';
+  if (label) label.textContent = (tl('按月单量核对','Monthly breakdown','')) + (opening ? ' ▴' : ' ▾');
+};
+
+function buildSaleMonthlyBreakdown() {
+  const allSales = DB_get('sales') || [];
+  const byMonth = {};
+  allSales.forEach(s => {
+    const m = (s.date||'').replace(/\//g,'-').slice(0,7);
+    if (!m) return;
+    (byMonth[m] = byMonth[m] || []).push(s);
+  });
+  const months = Object.keys(byMonth).sort().reverse();
+  if (!months.length) return `<div style="color:var(--muted);font-size:12px">${tl('暂无数据','No data','')}</div>`;
+  return `<div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+    <table style="width:100%;font-size:12px">
+      <tr style="position:sticky;top:0;background:#f5f7fa">
+        <th style="text-align:left;padding:6px 10px">${tl('月份','Month','')}</th>
+        <th style="text-align:center">${tl('单量','Orders','')}</th>
+        <th style="text-align:right;padding-right:10px">${tl('放款总额','Total Loan','')}</th>
+      </tr>
+      ${months.map(m => {
+        const list = byMonth[m];
+        const total = list.reduce((a,s)=>a+(+s.installmentAmount||0),0);
+        return `<tr style="cursor:pointer;border-top:1px solid #f0f2f5" onclick="document.getElementById('saleMonthFilter').value='${m}';filterSales()">
+          <td style="padding:6px 10px;font-weight:600;color:var(--navy)">${m}</td>
+          <td style="text-align:center;font-weight:700">${list.length}</td>
+          <td style="text-align:right;padding-right:10px">$${fmt(total)}</td>
+        </tr>`;
+      }).join('')}
+    </table>
+  </div>
+  <div style="font-size:11px;color:var(--muted);margin-top:6px">${tl('点击某个月可以直接筛选下面的列表','Click a month to filter the list below','')}</div>`;
 }
 
 function buildSalesTable(sales) {
@@ -7456,6 +7498,51 @@ function groupStaffNames(records, getName) {
   return Object.values(byKey);
 }
 
+// 点击业务员业绩页里的某个格子/某一行，查看这个人在某天/某月（或全部）的出单明细——客户名、电话、店家、金额，方便核对
+window.showStaffOrderDetail = function(name, period) {
+  const allSales = DB_get('sales') || [];
+  const groups = getStaffAliasGroups();
+  const isUnfilled = name === tl('未填写','Unassigned','មិន​បាន​បញ្ជាក់');
+  const isDay = period && period.length === 10;
+  const isMonth = period && period.length === 7;
+
+  const list = allSales.filter(s => {
+    if (period) {
+      const d = (s.date||'').replace(/\//g,'-');
+      if (isDay ? d !== period : isMonth ? d.slice(0,7) !== period : false) return false;
+    }
+    if (isUnfilled) return !((s.salesperson||'').trim());
+    return canonicalStaffDisplayName(s.salesperson, groups) === name;
+  }).sort((a,b) => (a.date||'').localeCompare(b.date||''));
+
+  const totalLoan = list.reduce((a,s) => a + (+s.installmentAmount||0), 0);
+  const periodLabel = isDay ? period : isMonth ? period : tl('全部','All','');
+
+  const body = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      ${tl(`共 ${list.length} 单，合计放款额 $${fmt(totalLoan)}`, `${list.length} orders, total loan $${fmt(totalLoan)}`, '')}
+    </div>
+    ${list.length ? `<div style="max-height:60vh;overflow-y:auto">
+    <table style="width:100%;font-size:12px">
+      <tr style="position:sticky;top:0;background:#fff">
+        <th>${tl('日期','Date','')}</th><th>${tl('客户','Customer','')}</th><th>${tl('电话','Phone','')}</th>
+        <th>${tl('店家','Store','')}</th><th style="text-align:right">${tl('放款额','Loan','')}</th>
+        <th style="text-align:right">${tl('每期还款','Monthly','')}</th><th>${tl('合同号','Contract #','')}</th>
+      </tr>
+      ${list.map(s => `<tr style="cursor:pointer" onclick="closeModal();viewSchedule('${s.id}')">
+        <td>${s.date||''}</td>
+        <td>${esc(s.customer||'')}</td>
+        <td>${esc(s.customerPhone||'')}</td>
+        <td>${esc(s.shopName||'-')}</td>
+        <td style="text-align:right">$${fmt(s.installmentAmount)}</td>
+        <td style="text-align:right">$${fmt(s.monthlyPayment)}</td>
+        <td class="text-blue">#${esc(String(s.id))}</td>
+      </tr>`).join('')}
+    </table></div>` : `<div style="color:var(--muted);font-size:12px;padding:10px">${tl('这段时间没有出单','No orders in this period','')}</div>`}
+  `;
+  showModal(`👤 ${esc(name)} · ${periodLabel}`, body);
+};
+
 // ── 手动归并管理弹窗 ──
 window.openStaffAliasManager = function() {
   showModal(tl('业务员姓名归并管理','Merge Salesperson Names',''), renderStaffAliasManagerBody());
@@ -7775,9 +7862,11 @@ function renderMyPerformance() {
         ${months.map(m => {
           const c = byMonth[m] || 0;
           const isCur = m === thisMonth;
-          return `<td style="text-align:center;${isCur?'background:#e3f2fd;font-weight:700;':''}${c?'':'color:var(--muted)'}">${c || '—'}</td>`;
+          return `<td style="text-align:center;${c?'cursor:pointer;':''}${isCur?'background:#e3f2fd;font-weight:700;':''}${c?'':'color:var(--muted)'}"
+            ${c ? `onclick="window.showStaffOrderDetail('${nameAttr.replace(/'/g,"\\'")}','${m}')" title="${tl('点击查看这个月的出单明细','Click to view orders for this month','')}"` : ''}>${c || '—'}</td>`;
         }).join('')}
-        <td style="text-align:center;font-weight:800;color:var(--amber)">${d.total}</td>
+        <td style="text-align:center;font-weight:800;color:var(--amber);${d.total?'cursor:pointer;':''}"
+          ${d.total ? `onclick="window.showStaffOrderDetail('${nameAttr.replace(/'/g,"\\'")}','')" title="${tl('点击查看全部出单明细','Click to view all orders','')}"` : ''}>${d.total}</td>
       </tr>`;
     }).join('');
 
@@ -7819,20 +7908,21 @@ function renderMyPerformance() {
   }
 
   function detailTablesHtml(stats) {
+    const nameAttr = esc(stats.name||'').replace(/"/g,'&quot;').replace(/'/g,"\\'");
     return `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div class="card" style="margin:0">
-        <div class="card-title" style="margin-bottom:10px">📅 ${tl('每日出单（近30天）','Daily (last 30 days)','ថ្ងៃ (30ថ្ងៃចុងក្រោយ)')}</div>
+        <div class="card-title" style="margin-bottom:10px">📅 ${tl('每日出单（近30天）','Daily (last 30 days)','ថ្ងៃ (30ថ្ងៃចុងក្រោយ)')} <span style="font-size:11px;font-weight:400;color:var(--muted)">${tl('点击行查看明细','click a row for details','')}</span></div>
         ${stats.dailyRows.length ? `<table style="width:100%;font-size:12px">
           <tr><th>${tl('日期','Date','កាលបរិច្ឆេទ')}</th><th style="text-align:center">${tl('单量','Orders','ចំនួន')}</th><th style="text-align:right">${tl('放款额','Loan','ចំនួនប្រាក់')}</th></tr>
-          ${stats.dailyRows.map(r=>`<tr><td>${r.date}${r.date===td?` <span class="badge badge-blue" style="font-size:9px">${tl('今天','Today','ថ្ងៃនេះ')}</span>`:''}</td><td style="text-align:center;font-weight:700">${r.count}</td><td style="text-align:right">$${fmt(r.loan)}</td></tr>`).join('')}
+          ${stats.dailyRows.map(r=>`<tr style="cursor:pointer" onclick="window.showStaffOrderDetail('${nameAttr}','${r.date}')"><td>${r.date}${r.date===td?` <span class="badge badge-blue" style="font-size:9px">${tl('今天','Today','ថ្ងៃនេះ')}</span>`:''}</td><td style="text-align:center;font-weight:700">${r.count}</td><td style="text-align:right">$${fmt(r.loan)}</td></tr>`).join('')}
         </table>` : `<div style="color:var(--muted);font-size:12px;padding:10px">${tl('暂无数据','No data','គ្មានទិន្នន័យ')}</div>`}
       </div>
       <div class="card" style="margin:0">
-        <div class="card-title" style="margin-bottom:10px">🗓️ ${tl('每月出单','Monthly','ខែ')}</div>
+        <div class="card-title" style="margin-bottom:10px">🗓️ ${tl('每月出单','Monthly','ខែ')} <span style="font-size:11px;font-weight:400;color:var(--muted)">${tl('点击行查看明细','click a row for details','')}</span></div>
         ${stats.monthlyRows.length ? `<table style="width:100%;font-size:12px">
           <tr><th>${tl('月份','Month','ខែ')}</th><th style="text-align:center">${tl('单量','Orders','ចំនួន')}</th><th style="text-align:right">${tl('放款额','Loan','ចំនួនប្រាក់')}</th></tr>
-          ${stats.monthlyRows.map(r=>`<tr><td>${r.month}${r.month===td.slice(0,7)?` <span class="badge badge-blue" style="font-size:9px">${tl('本月','Now','ខែនេះ')}</span>`:''}</td><td style="text-align:center;font-weight:700">${r.count}</td><td style="text-align:right">$${fmt(r.loan)}</td></tr>`).join('')}
+          ${stats.monthlyRows.map(r=>`<tr style="cursor:pointer" onclick="window.showStaffOrderDetail('${nameAttr}','${r.month}')"><td>${r.month}${r.month===td.slice(0,7)?` <span class="badge badge-blue" style="font-size:9px">${tl('本月','Now','ខែនេះ')}</span>`:''}</td><td style="text-align:center;font-weight:700">${r.count}</td><td style="text-align:right">$${fmt(r.loan)}</td></tr>`).join('')}
         </table>` : `<div style="color:var(--muted);font-size:12px;padding:10px">${tl('暂无数据','No data','គ្មានទិន្នន័យ')}</div>`}
       </div>
     </div>`;
