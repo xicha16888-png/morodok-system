@@ -7051,25 +7051,75 @@ function renderStoreStats() {
     return { rateNoP, bdNoP, rateWithP, bdWithP, totalAmt };
   }
 
-  // All stores from sales (even if not in stores list)
-  const allShopNames = [...new Set(sales.map(s=>s.shopName||'').filter(Boolean))];
-  // Combine registered stores + stores from sales
+  // 🔧 "坏账率(30天)"只算逾期超过30天的，跟"逾期未还提醒"(不分天数，只要没还且过期就算)口径不一样，
+  // 两边数字容易对不上——这里单独加一个"总逾期率"，口径跟"逾期未还提醒"完全一致，两个并排显示
+  function calcAllOverdue(storeSales) {
+    const totalAmt = storeSales.reduce((a,s) =>
+      a + s.schedule.reduce((b,p) => b + (+p.principalDue||0) + (+p.interestDue||0), 0), 0);
+    const overdue = storeSales.flatMap(s =>
+      s.schedule.filter(p => !p.paid && p.dueDate && new Date(p.dueDate) < new Date(td)));
+    const odAmt = overdue.reduce((a,p) => a + (+p.principalDue||0) + (+p.interestDue||0) + (+p.serviceFeeDue||0), 0);
+    const odRate = totalAmt > 0 ? +(odAmt/totalAmt*100).toFixed(1) : 0;
+    return { odRate, odAmt };
+  }
+
+  // 🔧 同一家店在不同合同上录入的shopName经常有细微差别（有没有横杠、空格、后缀名不一样，
+  // 比如"MPIN00067 - ចេងហួរ" / "MPIN00067ចេងហួរ" / "MPIN00067 - ចេងហួរភូបល"），
+  // 之前是按shopName原文一字不差地分组，导致同一家店被拆成好几行，单量、坏账率全部被稀释算错。
+  // 这里改成优先按"店铺编号"分组(MPIN00067这种前缀)——编号才是真正唯一的店铺身份，名字怎么写都算一家。
+  function extractStoreKey(nameOrCode) {
+    const raw = (nameOrCode || '').trim();
+    if (!raw) return '';
+    const m = raw.match(/^([A-Za-z]+\s*\d+)/); // 编号前缀，比如 MPIN00067
+    if (m) return m[1].replace(/\s+/g, '').toUpperCase();
+    return raw.replace(/\s+/g, '').toUpperCase(); // 没有编号的，退回按名称(去空格/大小写)分组
+  }
+
+  const groups = {}; // key -> { key, storeSales:[], nameCounts:{}, matchedStore }
+  sales.forEach(s => {
+    const raw = s.shopCode || s.shopName || s.storeName || '';
+    const key = extractStoreKey(raw);
+    if (!key) return;
+    if (!groups[key]) groups[key] = { key, storeSales: [], nameCounts: {} };
+    groups[key].storeSales.push(s);
+    const n = (s.shopName || s.storeName || '').trim();
+    if (n) groups[key].nameCounts[n] = (groups[key].nameCounts[n] || 0) + 1;
+  });
+  // 把"店铺编号管理"里登记过、但还没有任何合同的店铺也纳入(单量0，方便看到还没开单的新店)
+  stores.forEach(st => {
+    const key = extractStoreKey(st.code || st.name);
+    if (!key) return;
+    if (!groups[key]) groups[key] = { key, storeSales: [], nameCounts: {} };
+    groups[key].matchedStore = st;
+  });
+
+  // 每组的展示名称：优先用"店铺编号管理"里登记的正式名称，其次用这组里出现次数最多的那个shopName写法
+  function pickDisplayName(g) {
+    const matched = g.matchedStore || stores.find(st => st.code && extractStoreKey(st.code) === g.key);
+    if (matched) return matched.code ? `${matched.code} - ${matched.nameKm || matched.name || ''}` : matched.name;
+    const names = Object.keys(g.nameCounts).sort((a,b) => g.nameCounts[b] - g.nameCounts[a]);
+    return names[0] || g.key;
+  }
+
   // 按名称末尾数字从大到小排序（如MPIN00046 > MPIN00012）
-  const storeNames = [...new Set([...stores.map(s=>s.name), ...allShopNames])].sort((a,b) => {
+  const storeKeys = Object.keys(groups).sort((a,b) => {
     const numA = parseInt((a.match(/\d+$/) || ['0'])[0]);
     const numB = parseInt((b.match(/\d+$/) || ['0'])[0]);
-    if (numA !== numB) return numA - numB; // 数字从小到大
-    return b.localeCompare(a); // 数字相同则按名称倒序
+    if (numA !== numB) return numA - numB;
+    return b.localeCompare(a);
   });
 
   // 预计算所有店家数据
-  const storeData = storeNames.map(name => {
-    const storeSales = sales.filter(s => (s.shopName||s.storeName) === name);
+  const storeData = storeKeys.map(key => {
+    const g = groups[key];
+    const storeSales = g.storeSales;
+    const name = pickDisplayName(g);
     const bd30 = calcBadDebt(storeSales, 30);
+    const allOd = calcAllOverdue(storeSales);
     const byMonth = {};
     storeSales.forEach(s => { const m = s.date.replace(/\//g,'-').slice(0,7); byMonth[m]=(byMonth[m]||0)+1; });
     return {
-      name,
+      name, key,
       total: storeSales.length,
       active: storeSales.filter(s=>s.status==='进行中').length,
       settled: storeSales.filter(s=>s.status==='已结清'||s.status==='提前结清').length,
@@ -7077,6 +7127,8 @@ function renderStoreStats() {
       lastMonth: byMonth[Object.keys(byMonth).sort().reverse()[1]]||0,
       bd30Rate: +bd30.rateWithP,
       bd30Amt: bd30.bdWithP,
+      odRate: allOd.odRate,
+      odAmt: allOd.odAmt,
       storeSales, byMonth,
     };
   });
@@ -7142,7 +7194,8 @@ function renderStoreStats() {
         <option value="name">${tl('按名称排序','Sort by Name','តាម​ឈ្មោះ')}</option>
         <option value="total">${tl('按总单量','Sort by Total','តាម​ចំនួន')}</option>
         <option value="active">${tl('按进行中','Sort by Active','តាម​ដំណើរ​ការ')}</option>
-        <option value="bd">${tl('按坏账率','Sort by Bad Debt','តាម​អន្តរ​ការ')}</option>
+        <option value="bd">${tl('按坏账率(30天)','Sort by Bad Debt(30d)','តាម​អន្តរ​ការ')}</option>
+        <option value="od">${tl('按总逾期率','Sort by Total Overdue Rate','តាមអត្រាហួសកំណត់សរុប')}</option>
         <option value="thisMonth">${tl('按本月单量','Sort by This Month','តាម​ខែ​នេះ')}</option>
       </select>
       <span style="font-size:12px;color:var(--muted)" id="storeCount">${totalStores} ${_lang==='zh'?'家店':'stores'}</span>
@@ -7150,7 +7203,7 @@ function renderStoreStats() {
   </div>
 
   <!-- 店家总览表格 -->
-  ${storeNames.length === 0 ? `<div class="card"><div class="empty-state"><div class="ei">🏪</div><p>${t('noData')}</p></div></div>` : `
+  ${storeKeys.length === 0 ? `<div class="card"><div class="empty-state"><div class="ei">🏪</div><p>${t('noData')}</p></div></div>` : `
   <div class="card" style="padding:0;overflow:hidden">
     <div class="table-wrap" id="storeTableWrap">
       <table id="storeTable">
@@ -7163,13 +7216,15 @@ function renderStoreStats() {
           <th style="text-align:center">${tl('已结清','Settled','រួច​រាល់')}</th>
           <th style="text-align:center;min-width:120px">${tl('坏账率(30天)','Bad Debt 30d','អន្តរ​ការ​30​ថ្ងៃ')}</th>
           <th style="text-align:center">${tl('坏账金额','Bad Debt Amt','ចំនួន​អន្តរ​ការ')}</th>
+          <th style="text-align:center;min-width:110px">${tl('总逾期率','Total Overdue Rate','អត្រាហួសកំណត់សរុប')}</th>
           <th>${tl('操作','Action','សកម្ម​ភាព')}</th>
         </tr>
         ${storeData.map((d,i) => {
           const riskClass = d.bd30Rate>10?'text-red':d.bd30Rate>5?'text-amber':'text-green';
           const riskBg = d.bd30Rate>10?'#fff0f0':d.bd30Rate>5?'#fffbe6':'';
+          const odClass = d.odRate>10?'text-red':d.odRate>5?'text-amber':'text-green';
           const storeInfo = stores.find(s=>s.name===d.name);
-          return `<tr data-name="${esc(d.name)}" data-total="${d.total}" data-active="${d.active}" data-bd="${d.bd30Rate}" data-month="${d.thisMonth}" style="cursor:pointer;${riskBg?'background:'+riskBg:''}">
+          return `<tr data-name="${esc(d.name)}" data-total="${d.total}" data-active="${d.active}" data-bd="${d.bd30Rate}" data-od="${d.odRate}" data-month="${d.thisMonth}" style="cursor:pointer;${riskBg?'background:'+riskBg:''}">
             <td onclick="toggleStoreDetail('detail-${i}')" style="font-weight:600;color:var(--navy)">
               <span style="margin-right:6px;font-size:10px;color:var(--muted)" id="arrow-${i}">▶</span>
               ${storeInfo?.qr?`<img src="${storeInfo.qr}" style="width:22px;height:22px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-right:6px">`:''}
@@ -7185,13 +7240,16 @@ function renderStoreStats() {
               ${d.bd30Rate>10?'<span style="font-size:10px;margin-left:4px">⚠️</span>':''}
             </td>
             <td style="text-align:center;${d.bd30Amt>0?'color:var(--red)':''}">${d.bd30Amt>0?fmt(d.bd30Amt):'-'}</td>
+            <td style="text-align:center" title="${tl('不分逾期天数，只要没还且过期就算，口径跟"逾期未还提醒"一致','Any overdue regardless of days, same scope as the Overdue Reminder list','')}">
+              <span class="fw700 ${odClass}" style="font-size:14px">${d.odRate.toFixed(1)}%</span>
+            </td>
             <td style="white-space:nowrap">
               <button class="btn btn-outline btn-sm" onclick="nav('sale-list');setTimeout(()=>{const el=document.getElementById('saleShopFilter');if(el){el.value='${esc(d.name)}';filterSales();}},100)">🔍</button>
               ${storeInfo?`<button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteStore('${esc(d.name)}')">🗑️</button>`:''}
             </td>
           </tr>
           <tr id="detail-${i}" style="display:none;background:#f8fbff">
-            <td colspan="9" style="padding:16px">
+            <td colspan="10" style="padding:16px">
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
                 <!-- 坏账详情 -->
                 <div>
@@ -7325,7 +7383,7 @@ const STAFF_ALIAS_GROUPS = [
   ['普提', 'KEO PUTHI'],
   ['娟娟', 'SOK CHANNA'],
   ['谢海', 'Seanghai', 'Sea Seanghai', 'Sea Seanghal', 'Sean Hai'], // Sean Hai 少打了个 g，确认为同一人
-  ['阿说', 'Thuon Chansreychess', 'Thoun Sreyches', 'Noun Sreyches', 'Nuon Sreyches'], // 后三个是缩写/拼写变体，确认为同一人
+  ['阿说', 'Thuon Chansreychess', 'Noun Chansreyches', 'Thoun Sreyches', 'Noun Sreyches', 'Nuon Sreyches'], // 后几个是缩写/拼写变体，确认为同一人
   ['利莎', 'You Doliza', 'Liza'], // Liza 确认为同一人
   ['Heng Bunthan', 'Heng Bonphan', 'Heng Bunphan'], // 确认为同一人，Bonphan/Bunphan 都是打错的写法
   ['Ny Sokminea'], // 新人，昵称还不知道，先用英文名
@@ -7356,6 +7414,13 @@ function getStaffAliasGroups() {
   return groups;
 }
 function saveStaffAliasGroups(groups) { DB_set('staffAliasGroups', groups); }
+
+// ── 已离职/隐藏的业务员：只是不再显示在业绩统计里，不碰任何历史合同数据 ──
+function getHiddenStaffNames() {
+  const list = DB_get('hiddenStaffNames');
+  return Array.isArray(list) ? list : [];
+}
+function saveHiddenStaffNames(list) { DB_set('hiddenStaffNames', list); }
 
 // 给任意一个原始「业务员」字段值，返回统一后的展示名字：
 // 1) 如果这个写法命中某个分组，就统一显示那个分组的名字
@@ -7458,6 +7523,18 @@ function renderStaffAliasManagerBody() {
         </div>
       </div>`).join('');
 
+  const hiddenStaff = getHiddenStaffNames();
+  if (hiddenStaff.length) {
+    html += `<div style="font-weight:700;font-size:13px;color:var(--navy);margin:16px 0 8px">🚫 ${tl('已移除（离职）的业务员','Removed (departed) salespeople','')} (${hiddenStaff.length})</div>
+    <div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px">
+      ${hiddenStaff.map(n => `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;border-bottom:1px solid #f0f2f5">
+        <span style="flex:1;color:#90a4ae">${esc(n)}</span>
+        <button style="font-size:11px;padding:3px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer" onclick="window.unhideStaffName('${esc(n).replace(/'/g,"\\'")}')">↩️ ${tl('恢复显示','Restore','')}</button>
+      </div>`).join('')}
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">${tl('恢复后会重新出现在业绩统计和月度总览里，历史合同数据始终没有被改动过。','Restoring brings them back into the leaderboard/monthly matrix — their contract history was never touched.','')}</div>
+    </div>`;
+  }
+
   html += `<div style="margin-top:14px;font-size:11px;color:var(--muted)">${tl('这里的改动会立刻生效，业务员业绩排行榜和明细表都会同步更新。','Changes take effect immediately across the leaderboard and detail table.','')}</div>`;
   return html;
 }
@@ -7517,6 +7594,89 @@ window.staffAliasRemoveAlias = function(i, alias) {
   if (!g.aliases.length) groups.splice(i,1);
   saveStaffAliasGroups(groups);
   _refreshAfterStaffAliasChange();
+};
+
+// 离职员工：从业绩统计/排行榜里隐藏这个名字，不删除、不改动ta名下任何历史合同
+window.hideStaffName = function(name) {
+  if (!confirm(tl(
+    `确定要把「${name}」从业绩统计里移除吗？\n\n（只是不再显示在排行榜/月度总览里，不会删除或修改ta名下任何历史合同数据。如果需要恢复，可以在"姓名归并管理"里找回来。）`,
+    `Remove "${name}" from performance views? (Their historical contracts are untouched — you can restore this later from "Merge Names".)`, ''
+  ))) return;
+  const hidden = getHiddenStaffNames();
+  if (!hidden.includes(name)) hidden.push(name);
+  saveHiddenStaffNames(hidden);
+  nav(window._currentPage || 'my-performance');
+};
+
+window.unhideStaffName = function(name) {
+  const hidden = getHiddenStaffNames().filter(n => n !== name);
+  saveHiddenStaffNames(hidden);
+  _refreshAfterStaffAliasChange();
+};
+
+// 拖动合并：把 sourceName 拖到 targetName 上，两人以后统一显示成 targetName
+window.mergeStaffNames = function(sourceName, targetName) {
+  if (!sourceName || !targetName || staffNorm(sourceName) === staffNorm(targetName)) return;
+  const allSales = DB_get('sales') || [];
+  const filled = allSales.filter(s => (s.salesperson||'').trim());
+  const groups = getStaffAliasGroups();
+
+  function rawAliasesFor(displayName) {
+    const set = new Set();
+    filled.forEach(s => {
+      if (canonicalStaffDisplayName(s.salesperson, groups) === displayName) set.add(s.salesperson.trim());
+    });
+    return [...set];
+  }
+
+  const sourceAliases = rawAliasesFor(sourceName);
+  const targetAliases = rawAliasesFor(targetName);
+  if (!sourceAliases.length || !targetAliases.length) { alert(tl('找不到对应的原始写法，无法合并','Could not find matching records to merge','')); return; }
+
+  if (!confirm(tl(
+    `确定要把「${sourceName}」合并到「${targetName}」吗？\n\n合并后，这两个名字名下所有合同都会统一显示为「${targetName}」。`,
+    `Merge "${sourceName}" into "${targetName}"? All their contracts will display as "${targetName}" going forward.`, ''
+  ))) return;
+
+  // 把 source 的所有原始写法从它原本所在的分组里摘出来（避免一个写法同时挂在两个分组下）
+  sourceAliases.forEach(a => {
+    groups.forEach(g => { g.aliases = g.aliases.filter(x => staffNorm(x) !== staffNorm(a)); });
+  });
+  for (let i = groups.length - 1; i >= 0; i--) if (!groups[i].aliases.length) groups.splice(i, 1);
+
+  // 找到（或新建）target 所在的分组，把 source 的写法并进去，分组显示名统一用 target 的名字
+  let tgtGroup = groups.find(g => g.aliases.some(a => targetAliases.some(ta => staffNorm(ta) === staffNorm(a))));
+  if (!tgtGroup) {
+    tgtGroup = { name: targetName, aliases: [...targetAliases] };
+    groups.push(tgtGroup);
+  }
+  sourceAliases.forEach(a => { if (!tgtGroup.aliases.some(x => staffNorm(x) === staffNorm(a))) tgtGroup.aliases.push(a); });
+  tgtGroup.name = targetName;
+
+  saveStaffAliasGroups(groups);
+  nav(window._currentPage || 'my-performance');
+  alert(tl(`✅ 已合并，「${sourceName}」现在统一显示为「${targetName}」`, `✅ Merged — now shown as "${targetName}"`, ''));
+};
+
+// 月度总览表格里的拖动合并交互
+window._staffDragStart = function(ev) {
+  ev.dataTransfer.setData('text/plain', ev.currentTarget.dataset.staffname);
+  ev.dataTransfer.effectAllowed = 'move';
+};
+window._staffDragOver = function(ev) {
+  ev.preventDefault();
+  ev.currentTarget.style.background = '#e3f2fd';
+  ev.dataTransfer.dropEffect = 'move';
+};
+window._staffDragLeave = function(ev) {
+  ev.currentTarget.style.background = '#fff';
+};
+window._staffDrop = function(ev) {
+  ev.preventDefault();
+  ev.currentTarget.style.background = '#fff';
+  const sourceName = ev.dataTransfer.getData('text/plain');
+  const targetName = ev.currentTarget.dataset.staffname;
+  window.mergeStaffNames(sourceName, targetName);
 };
 
 function renderMyPerformance() {
@@ -7596,8 +7756,22 @@ function renderMyPerformance() {
       const isUnfilled = d.name === tl('未填写','Unassigned','មិន​បាន​បញ្ជាក់');
       const byMonth = {};
       (d.monthlyRows||[]).forEach(r => byMonth[r.month] = r.count);
-      return `<tr style="${isUnfilled?'background:#fafafa;color:#90a4ae':''}">
-        <td style="font-weight:600;position:sticky;left:0;background:${isUnfilled?'#fafafa':'#fff'};${isUnfilled?'color:#90a4ae':'color:var(--navy)'}">${esc(d.name)}</td>
+      const nameAttr = esc(d.name).replace(/"/g,'&quot;');
+      const nameCell = isUnfilled
+        ? `<td style="font-weight:600;position:sticky;left:0;background:#fafafa;color:#90a4ae">${esc(d.name)}</td>`
+        : `<td class="matrixNameCell" draggable="true" data-staffname="${nameAttr}"
+             ondragstart="window._staffDragStart(event)" ondragover="window._staffDragOver(event)"
+             ondragleave="window._staffDragLeave(event)" ondrop="window._staffDrop(event)"
+             style="font-weight:600;position:sticky;left:0;background:#fff;color:var(--navy);cursor:grab;user-select:none">
+             <span style="display:flex;align-items:center;gap:6px">
+               <span style="flex:1" title="${tl('按住可拖到另一个名字上合并','Drag onto another name to merge','')}">⠿ ${esc(d.name)}</span>
+               <span title="${tl('该业务员已离职，从统计中移除','Remove departed salesperson','')}"
+                 style="cursor:pointer;color:#c62828;font-size:12px;flex-shrink:0"
+                 onclick="event.stopPropagation();window.hideStaffName('${nameAttr.replace(/'/g,"\\'")}')">🗑️</span>
+             </span>
+           </td>`;
+      return `<tr style="${isUnfilled?'background:#fafafa;color:#90a4ae':''}" data-staffrow="${nameAttr}">
+        ${nameCell}
         ${months.map(m => {
           const c = byMonth[m] || 0;
           const isCur = m === thisMonth;
@@ -7611,11 +7785,14 @@ function renderMyPerformance() {
 
     return `
     <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
-      <div class="card-title" style="margin:14px 16px 10px">🗓️ ${tl('业务员月度单量总览','Monthly Orders by Salesperson','ចំនួនប្រចាំខែតាមភ្នាក់ងារ')}</div>
+      <div class="card-title" style="margin:14px 16px 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span>🗓️ ${tl('业务员月度单量总览','Monthly Orders by Salesperson','ចំនួនប្រចាំខែតាមភ្នាក់ងារ')}</span>
+        <span style="font-size:11px;font-weight:400;color:var(--muted)">${tl('拖动名字到另一个名字上可合并 · 🗑️ 移除离职员工','Drag a name onto another to merge · 🗑️ removes a departed salesperson','')}</span>
+      </div>
       <div class="table-wrap" style="max-height:420px">
         <table style="font-size:12px">
           <tr style="position:sticky;top:0;z-index:2">
-            <th style="min-width:120px;position:sticky;left:0;background:var(--navy);z-index:3">${tl('业务员','Salesperson','ភ្នាក់ងារ')}</th>
+            <th style="min-width:150px;position:sticky;left:0;background:var(--navy);z-index:3">${tl('业务员','Salesperson','ភ្នាក់ងារ')}</th>
             ${months.map(m => `<th style="text-align:center;min-width:56px;${m===thisMonth?'color:var(--sky)':''}">${m}</th>`).join('')}
             <th style="text-align:center;min-width:60px">${tl('合计','Total','សរុប')}</th>
           </tr>
@@ -7682,9 +7859,10 @@ function renderMyPerformance() {
   // 按「花名册分组 + 大小写/空格无关」双重规则合并同一个人的所有写法（groupStaffNames），
   // 统一用英文名展示；完全没填「业务员」的合同单独归到"未填写"，固定放最后一行，不参与排行
   const filledSales = allSales.filter(s => (s.salesperson||'').trim());
+  const hiddenStaff = getHiddenStaffNames();
   const board = groupStaffNames(filledSales, s => s.salesperson)
     .map(g => statsForList(g.list, g.name))
-    .filter(s => s.total > 0);
+    .filter(s => s.total > 0 && !hiddenStaff.includes(s.name));
   board.sort((a,b) => b.total - a.total);
 
   const unfilledList = allSales.filter(s => !((s.salesperson||'').trim()));
@@ -8185,14 +8363,35 @@ window.filterStoreTable = function() {
   const rows = [...table.querySelectorAll('tr[data-name]')];
   let visible = 0;
 
-  rows.forEach(tr => {
+  // 🔧 排序下拉框之前只是摆设，选了不会真的重新排——这里把每一行(连同它下面的展开详情行)
+  // 一起按选中的字段重新排一遍，再插回表格里
+  const pairs = rows.map(tr => {
+    const detailId = tr.querySelector('[id^="arrow-"]')?.id?.replace('arrow-','');
+    const detailRow = detailId ? document.getElementById('detail-'+detailId) : null;
+    return { tr, detailRow };
+  });
+  const sortKeyFn = {
+    name:      p => (p.tr.dataset.name||'').toLowerCase(),
+    total:     p => -(+p.tr.dataset.total||0),
+    active:    p => -(+p.tr.dataset.active||0),
+    bd:        p => -(+p.tr.dataset.bd||0),
+    od:        p => -(+p.tr.dataset.od||0),
+    thisMonth: p => -(+p.tr.dataset.month||0),
+  }[sort] || (p => (p.tr.dataset.name||'').toLowerCase());
+  pairs.sort((a,b) => { const ka=sortKeyFn(a), kb=sortKeyFn(b); return ka<kb?-1:ka>kb?1:0; });
+  const headerRow = table.querySelector('tr:not([data-name]):not([id^="detail-"])');
+  pairs.forEach(p => {
+    table.appendChild(p.tr);
+    if (p.detailRow) table.appendChild(p.detailRow);
+  });
+  if (headerRow) table.prepend(headerRow);
+
+  pairs.forEach(({tr, detailRow}) => {
     const name = (tr.dataset.name||'').toLowerCase();
     const total = +tr.dataset.total||0;
     const active = +tr.dataset.active||0;
     const bd = +tr.dataset.bd||0;
     const month = +tr.dataset.month||0;
-    const detailId = tr.querySelector('[id^="arrow-"]')?.id?.replace('arrow-','');
-    const detailRow = detailId ? document.getElementById('detail-'+detailId) : null;
 
     let show = true;
     if (q && !name.includes(q)) show = false;
