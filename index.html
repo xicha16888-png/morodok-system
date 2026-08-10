@@ -1495,7 +1495,7 @@ window.closeModal = () => document.getElementById('modalBg').classList.remove('o
 const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','expenses','store-stats','staff-stats','fund-stats'];
 const REPORT_PWD = 'morodok888';
 const DELETE_PWD = 'cao';
-const AUDITOR_DELETE_PWD = 'mei'; // 内审员SREYNET专用的删除密码，跟老板/主管的删除密码(DELETE_PWD)完全分开，互不影响
+const AUDITOR_DELETE_PWD = '0000'; // 内审员专用的删除密码(所有内审员通用)，跟老板/主管的删除密码(DELETE_PWD)完全分开，互不影响
 const AUDIT_START_MONTH = '2026-07'; // 内审管理只统计这个月份起的合同
 const EDIT_PWD = 'cao';
 let _reportUnlocked = false; // 会话内解锁状态
@@ -3251,9 +3251,9 @@ function buildSalesTable(sales) {
           ${canEditSaleFull() ? `
           <button class="btn btn-primary btn-sm" style="margin-left:4px" onclick="editSale('${s.id}')">${tl('编辑','Edit','កែប្រែ')}</button>
           ` : ''}
-          ${(() => { const u = getCurrentUser(); const role = u?.role || 'boss'; return (role==='boss'||role==='manager'||role==='salesManager') ? `
+          ${canDeleteSale() ? `
           <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSale('${s.id}')">${t('deleteBtn')}</button>
-          ` : ''; })()}
+          ` : ''}
         </td>
       </tr>`;
     });
@@ -3591,10 +3591,12 @@ window.saveEditSale = function(id) {
 // 🔒 特批：除了老板/主管，SREYNET（内审员小美，内审组长）这个账号单独获批可以删除合同（专门用来处理审核时发现的重复单）
 // 只针对这一个用户名，其他内审员账号不受影响；以后要收回权限，把她的用户名从这个数组里删掉就行
 const SPECIAL_DELETE_USERNAMES = ['sreynet'];
+// 🔓 老板确认：所有内审员(auditor角色)现在都能删除合同，不再只批给sreynet一个人
 function canDeleteSale() {
   const u = getCurrentUser();
   const role = u?.role || '';
   if (role === 'boss' || role === 'manager' || role === 'salesManager') return true;
+  if (role === 'auditor') return true;
   return SPECIAL_DELETE_USERNAMES.includes((u?.username || '').toLowerCase());
 }
 
@@ -3746,7 +3748,7 @@ function canViewMyPerformanceSpecial() {
 
 // 🔓 2026-07：老板确认，所有内审员都能完整编辑合同（金额/期数/利息/返点等，会重新生成还款排期），
 // 因为业务员经常填错，需要内审员去更正。原来只批给SREYNET一个人，现在开放给整个内审员角色。
-// ⚠️ 删除合同的权限没有一起开放，仍然只有SREYNET(canDeleteSale)能删
+// 🔓 删除合同的权限也已经开放给全体内审员了，见下面 canDeleteSale()
 function canEditSaleFull() {
   const u = getCurrentUser();
   const role = u?.role || '';
@@ -7932,9 +7934,17 @@ function renderMyPerformance() {
   }
 
   if (!canViewAll) {
-    // 先按登录名/显示名找到花名册里对应的那一组，把组里所有叫法都拿来匹配合同
-    const group = findAliasGroup(u?.displayName) || findAliasGroup(u?.username) || [];
-    const stats = statsFor([u?.displayName, u?.username, ...group]);
+    // 🔧 这里改用跟团队排行榜同一套、保存在数据库里的别名分组(getStaffAliasGroups)，
+    // 而不是写死在代码里的旧版STAFF_ALIAS_GROUPS——老板在"姓名归并管理"里后续合并/改名的结果，
+    // 业务员自己查"我的业绩"时也要能看到，两边不能用两套不同的数据
+    const dbGroups = getStaffAliasGroups();
+    const loginNames = [u?.displayName, u?.username].filter(Boolean);
+    const matchedGroup = dbGroups.find(g => g.aliases.some(a => loginNames.some(n => norm(a) === norm(n))));
+    const candidates = matchedGroup ? [...loginNames, ...matchedGroup.aliases] : loginNames;
+    const stats = statsFor(candidates);
+    // 🔧 点进"每日/每月出单"明细时(showStaffOrderDetail)，是按"分组后的统一展示名字"去匹配合同的，
+    // 所以这里也要把stats.name换成同一个展示名，不然点进去会查不到任何记录
+    if (matchedGroup) stats.name = matchedGroup.name;
     return `
     <div class="page-header">
       <div class="page-title">📊 ${tl('我的业绩','My Performance','សមិទ្ធិផលរបស់ខ្ញុំ')}</div>
@@ -9782,30 +9792,44 @@ function renderFundSettings() {
   </div>`;
 }
 
-window.saveFundGroups = function(count) {
+// 🔧 把页面上表单里当前填的内容（哪怕还没点"保存"）读出来，拼成账户组数组——
+// "新增"/"删除"按钮点了之后不会再把你正在编辑、还没保存的改动冲掉丢失了
+function _collectFundGroupsFromForm(count) {
   const groups = [];
+  const existing = DB_get('fundGroups') || [];
   for (let i=0; i<count; i++) {
     const label = document.getElementById('fg_label_'+i)?.value||'';
     const startDate = document.getElementById('fg_start_'+i)?.value||'';
     const endDate   = document.getElementById('fg_end_'+i)?.value||'';
     const lendAccount = document.getElementById('fg_lend_'+i)?.value||'';
     const recvAccount = document.getElementById('fg_recv_'+i)?.value||'';
-    if (startDate) groups.push({ id: i+1, label, startDate, endDate, lendAccount, recvAccount });
+    if (startDate) groups.push({ id: existing[i]?.id ?? (i+1), label, startDate, endDate, lendAccount, recvAccount });
   }
+  return groups;
+}
+
+window.saveFundGroups = function(count) {
+  const groups = _collectFundGroupsFromForm(count);
   DB_set('fundGroups', groups);
   alert('✅ 保存成功');
   nav('fund-stats');
 };
 
 window.addFundGroup = function() {
-  const groups = DB_get('fundGroups')||[];
+  // 先把表单里当前已经填的内容（哪怕还没点保存）收集起来，再追加新的一组，一起保存
+  const existing = DB_get('fundGroups') || [];
+  const formCount = document.querySelectorAll('[id^="fg_label_"]').length;
+  const groups = formCount ? _collectFundGroupsFromForm(formCount) : existing.slice();
   groups.push({ id: Date.now(), label:'新阶段', startDate:'', endDate:'', lendAccount:'', recvAccount:'' });
   DB_set('fundGroups', groups);
   nav('fund-settings');
 };
 
 window.deleteFundGroup = function(i) {
-  const groups = DB_get('fundGroups')||[];
+  if (!confirm(tl('确定要删除这个账户组吗？','Delete this account group?',''))) return;
+  const formCount = document.querySelectorAll('[id^="fg_label_"]').length;
+  const existing = DB_get('fundGroups') || [];
+  const groups = formCount ? _collectFundGroupsFromForm(formCount) : existing.slice();
   groups.splice(i,1);
   DB_set('fundGroups', groups);
   nav('fund-settings');
