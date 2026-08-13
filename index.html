@@ -5596,7 +5596,10 @@ function renderReminderOverdue() {
   const allContracts = Object.values(contractMap).sort((a,b)=>a.maxDays-b.maxDays);
   const totalOwedAll = items.reduce((a,{s,p})=>a+odRemainDue(s,p),0);
   // 总欠款(含未到期)：这些逾期客户名下，所有还没还完的期数(不管到没到期)全部加起来（部分还款的按还差多少算）
-  const totalRemainingAll = allContracts.reduce((sum, {s}) => {
+  // 🔖 催收员给客户7天缓冲期还款，所以最长逾期天数在7天以内的客户，暂不计入"总欠款"，
+  // 避免还在缓冲期内的客户把总欠款数字撑高，等真的超过7天还没还，才算进来
+  const totalRemainingAll = allContracts.reduce((sum, {s, maxDays}) => {
+    if (maxDays <= 7) return sum;
     return sum + s.schedule.reduce((a,p) => a + (p.paid ? 0 : odRemainDue(s,p)), 0);
   }, 0);
 
@@ -5623,7 +5626,8 @@ function renderReminderOverdue() {
     days: maxDays,
     periodCount: periods.length,
     owed: periods.reduce((a,{p})=>a+odRemainDue(s,p),0),
-    remaining: s.schedule.reduce((a,p) => a + (p.paid ? 0 : odRemainDue(s,p)), 0),
+    // 🔖 7天缓冲期内的客户不计入"总欠款"，这里直接存0，筛选联动重算时就不用重复判断
+    remaining: maxDays <= 7 ? 0 : s.schedule.reduce((a,p) => a + (p.paid ? 0 : odRemainDue(s,p)), 0),
   }));
 
   // 🔖 账龄分析：按逾期天数分4档，分别统计客户数+欠款合计（用每份合同"最长逾期天数"来归档，
@@ -5645,7 +5649,7 @@ function renderReminderOverdue() {
   <div class="page-header"><div class="page-title">🚨 ${t('overdueTitle')}</div></div>
   <div id="overdueSummaryBar">
   ${items.length
-    ? `<div class="alert alert-red">⚠️ <b>${allContracts.length}</b> ${t('overdueClients')} · <b>${items.length}</b> ${t('overdueCount')} · ${tl('逾期欠款','Overdue Owed','ជំពាក់​ហួស​កំណត់')} <b>${fmt(totalOwedAll)}</b> · ${tl('总欠款(含未到期)','Total Owed (incl. not-yet-due)','សរុប​ជំពាក់​(រួម​មិន​ទាន់​ដល់​កំណត់)')} <b>${fmt(totalRemainingAll)}</b></div>`
+    ? `<div class="alert alert-red">⚠️ <b>${allContracts.length}</b> ${t('overdueClients')} · <b>${items.length}</b> ${t('overdueCount')} · ${tl('逾期欠款','Overdue Owed','ជំពាក់​ហួស​កំណត់')} <b>${fmt(totalOwedAll)}</b> · ${tl('总欠款(超7天,含未到期)','Total Owed (>7d, incl. not-yet-due)','សរុប​ជំពាក់​(លើស៧ថ្ងៃ)')} <b>${fmt(totalRemainingAll)}</b></div>`
     : `<div class="alert alert-green">✅ ${t('noOverdue')}</div>`}
   </div>
 
@@ -5819,7 +5823,7 @@ window.filterOverdue = function() {
     const owedTotal = visible.reduce((a,c) => a + c.owed, 0);
     const remainingTotal = visible.reduce((a,c) => a + c.remaining, 0);
     bar.innerHTML = clientCount
-      ? `<div class="alert alert-red">⚠️ <b>${clientCount}</b> ${t('overdueClients')} · <b>${periodCount}</b> ${t('overdueCount')} · ${tl('逾期欠款','Overdue Owed','ជំពាក់​ហួស​កំណត់')} <b>${fmt(owedTotal)}</b> · ${tl('总欠款(含未到期)','Total Owed (incl. not-yet-due)','សរុប​ជំពាក់​(រួម​មិន​ទាន់​ដល់​កំណត់)')} <b>${fmt(remainingTotal)}</b></div>`
+      ? `<div class="alert alert-red">⚠️ <b>${clientCount}</b> ${t('overdueClients')} · <b>${periodCount}</b> ${t('overdueCount')} · ${tl('逾期欠款','Overdue Owed','ជំពាក់​ហួស​កំណត់')} <b>${fmt(owedTotal)}</b> · ${tl('总欠款(超7天,含未到期)','Total Owed (>7d, incl. not-yet-due)','សរុប​ជំពាក់​(លើស៧ថ្ងៃ)')} <b>${fmt(remainingTotal)}</b></div>`
       : `<div class="alert alert-green">✅ ${tl('没有匹配的逾期客户','No matching overdue clients','គ្មានអតិថិជនហួសកំណត់ដែលត្រូវនឹង')}</div>`;
   }
 };
@@ -7572,6 +7576,7 @@ function renderStaffAliasManagerBody() {
 
   let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">
     ${tl('勾选下面几个"原始写法"，点"合并为一个人"，就会统一显示成同一个名字；已经归好的分组可以在下面改名/拆分。','Check a few raw spellings below and click "Merge" to treat them as one person. Existing groups can be renamed or split below.','')}
+    ${tl('如果某个员工的登录用户名/花名从来没有出现在合同的"业务员"字段里，可以在下面每个分组里用"添加自定义写法"直接加进去，这样ta自己登录看"我的业绩"时才能正确匹配到自己的合同。','If an employee\'s login username/nickname never literally appears in any contract\'s salesperson field, add it directly under that group using "Add custom alias" below — this lets their own "My Performance" self-view correctly match their contracts.','ប្រសិនបើឈ្មោះចូលប្រើ/ឈ្មោះហៅក្រៅរបស់បុគ្គលិកណាម្នាក់ មិនដែលបង្ហាញនៅក្នុងប្រអប់"ឈ្មោះបុគ្គលិកលក់"នៃកិច្ចសន្យាណាមួយទេ អាចបន្ថែមវាដោយផ្ទាល់នៅផ្នែក"បន្ថែមឈ្មោះផ្ទាល់ខ្លួន"ខាងក្រោមក្នុងក្រុមនោះ ដើម្បីឱ្យទំព័រ"សមិទ្ធផលរបស់ខ្ញុំ"អាចផ្គូផ្គងកិច្ចសន្យារបស់ខ្លួនបានត្រឹមត្រូវ។')}
   </div>`;
 
   html += `<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:16px">
@@ -7612,6 +7617,10 @@ function renderStaffAliasManagerBody() {
           ${g.aliases.map(a => `<span style="display:inline-flex;align-items:center;gap:5px;background:#f0f4f9;border-radius:20px;padding:3px 8px 3px 10px;font-size:12px;color:#37474f">
             ${esc(a)}${g.aliases.length>1 ? `<span style="cursor:pointer;color:#90a4ae;font-weight:700" onclick="window.staffAliasRemoveAlias(${i},'${esc(a).replace(/'/g,"\\'")}')">×</span>` : ''}
           </span>`).join('')}
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap">
+          <input id="staffAliasCustomInput_${i}" type="text" placeholder="${tl('输入登录用户名/花名等任意写法','Enter login username/nickname/any spelling','បញ្ចូលឈ្មោះចូលប្រើ/ឈ្មោះហៅក្រៅ ឬអក្ខរាវិរុទ្ធផ្សេងទៀត')}" style="flex:1;min-width:180px;padding:5px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;box-sizing:border-box">
+          <button style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer" onclick="window.staffAliasAddCustom(${i})">➕ ${tl('添加自定义写法','Add custom alias','')}</button>
         </div>
       </div>`).join('');
 
@@ -7684,6 +7693,27 @@ window.staffAliasRemoveAlias = function(i, alias) {
   const g = groups[i]; if (!g) return;
   g.aliases = g.aliases.filter(a => a !== alias);
   if (!g.aliases.length) groups.splice(i,1);
+  saveStaffAliasGroups(groups);
+  _refreshAfterStaffAliasChange();
+};
+
+window.staffAliasAddCustom = function(i) {
+  const input = document.getElementById('staffAliasCustomInput_' + i);
+  const newAlias = (input?.value || '').trim();
+  if (!newAlias) return;
+  const groups = getStaffAliasGroups();
+  const g = groups[i]; if (!g) return;
+  if (g.aliases.some(a => staffNorm(a) === staffNorm(newAlias))) return;
+  const dupIdx = groups.findIndex((og, oi) => oi !== i && og.aliases.some(a => staffNorm(a) === staffNorm(newAlias)));
+  if (dupIdx !== -1) {
+    alert(tl(
+      `「${newAlias}」已经被归到「${groups[dupIdx].name}」名下了，不能同时属于两个人。`,
+      `"${newAlias}" is already assigned to "${groups[dupIdx].name}" — it can't belong to two people at once.`,
+      `«${newAlias}» ត្រូវបានចាត់ចូលទៅឈ្មោះ «${groups[dupIdx].name}» រួចហើយ វាមិនអាចជារបស់មនុស្សពីរនាក់ក្នុងពេលតែមួយបានទេ។`
+    ));
+    return;
+  }
+  g.aliases.push(newAlias);
   saveStaffAliasGroups(groups);
   _refreshAfterStaffAliasChange();
 };
