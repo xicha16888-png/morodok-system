@@ -3644,9 +3644,9 @@ window.saveEditSale = function(id) {
   };
 
   // 🔐 保存前需要输入修改密码，并记录操作日志（谁、什么时候、改了什么）
-  // SREYNET用她自己的编辑密码(mei)，老板/主管用共用编辑密码(edit888)
+  // 🔓 2026-08：老板/主管用原来的编辑密码(cao)；内审员+业务主管统一用0000
   const _curRole = getCurrentUser()?.role || '';
-  const _editConfirmFn = (_curRole === 'auditor') ? confirmAuditorEdit : confirmEdit;
+  const _editConfirmFn = (_curRole === 'auditor' || _curRole === 'salesManager') ? confirmAuditorEdit : confirmEdit;
   _editConfirmFn(`确认修改合同 #${s.id} — ${s.customer} 吗？`, function() {
     const changedFields = [];
     ['date','customer','customerPhone','shopName','salesperson','salePrice','deposit','periods','installmentAmount','monthlyPayment','storeRebate','dailyLateFee','note'].forEach(k => {
@@ -3837,9 +3837,9 @@ window.deleteSale = function(id) {
   }
   const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
   if (!s) return;
-  // 老板/主管走原来的删除密码；SREYNET（内审员小美）走她专属的删除密码，两套密码互不影响
+  // 🔓 2026-08：老板/主管用原来的删除密码(cao)；内审员+业务主管统一用0000（两套密码互不影响）
   const u0 = getCurrentUser(); const role0 = u0?.role || '';
-  const isAdmin = role0 === 'boss' || role0 === 'manager' || role0 === 'salesManager';
+  const isAdmin = role0 === 'boss' || role0 === 'manager';
   const confirmFn = isAdmin ? confirmDelete : confirmAuditorDelete;
   confirmFn(`${tl("删除合同","Delete contract","លុប​កិច្ចសន្យា")} #${s.id} — ${s.customer}？${tl("（会先放进回收站，60天内可以恢复）","(Goes to Trash first, recoverable within 60 days)","")}`, async function() {
     // 🗑️ 2026-08：不再真的删除，改成放进回收站（打_trashed标记），60天内可以恢复
@@ -4823,7 +4823,7 @@ window.confirmDelete = function(msg, onConfirm) {
 
 // 🔓 2026-07：全体内审员编辑确认密码，改用统一的新密码(AUDITOR_EDIT_PWD='morodok')，
 // 不再用SREYNET个人的删除密码(AUDITOR_DELETE_PWD='mei')——那个密码现在仍然只属于她一个人，只用来删除
-const AUDITOR_EDIT_PWD = 'morodok';
+const AUDITOR_EDIT_PWD = '0000'; // 🔓 2026-08：内审员+业务主管统一编辑密码，跟老板/主管的cao分开
 window.confirmAuditorEdit = function(msg, onConfirm) {
   window._pendingEditCallback = onConfirm;
   showModal(`🔐 ${tl('确认修改','Confirm Edit','បញ្ជាក់ការកែប្រែ')}`, `
