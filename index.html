@@ -1083,6 +1083,7 @@ function buildSidebar() {
       <div class="sb-label">系统管理</div>
       <div class="nav-item" data-page="user-mgmt"><span class="nav-icon">👥</span>账号管理</div>
       <div class="nav-item" data-page="activity-log"><span class="nav-icon">📜</span>操作日志</div>
+      <div class="nav-item" data-page="trash"><span class="nav-icon">🗑️</span>回收站</div>
     </div>`:''}
     <div style="height:16px"></div>`;
 
@@ -1416,7 +1417,78 @@ function setSyncStatus(state) {
   if (txt) txt.textContent = state==='syncing'?t('syncing'):state==='error'?t('syncError'):t('synced');
 }
 
-function DB_get(k) { return _db ? _db[k] : null; }
+// 🗑️ 回收站：这4种数据删除时不会真的删掉，只是打上 _trashed 标记，
+// DB_get 会自动把标记过的记录过滤掉（业务代码完全不用改），
+// 回收站页面/恢复/彻底清除 要看到全部数据，用 DB_getRaw。
+const TRASH_FILTERED_KEYS = ['sales', 'payments', 'expenses', 'earlyPayments'];
+function DB_get(k) {
+  if (!_db) return null;
+  const v = _db[k];
+  if (Array.isArray(v) && TRASH_FILTERED_KEYS.includes(k)) return v.filter(x => !x || !x._trashed);
+  return v;
+}
+function DB_getRaw(k) { return _db ? _db[k] : null; }
+
+const TRASH_RETENTION_DAYS = 60;
+const TRASH_TYPE_LABELS = { sales: '合同', payments: '收款记录', expenses: '开支记录', earlyPayments: '提前还款记录' };
+
+// 把某条记录标记进回收站（不是真的删除，只是打标记+记录时间/操作人），
+// 用法：trashItem('sales', id) —— 按 id 字段在对应数组里找到这条并打标记
+function trashItem(key, id, extra) {
+  const arr = DB_getRaw(key) || [];
+  const item = arr.find(x => String(x.id) === String(id));
+  if (!item) return false;
+  item._trashed = true;
+  item._trashedAt = new Date().toISOString();
+  item._trashedBy = getCurrentUser()?.username || '';
+  if (extra) Object.assign(item, extra);
+  DB_set(key, arr);
+  return true;
+}
+
+// 从回收站恢复一条记录
+function restoreTrashItem(key, id) {
+  const arr = DB_getRaw(key) || [];
+  const item = arr.find(x => String(x.id) === String(id));
+  if (!item) return false;
+  delete item._trashed;
+  delete item._trashedAt;
+  delete item._trashedBy;
+  DB_set(key, arr);
+  return true;
+}
+
+// 彻底删除一条已在回收站里的记录（人工点"彻底删除"，或超过保留期自动清理时用）
+function purgeTrashItem(key, id) {
+  const arr = DB_getRaw(key) || [];
+  DB_set(key, arr.filter(x => String(x.id) !== String(id)));
+}
+
+// 汇总所有回收站里的记录，给回收站页面用
+function getAllTrashItems() {
+  const out = [];
+  TRASH_FILTERED_KEYS.forEach(key => {
+    (DB_getRaw(key) || []).forEach(item => {
+      if (item && item._trashed) out.push({ key, item });
+    });
+  });
+  out.sort((a,b) => (b.item._trashedAt||'').localeCompare(a.item._trashedAt||''));
+  return out;
+}
+
+// 超过保留期(60天)的，自动彻底清掉——每次进回收站页面时顺手检查一遍
+function purgeExpiredTrash() {
+  const cutoff = Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  TRASH_FILTERED_KEYS.forEach(key => {
+    const arr = DB_getRaw(key) || [];
+    const kept = arr.filter(x => {
+      if (!x || !x._trashed || !x._trashedAt) return true;
+      return new Date(x._trashedAt).getTime() > cutoff;
+    });
+    if (kept.length !== arr.length) DB_set(key, kept);
+  });
+}
+
 function DB_set(k, v) {
   if (!_db || !_dbReady) {
     console.warn('🔒 DB_set 被阻止：数据未就绪', k);
@@ -1568,7 +1640,8 @@ const PAGES = {
   'reminder-overdue': renderReminderOverdue, 'payment-query': renderPaymentQuery,
   'phones': renderPhones, 'suppliers': renderSuppliers,
   'purchase-add': renderPurchaseAdd, 'inventory': renderInventory, 'company': renderCompany,
-  'audit': renderAudit, 'user-mgmt': renderUserMgmt, 'activity-log': renderActivityLog, 'my-performance': renderMyPerformance
+  'audit': renderAudit, 'user-mgmt': renderUserMgmt, 'activity-log': renderActivityLog, 'my-performance': renderMyPerformance,
+  'trash': renderTrash
 };
 
 // Track last sync time
@@ -1645,6 +1718,9 @@ document.querySelectorAll('.nav-item[data-page]').forEach(el => el.addEventListe
 function initPage(page) {
   if (page === 'activity-log') {
     filterActivityLog();
+  }
+  if (page === 'trash') {
+    renderTrashTable();
   }
   if (page === 'sale-add') {
     const nd = new Date(); nd.setMonth(nd.getMonth() + 1);
@@ -3765,23 +3841,15 @@ window.deleteSale = function(id) {
   const u0 = getCurrentUser(); const role0 = u0?.role || '';
   const isAdmin = role0 === 'boss' || role0 === 'manager' || role0 === 'salesManager';
   const confirmFn = isAdmin ? confirmDelete : confirmAuditorDelete;
-  confirmFn(`${tl("删除合同","Delete contract","លុប​កិច្ចសន្យា")} #${s.id} — ${s.customer}？${tl("此操作不可撤销！","This cannot be undone!","សកម្ម​នេះ​មិន​អាច​ត្រឡប់​វិញ!")}`, async function() {
-    // 🔒 先调用后端专用删除接口，真正删除合同（整体重新保存数组不会真的删除）
-    try {
-      const res = await fetch(`/api/sale/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('状态码 ' + res.status);
-    } catch (e) {
-      alert(`${tl('删除失败','Delete failed','បរាជ័យ')}: ${e.message}`);
-      return;
-    }
-    // 一并删除关联的提前还款记录（如果有）
+  confirmFn(`${tl("删除合同","Delete contract","លុប​កិច្ចសន្យា")} #${s.id} — ${s.customer}？${tl("（会先放进回收站，60天内可以恢复）","(Goes to Trash first, recoverable within 60 days)","")}`, async function() {
+    // 🗑️ 2026-08：不再真的删除，改成放进回收站（打_trashed标记），60天内可以恢复
+    trashItem('sales', id);
+    // 一并把关联的提前还款记录也放进回收站
     const relatedEp = (DB_get('earlyPayments')||[]).find(r => String(r.contractId) === String(id));
     if (relatedEp && relatedEp.id) {
-      try { await fetch(`/api/earlyPayment/${relatedEp.id}`, { method: 'DELETE' }); } catch(e) {}
+      trashItem('earlyPayments', relatedEp.id);
     }
-    DB_set('sales', (DB_get('sales')||[]).filter(x => String(x.id) !== String(id)));
-    DB_set('earlyPayments', (DB_get('earlyPayments')||[]).filter(r => String(r.contractId) !== String(id)));
-    logActivity('删除合同', `#${s.id} ${s.customer}`, `贷款金额$${s.installmentAmount||0}`);
+    logActivity('删除合同', `#${s.id} ${s.customer}`, `贷款金额$${s.installmentAmount||0}（已放入回收站）`);
     // 内审页面删的话，删完刷新审核列表；其它页面还是回销售查询页
     if (document.getElementById('auditDetailModal')?.style.display === 'block') {
       document.getElementById('auditDetailModal').style.display = 'none';
@@ -4228,21 +4296,14 @@ window.deletePayment = function(id) {
   const pays = DB_get('payments')||[];
   const pay = pays.find(p => p.id === id);
   if (!pay) return;
-  confirmDelete(`${tl('删除收款记录：','Delete payment: ','លុប​ការ​ទូ​ទាត់:')} ${pay.customer} — ${t('period')} ${pay.period} — ${fmt((+pay.principal)+(+pay.interest))}`, async function() {
+  confirmDelete(`${tl('删除收款记录：','Delete payment: ','លុប​ការ​ទូ​ទាត់:')} ${pay.customer} — ${t('period')} ${pay.period} — ${fmt((+pay.principal)+(+pay.interest))}（${tl('会先放进回收站，60天内可以恢复','Goes to Trash first, recoverable within 60 days','')}）`, async function() {
 
-  // 🔒 先调用后端专用删除接口，真正从数据库删除这条记录（不能只改本地数组再整体保存，那样删不掉）
-  try {
-    const res = await fetch(`/api/payment/${id}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('状态码 ' + res.status);
-  } catch (e) {
-    showMsg('payMsg', `❌ ${tl('删除失败','Delete failed','បរាជ័យ')}: ${e.message}`, 'red');
-    return;
-  }
+  // 🗑️ 不再真的删除，改成放进回收站（打_trashed标记），60天内可以恢复
+  trashItem('payments', id);
 
-  // Remove payment record (本地状态同步，用于界面即时刷新)
+  // Remove payment record (本地状态同步，用于界面即时刷新——DB_get会自动把刚打标记的这条过滤掉)
   const newPays = pays.filter(p => p.id !== id);
-  DB_set('payments', newPays);
-  logActivity('删除流水', `#${pay.contractId} ${pay.customer} 第${pay.period}期`, `本金$${pay.principal} 利息$${pay.interest}`);
+  logActivity('删除流水', `#${pay.contractId} ${pay.customer} 第${pay.period}期`, `本金$${pay.principal} 利息$${pay.interest}（已放入回收站）`);
 
   // 🔖 重新根据"删掉这笔之后剩下的收款记录"算这一期的真实状态——如果这一期本来有好几笔
   // （客户分次还），删掉其中一笔不能把整期直接清零，要按剩下那几笔重新累计判断
@@ -6261,15 +6322,7 @@ window.deleteEarlyPayment = function(id) {
   const list = DB_get('earlyPayments')||[];
   const r = list.find(x => x.id === id);
   if (!r) return;
-  confirmDelete(`${tl('删除提前还款记录：','Delete early settlement: ','លុប​ការ​ទូ​ទាត់​មុន​កំណត់:')} ${r.customer} — #${r.contractId}`, async function() {
-    // 🔒 先调用后端专用删除接口，真正删除记录
-    try {
-      const res = await fetch(`/api/earlyPayment/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('状态码 ' + res.status);
-    } catch (e) {
-      alert(`${tl('删除失败','Delete failed','បរាជ័យ')}: ${e.message}`);
-      return;
-    }
+  confirmDelete(`${tl('删除提前还款记录：','Delete early settlement: ','លុប​ការ​ទូ​ទាត់​មុន​កំណត់:')} ${r.customer} — #${r.contractId}（${tl('会先放进回收站，60天内可以恢复','Goes to Trash first, recoverable within 60 days','')}）`, async function() {
     // 恢复合同排期表为未还，恢复状态为进行中
     const sales = DB_get('sales')||[];
     const si = sales.findIndex(s => String(s.id) === String(r.contractId));
@@ -6283,8 +6336,9 @@ window.deleteEarlyPayment = function(id) {
       sales[si].status = '进行中';
       DB_set('sales', sales);
     }
-    DB_set('earlyPayments', list.filter(x => x.id !== id));
-    logActivity('删除提前还款', `#${r.contractId} ${r.customer}`, `协商金额$${r.negotiatedAmount||r.negotiated||0}`);
+    // 🗑️ 不再真的删除，改成放进回收站（打_trashed标记），60天内可以恢复
+    trashItem('earlyPayments', id);
+    logActivity('删除提前还款', `#${r.contractId} ${r.customer}`, `协商金额$${r.negotiatedAmount||r.negotiated||0}（已放入回收站）`);
     nav('early-payment');
   });
 };
@@ -7063,8 +7117,8 @@ window.submitExpense = function() {
 };
 
 window.deleteExpense = function(id) {
-  confirmDelete('确认删除该开支记录？', function() {
-    DB_set('expenses', (DB_get('expenses')||[]).filter(e=>e.id!==id));
+  confirmDelete('确认删除该开支记录？（会先放进回收站，60天内可以恢复）', function() {
+    trashItem('expenses', id);
     nav('expenses');
   });
 };
@@ -11229,6 +11283,96 @@ function renderActivityLogTable(logs) {
   </table></div>
   <div style="margin-top:8px;font-size:12px;color:var(--muted)">共 ${logs.length} 条记录</div>`;
 }
+
+// ══════════════════════════════════════════════════════
+// 🗑️ 回收站页面（老板专属）——被删除的合同/收款/开支/提前还款，
+// 60天内可以恢复，超过60天自动彻底清除
+// ══════════════════════════════════════════════════════
+function daysLeftInTrash(trashedAt) {
+  if (!trashedAt) return TRASH_RETENTION_DAYS;
+  const passed = (Date.now() - new Date(trashedAt).getTime()) / (24*60*60*1000);
+  return Math.max(0, Math.ceil(TRASH_RETENTION_DAYS - passed));
+}
+
+function trashItemSummary(key, item) {
+  if (key === 'sales') return `#${item.id} ${item.customer||''} · 贷款金额$${item.installmentAmount||0} · ${item.periods||0}期`;
+  if (key === 'payments') return `#${item.contractId} ${item.customer||''} · 第${item.period}期 · 本金$${item.principal||0}+利息$${item.interest||0}`;
+  if (key === 'expenses') return `${item.date||''} · ${item.cat||''} · $${item.amount||0} · ${item.note||''}`;
+  if (key === 'earlyPayments') return `#${item.contractId} ${item.customer||''} · 协商金额$${item.negotiatedAmount||item.negotiated||0}`;
+  return item.id;
+}
+
+function renderTrash() {
+  purgeExpiredTrash();
+  return `
+  <div class="page-header">
+    <div class="page-title">🗑️ 回收站</div>
+    <div class="page-sub">${tl(`删除的合同/收款/开支/提前还款记录会先保存在这里，${TRASH_RETENTION_DAYS}天内可以恢复，超过${TRASH_RETENTION_DAYS}天会自动彻底清除`,'Deleted records stay here for '+TRASH_RETENTION_DAYS+' days before permanent removal','')}</div>
+  </div>
+  <div class="card">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+      <input id="trashSearch" type="text" placeholder="搜索客户 / 合同号 / 备注" oninput="renderTrashTable()"
+        style="flex:1;min-width:180px;padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit">
+      <select id="trashTypeFilter" onchange="renderTrashTable()" style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit">
+        <option value="">全部类型</option>
+        ${Object.entries(TRASH_TYPE_LABELS).map(([k,l]) => `<option value="${k}">${l}</option>`).join('')}
+      </select>
+    </div>
+    <div id="trashWrap"></div>
+  </div>`;
+}
+
+window.renderTrashTable = function() {
+  const wrap = document.getElementById('trashWrap');
+  if (!wrap) return;
+  const kw = (document.getElementById('trashSearch')?.value||'').trim().toLowerCase();
+  const typeFilter = document.getElementById('trashTypeFilter')?.value || '';
+  let items = getAllTrashItems();
+  if (typeFilter) items = items.filter(x => x.key === typeFilter);
+  if (kw) items = items.filter(x => trashItemSummary(x.key, x.item).toLowerCase().includes(kw));
+
+  if (!items.length) {
+    wrap.innerHTML = `<div style="padding:30px;text-align:center;color:var(--muted)">回收站是空的</div>`;
+    return;
+  }
+
+  wrap.innerHTML = `<div class="table-wrap"><table>
+    <tr><th>类型</th><th>内容</th><th>删除人</th><th>删除时间</th><th>剩余天数</th><th>操作</th></tr>
+    ${items.map(({key, item}) => {
+      const left = daysLeftInTrash(item._trashedAt);
+      const dt = item._trashedAt ? new Date(item._trashedAt).toLocaleString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+      return `<tr>
+        <td><span style="background:#eceff1;color:#455a64;font-size:11px;font-weight:700;padding:2px 10px;border-radius:12px">${TRASH_TYPE_LABELS[key]}</span></td>
+        <td style="font-size:12px">${esc(trashItemSummary(key, item))}</td>
+        <td style="font-size:12px">${esc(item._trashedBy||'')}</td>
+        <td style="font-size:12px;white-space:nowrap">${dt}</td>
+        <td style="font-size:12px;${left<=7?'color:var(--red);font-weight:700':''}">${left}${tl('天','d','')}</td>
+        <td style="display:flex;gap:4px">
+          <button onclick="restoreTrashUI('${key}','${item.id}')" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px">↩️ 恢复</button>
+          <button onclick="purgeTrashUI('${key}','${item.id}')" class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 8px">彻底删除</button>
+        </td>
+      </tr>`;
+    }).join('')}
+  </table></div>
+  <div style="margin-top:8px;font-size:12px;color:var(--muted)">共 ${items.length} 条</div>`;
+};
+
+window.restoreTrashUI = function(key, id) {
+  if (!confirm(`确定要恢复这条${TRASH_TYPE_LABELS[key]}吗？恢复后会重新出现在正常列表里。`)) return;
+  const ok = restoreTrashItem(key, id);
+  if (!ok) { alert('❌ 没找到这条记录，可能已经被恢复或彻底删除了'); return; }
+  logActivity('恢复回收站记录', `${TRASH_TYPE_LABELS[key]} #${id}`, '');
+  alert('✅ 已恢复');
+  renderTrashTable();
+};
+
+window.purgeTrashUI = function(key, id) {
+  confirmDelete(`彻底删除这条${TRASH_TYPE_LABELS[key]}记录？此操作不可撤销，删完就真的没有了！`, function() {
+    purgeTrashItem(key, id);
+    logActivity('彻底清除回收站记录', `${TRASH_TYPE_LABELS[key]} #${id}`, '');
+    renderTrashTable();
+  });
+};
 
 function renderUserMgmt() {
   return `
