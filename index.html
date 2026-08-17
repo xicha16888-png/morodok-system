@@ -3497,7 +3497,21 @@ window.editSale = function(id) {
   const s = sales.find(x => String(x.id) === String(id));
   if (!s) return;
   const phones = DB_get('phones') || [];
-  const phoneOpts = phones.map(p => `<option value="${p.id}" ${p.id===s.modelId?'selected':''}>${p.brand} ${p.model} ${p.storage||''}</option>`).join('');
+  // 🔧 修复"列表显示是A型号，点编辑变成B型号"的bug：
+  // 老合同/新建合同的 modelId 字段基本都是空的（新建合同时压根没存这个字段），
+  // 之前的代码直接拿 s.modelId 去匹配下拉框选项，匹配不上时浏览器会自动选中"型号列表里的第一个"，
+  // 界面上看着就像型号自己变了——如果这时候没注意直接点保存，就会把型号真的改错。
+  // 现在改成：先按 modelId 匹配，匹配不上再按型号文字(modelName)兜底匹配；
+  // 两个都匹配不上时，插入一个"保持原型号不变"的选项并默认选中，避免误存成列表第一个型号。
+  let _matchedPhoneId = phones.some(p => p.id === s.modelId) ? s.modelId : null;
+  if (_matchedPhoneId === null) {
+    const _found = phones.find(p => `${p.brand} ${p.model} ${p.storage||''}`.trim() === (s.modelName||'').trim());
+    if (_found) _matchedPhoneId = _found.id;
+  }
+  const phoneOpts = _matchedPhoneId !== null
+    ? phones.map(p => `<option value="${p.id}" ${p.id===_matchedPhoneId?'selected':''}>${p.brand} ${p.model} ${p.storage||''}</option>`).join('')
+    : `<option value="__KEEP__" selected>${esc(s.modelName || '（未知型号，保持不变）')}</option>` +
+      phones.map(p => `<option value="${p.id}">${p.brand} ${p.model} ${p.storage||''}</option>`).join('');
   const periodOpts = [3,6,9,12].map(n=>`<option value="${n}" ${n===s.periods?'selected':''}>${n}期</option>`).join('');
   const svcPeriodOpts = [3,6,9,12].map(n=>`<option value="${n}" ${n===(s.svcPeriods||s.periods)?'selected':''}>${n}期</option>`).join('');
 
@@ -3560,8 +3574,10 @@ window.saveEditSale = function(id) {
   const monthlyInt  = +(document.getElementById('eMonthlyInt')?.value || 0);
   const monthlySvc  = +(document.getElementById('eMonthlySvc')?.value || 0);
   const rebate      = +(document.getElementById('eRebate')?.value || 0);
-  const modelId     = +(document.getElementById('eModel')?.value || s.modelId);
-  const ph          = phones.find(p => p.id === modelId);
+  const _eModelVal  = document.getElementById('eModel')?.value;
+  // "__KEEP__" = 下拉框里没能匹配到原型号，用户没有主动改选，保持原来的型号文字不变
+  const modelId     = _eModelVal === '__KEEP__' ? s.modelId : +(_eModelVal || s.modelId);
+  const ph          = _eModelVal === '__KEEP__' ? null : phones.find(p => p.id === modelId);
   const principal   = Math.max(0, salePrice - deposit);
   // 🔧 实际应还期数(3→3,6→5,9→8,12→11)，跟新建合同时用同一套规则
   const actualPeriods = periods === 3 ? 3 : periods - 1;
@@ -3649,7 +3665,7 @@ window.saveEditSale = function(id) {
   const _editConfirmFn = (_curRole === 'auditor' || _curRole === 'salesManager') ? confirmAuditorEdit : confirmEdit;
   _editConfirmFn(`确认修改合同 #${s.id} — ${s.customer} 吗？`, function() {
     const changedFields = [];
-    ['date','customer','customerPhone','shopName','salesperson','salePrice','deposit','periods','installmentAmount','monthlyPayment','storeRebate','dailyLateFee','note'].forEach(k => {
+    ['date','customer','customerPhone','shopName','salesperson','modelName','salePrice','deposit','periods','installmentAmount','monthlyPayment','storeRebate','dailyLateFee','note'].forEach(k => {
       if (String(s[k]??'') !== String(newSale[k]??'')) changedFields.push(`${k}: ${s[k]??'—'} → ${newSale[k]??'—'}`);
     });
     logActivity('编辑合同', `#${s.id} ${s.customer}`, changedFields.join('; ') || '（未改动关键字段，可能只调整了排期）');
