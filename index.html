@@ -3013,9 +3013,14 @@ window.submitSale = function() {
 
   // 店铺是否命中官方编号列表：选了下拉项才算命中；手打的即使凑巧打对名字，也要求选中才算数（更严谨），
   // 命中就带上店铺编号，没命中不阻止提交，但标记 shopMatched:false 方便以后核对
+  // 🔧 修复"编号明明选对了、还是被标⚠️"的bug：手机键盘（尤其高棉语输入法）经常在编号里
+  // 混入肉眼看不见的零宽字符，导致本来完全一样的编号用===比较判定成"不一样"。
+  // 这里改成跟"店家统计"分组逻辑用的同一套方式——先去掉这些隐形字符、去空格、忽略大小写再比较。
+  const _normShopCode = c => (c || '').replace(/[​‌‍﻿­]/g, '').replace(/\s+/g, '').toUpperCase();
   const storesForMatch = DB_get('stores') || [];
-  const shopMatched = !!(shopCodeSel && storesForMatch.some(s => s.code === shopCodeSel));
-  const shopCode = shopMatched ? shopCodeSel : '';
+  const _matchedStore = shopCodeSel ? storesForMatch.find(s => _normShopCode(s.code) === _normShopCode(shopCodeSel)) : null;
+  const shopMatched = !!_matchedStore;
+  const shopCode = shopMatched ? _matchedStore.code : ''; // 用店铺库里干净的编号，不用可能带隐形字符的原始输入，避免脏数据继续传下去
 
   let principal, retailPrice, brand, modelName, storage, condition, periods, firstDue, deposit;
   let monthlyInt, monthlySvc, rebate, dailyFee;
@@ -3696,6 +3701,9 @@ function canDeleteSale() {
 const SPECIAL_ADD_STORE_USERNAMES = ['sreynet'];
 function canAddStoreCode() {
   const u = getCurrentUser();
+  const role = u?.role || '';
+  // 🔓 2026-08：业务员主管(salesManager)统一开通店铺编号的新增/编辑/删除权限，跟老板一样
+  if (role === 'boss' || role === 'salesManager') return true;
   return SPECIAL_ADD_STORE_USERNAMES.includes((u?.username || '').toLowerCase());
 }
 
