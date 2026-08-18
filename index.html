@@ -5031,6 +5031,23 @@ window.submitPayment = async function() {
   const cumWaivedInterest  = priorWaivedInterest + waivedInterest;
   const cumPenalty         = priorPenalty + penalty;
 
+  // 🔧 修复"催收员传的凭证截图系统看不到"的bug：
+  // 以前是先存收款记录，图片在背后"偷偷"异步上传，上传完了才补一次单独的保存。
+  // 手机浏览器一旦被切到后台（催收员收完钱马上切出去做别的事），这种"稍后执行"的后台任务
+  // 经常直接被系统冻结/杀掉，图片就传丢了，而且没有任何提示，催收员完全不知道。
+  // 现在改成：先等图片真正上传完，再把图片URL跟这笔收款一起一次性存进去（跟"编辑收款记录"用的是同一套安全做法）。
+  const newPayId = newId();
+  let _payReceiptUrls = [];
+  if (window._pendingPayReceipts && window._pendingPayReceipts.length) {
+    showMsg('payMsg', tl('正在上传凭证截图，请勿离开此页面...','Uploading receipt photos, please stay on this page...','កំពុង​ផ្ទុក​រូបភាព...'), 'blue');
+    _payReceiptUrls = await uploadPayReceipt(newPayId);
+    if (!_payReceiptUrls.length) {
+      alert(tl('⚠️ 凭证截图上传失败（可能是网络问题）。本次收款金额已正常记录，但请稍后打开这笔收款记录手动补传照片！','⚠️ Receipt photo upload failed (possibly a network issue). The payment amount was recorded, but please re-upload the photo later.','⚠️'));
+    }
+    const rp = document.getElementById('pReceiptPreview');
+    if (rp) rp.innerHTML = '';
+  }
+
   if (isFullPaid) {
     // ✅ 足额（含减免，累计后够了）→ 标记已还
     sales[si].schedule[pi] = {
@@ -5074,7 +5091,6 @@ window.submitPayment = async function() {
 
   // 保存收款记录（不足额也记录，备查；这里存的是这一笔本身的金额，不是累计值，方便查每一笔明细）
   const pays = DB_get('payments')||[];
-  const newPayId = newId();
   const _payUser = getCurrentUser();
   pays.push({
     id: newPayId, contractId, customer: s.customer, period: periodNo,
@@ -5086,25 +5102,11 @@ window.submitPayment = async function() {
     shortfall: isFullPaid ? 0 : parseFloat(shortfall.toFixed(2)),
     advanceDays: advanceDays > 0 ? advanceDays : 0,
     recordedBy: _payUser?.displayName || _payUser?.username || '',
-    recordedByRole: _payUser?.role || ''
+    recordedByRole: _payUser?.role || '',
+    receiptUrls: _payReceiptUrls
   });
   DB_set('payments', pays);
   logActivity('还款登记', `#${contractId} ${s.customer} 第${periodNo}期`, `本金$${principal.toFixed(2)} 利息$${interest.toFixed(2)}${penalty?` 滞纳金$${penalty}`:''}${waiveAmt?` 减免$${waiveAmt.toFixed(2)}`:''}`);
-
-  // 📷 如果填了收款截图（最多3张），异步上传并回填URL数组（不阻塞主流程）
-  if (window._pendingPayReceipts && window._pendingPayReceipts.length) {
-    uploadPayReceipt(newPayId).then(urls => {
-      if (!urls || !urls.length) return;
-      const latestPays = DB_get('payments') || [];
-      const idx = latestPays.findIndex(p => p.id === newPayId);
-      if (idx >= 0) {
-        latestPays[idx].receiptUrls = urls;
-        DB_set('payments', latestPays);
-      }
-    });
-    const rp = document.getElementById('pReceiptPreview');
-    if (rp) rp.innerHTML = '';
-  }
 
   // 重置表单
   ['pPenalty','pNote','pTotalReceived','pWaive'].forEach(id => {
@@ -6423,7 +6425,7 @@ function updateProfitTip(remainP, remainI, remainSvc, rebate, neg, actualProfit)
     </div>`;
 }
 
-window.submitEarlyPayment = function() {
+window.submitEarlyPayment = async function() {
   const sel = document.getElementById('epContract');
   const contractId = sel?.value || '';
   const opt = sel?.selectedOptions[0];
@@ -6454,6 +6456,20 @@ window.submitEarlyPayment = function() {
   const note = document.getElementById('epNote')?.value || '';
   const customer = opt?.dataset?.customer || '';
 
+  // 🔧 同"收款登记"一样的修复：先等凭证截图真正上传完，再和这笔提前还款一起原子性保存，
+  // 不再是"先存款项、图片后台偷偷传"，避免手机浏览器切后台时图片悄悄传丢却没有任何提示。
+  const newEarlyId = newId();
+  let _earlyReceiptUrls = [];
+  if (window._pendingEarlyReceipts && window._pendingEarlyReceipts.length) {
+    showMsg('epMsg', tl('正在上传凭证截图，请勿离开此页面...','Uploading receipt photos, please stay on this page...','កំពុង​ផ្ទុក​រូបភាព...'), 'blue');
+    _earlyReceiptUrls = await uploadEarlyReceipt(newEarlyId);
+    if (!_earlyReceiptUrls.length) {
+      alert(tl('⚠️ 凭证截图上传失败（可能是网络问题）。本次提前结清已正常记录，但请稍后打开这条记录手动补传照片！','⚠️ Receipt photo upload failed (possibly a network issue). The early settlement was recorded, but please re-upload the photo later.','⚠️'));
+    }
+    const rp = document.getElementById('erpReceiptPreview');
+    if (rp) rp.innerHTML = '';
+  }
+
   // Mark all remaining schedule items as paid (early)
   // Distribute negotiated amount across remaining periods proportionally
   const unpaidPeriods = s.schedule.filter(p => !p.paid);
@@ -6470,33 +6486,18 @@ window.submitEarlyPayment = function() {
 
   // Save early payment record
   const earlyPayments = DB_get('earlyPayments') || [];
-  const newEarlyId = newId();
   earlyPayments.push({
     id: newEarlyId, contractId, customer, date,
     remainPrincipal: remainP, origRemainInterest: remainI,
     remainServiceFee: remainSvc, storeRebate: rebate,
     negotiatedAmount: neg, actualProfit, autoProfit,
-    profitDiff: actualProfit - (remainI + remainSvc), note
+    profitDiff: actualProfit - (remainI + remainSvc), note,
+    receiptUrls: _earlyReceiptUrls
   });
   DB_set('earlyPayments', earlyPayments);
   logActivity('提前还款', `#${contractId} ${customer}`, `协商金额$${neg} 利润$${actualProfit}`);
 
   showMsg('epMsg', `✅ ${_lang==='km'?'ការទូទាត់មុនបានទទួលជោគជ័យ':_lang==='en'?'Early settlement done':'提前结清成功！'} ${customer} — ${fmt(neg)} → ${_lang==='km'?'ចំណេញ':_lang==='en'?'Profit':'利润'} ${fmt(actualProfit)}`, 'green');
-
-  // 📷 如果填了凭证截图（最多3张），异步上传并回填URL数组（不阻塞主流程）
-  if (window._pendingEarlyReceipts && window._pendingEarlyReceipts.length) {
-    uploadEarlyReceipt(newEarlyId).then(urls => {
-      if (!urls || !urls.length) return;
-      const latestEarly = DB_get('earlyPayments') || [];
-      const idx = latestEarly.findIndex(r => r.id === newEarlyId);
-      if (idx >= 0) {
-        latestEarly[idx].receiptUrls = urls;
-        DB_set('earlyPayments', latestEarly);
-      }
-    });
-    const rp = document.getElementById('erpReceiptPreview');
-    if (rp) rp.innerHTML = '';
-  }
 
   // Reset form
   if (mpEl) { mpEl.value = ''; mpEl._manuallyEdited = false; }
