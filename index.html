@@ -2751,8 +2751,9 @@ window.calcInstall = function() {
   if (feeTile) feeTile.style.display = 'none'; // 新方式没有单独的手续费，隐藏这个格子
 
   // MORODOK 公式（跟 phone888.netlify.app 计算器完全一致）
+  // 🔧 2026-08：3期利息改成10%（原来跟其他期数一样都是7%），6/9/12期不变
   const actualPeriods  = periods === 3 ? 3 : periods - 1;
-  const monthlyInt     = Math.ceil(principal * 0.07);
+  const monthlyInt     = Math.ceil(principal * (periods === 3 ? 0.10 : 0.07));
   const monthlyPrincipal = Math.ceil(principal / actualPeriods);
   const monthly        = monthlyPrincipal + monthlyInt;
   const rebate         = Math.floor(principal * (periods <= 6 ? 0.05 : 0.10));
@@ -2783,14 +2784,13 @@ window.calcInstall = function() {
 // ══════ 手机型号/容量/成色/放款额度联动逻辑（对齐 phone888.netlify.app 计算器）══════
 window.PHONE_CATALOG = null; // 运行时由 initSaleModelUI 从 phones 表构建: { Apple: {model: {storage: maxLoanAmount}}, OPPO: {...} }
 window._saleUIState = { brand: 'Apple', modelName: '', storage: '' };
-const CONDITIONS = ['全新','99新','95新','90新','80新','70新'];
+// 🔧 2026-08：按新版放款计算器同步，成色只保留4档，不再收80新/70新的手机
+const CONDITIONS = ['全新','99新','95新','90新'];
 const CONDITION_LABELS = {
   '全新': {zh:'全新', en:'Brand New', km:'ថ្មី១០០%'},
   '99新': {zh:'99新', en:'99% New',  km:'ថ្មី99%'},
   '95新': {zh:'95新', en:'95% New',  km:'ថ្មី95%'},
   '90新': {zh:'90新', en:'90% New',  km:'ថ្មី90%'},
-  '80新': {zh:'80新', en:'80% New',  km:'ថ្មី80%'},
-  '70新': {zh:'70新', en:'70% New',  km:'ថ្មី70%'},
 };
 function conditionLabel(c) {
   const l = CONDITION_LABELS[c];
@@ -2832,6 +2832,8 @@ window.selectCondition = function(c) {
     b.style.color = active ? '#fff' : '#666';
     b.style.borderColor = active ? '#9c27b0' : '#ddd';
   });
+  // 🔧 成色会影响放款上限（iPhone 11/12系列选"90新"要少$25），切换成色要重新算一次上限
+  updateLoanRange();
 };
 
 window.selectBrand = function(brand) {
@@ -2910,7 +2912,15 @@ window.onPeriodChangeCalc = function() {
 function getCurrentMaxLoan() {
   const { brand, modelName, storage } = window._saleUIState;
   if (!window.PHONE_CATALOG || !window.PHONE_CATALOG[brand] || !window.PHONE_CATALOG[brand][modelName]) return null;
-  return window.PHONE_CATALOG[brand][modelName][storage] ?? null;
+  const max = window.PHONE_CATALOG[brand][modelName][storage] ?? null;
+  if (max == null) return null;
+  // 🔧 2026-08新规则：iPhone 11/12系列，成色选"90新"时，放款上限在型号库配置基础上再减$25
+  const condition = document.getElementById('sCondition')?.value || '全新';
+  const is11or12 = brand === 'Apple' && /^1[12]/.test(modelName || '');
+  if (is11or12 && condition === '90新') {
+    return Math.max(0, max - 25);
+  }
+  return max;
 }
 
 function updateLoanRange() {
@@ -3084,7 +3094,8 @@ window.submitSale = function() {
 
   const actualPeriods = periods === 3 ? 3 : periods - 1;
   if (!isOld) {
-    monthlyInt  = Math.ceil(principal * 0.07);
+    // 🔧 2026-08：3期利息改成10%（原来跟其他期数一样都是7%），6/9/12期不变
+    monthlyInt  = Math.ceil(principal * (periods === 3 ? 0.10 : 0.07));
     monthlySvc  = 0;
     rebate      = Math.floor(principal * (periods <= 6 ? 0.05 : 0.10));
     dailyFee    = Math.ceil(principal * 0.02);
