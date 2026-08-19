@@ -1893,7 +1893,8 @@ const ROLE_PAGES = {
                'stats-collection','stats-profit','finance-report','expenses',
                'store-stats','audit','staff-stats','fund-stats','reminder-tomorrow','reminder-overdue',
                'payment-query','phones','suppliers','purchase-add','inventory','company','my-performance'],
-  salesManager: ['home','sale-add','sale-list','audit','reminder-tomorrow','reminder-overdue','payment-query','my-performance'],
+  // 🔓 2026-08：加上store-stats，业务主管才能进"店家统计"页操作店家归并（拖动合并/归并管理）
+  salesManager: ['home','sale-add','sale-list','audit','store-stats','reminder-tomorrow','reminder-overdue','payment-query','my-performance'],
   sales:     ['home','sale-add','sale-list','reminder-tomorrow','reminder-overdue','payment-query','my-performance'],
   entry:     ['home','sale-add','sale-list','payment-add','early-payment',
                'reminder-tomorrow','reminder-overdue','payment-query'],
@@ -3184,12 +3185,23 @@ function renderSaleList() {
   loadAuditMapForSaleList();
   const allSales = DB_get('sales') || [];
   const stores = DB_get('stores') || [];
-  // 从销售记录和店家列表合并所有店家名
-  const shopNames = [...new Set([
+  // 从销售记录和店家列表合并所有店家名，按"店家归并"逻辑(extractStoreKey：编号前缀自动合并 + 人工归并分组)
+  // 合成一个店一个选项——同一家店哪怕有的合同录编号、有的录名字、有的编号+名字都混着用，只要
+  // 编号前缀一样或者业务主管手动归并过，都会算成一家，筛选的时候才不会漏单
+  // （隐藏掉业务主管/老板标记为"不要"的杂乱店名，见店铺编号管理里的"筛选列表清理"）
+  const _hiddenShopNames = getHiddenShopNames();
+  const _rawShopValues = [
     ...stores.map(s => s.name),
-    ...allSales.map(s => s.shopName||'').filter(Boolean)
-  ])].sort();
-  const shopOpts = shopNames.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+    ...allSales.map(s => s.shopCode || s.shopName || '')
+  ].filter(Boolean).filter(n => !_hiddenShopNames.includes(n));
+  const _shopKeyRaws = {};
+  _rawShopValues.forEach(raw => {
+    const key = extractStoreKey(raw);
+    if (!key) return;
+    (_shopKeyRaws[key] = _shopKeyRaws[key] || []).push(raw);
+  });
+  const shopKeys = Object.keys(_shopKeyRaws).sort((a,b) => resolveStoreDisplayName(a,_shopKeyRaws[a]).localeCompare(resolveStoreDisplayName(b,_shopKeyRaws[b])));
+  const shopOpts = shopKeys.map(key => `<option value="${esc(key)}">${esc(resolveStoreDisplayName(key, _shopKeyRaws[key]))}</option>`).join('');
   return `
   <div class="page-header"><div class="page-title">🔍 ${t('saleListTitle')}</div></div>
   <div class="card" style="margin-bottom:10px;padding:10px 16px">
@@ -3315,7 +3327,7 @@ function buildSalesTable(sales) {
       html += `<tr>
         <td class="fw700 text-blue">#${s.id}</td><td>${s.date}</td>
         <td><div class="fw700">${esc(s.customer)}</div><div class="text-muted" style="font-size:11px">${esc(s.customerPhone||'')}</div></td>
-        <td><span style="font-size:12px;background:#e3f2fd;color:var(--navy);padding:2px 8px;border-radius:12px;white-space:nowrap;cursor:pointer" onclick="document.getElementById('saleShopFilter').value='${esc(s.shopName||'')}';filterSales()">${esc(s.shopName||'-')}</span>${s.shopName && s.shopMatched===false ? ` <span title="${tl('未从官方店铺列表选中，可能是手打的店名','Not selected from the official store list — may be a manually typed name','មិនបានជ្រើសរើសពីបញ្ជីហាងផ្លូវការទេ')}" style="color:var(--red);cursor:help">⚠️</span>` : ''}</td>
+        <td><span style="font-size:12px;background:#e3f2fd;color:var(--navy);padding:2px 8px;border-radius:12px;white-space:nowrap;cursor:pointer" onclick="document.getElementById('saleShopFilter').value='${esc(extractStoreKey(s.shopCode||s.shopName||''))}';filterSales()">${esc(s.shopName||'-')}</span>${s.shopName && s.shopMatched===false ? ` <span title="${tl('未从官方店铺列表选中，可能是手打的店名','Not selected from the official store list — may be a manually typed name','មិនបានជ្រើសរើសពីបញ្ជីហាងផ្លូវការទេ')}" style="color:var(--red);cursor:help">⚠️</span>` : ''}</td>
         <td>${esc(s.modelName||'-')}</td><td>${fmt(s.salePrice)}</td><td>${fmt(s.deposit)}</td>
         <td class="fw700">${fmt(s.installmentAmount)}</td>
         <td><span class="${ptc[s.periods]||'pt6'}">${s.periods}${t('period')}</span></td>
@@ -3372,7 +3384,10 @@ window.filterSales = function() {
   if (st) sales = sales.filter(s => s.status === st);
   const month = document.getElementById('saleMonthFilter')?.value||'';
   if (month) sales = sales.filter(s => (s.date||'').startsWith(month));
-  if (shop) sales = sales.filter(s => (s.shopName||'') === shop);
+  // 🔧 店家筛选改成按"归并后的店家key"匹配（跟店家统计用同一套extractStoreKey逻辑），
+  // 而不是拿shopName原文一字不差比对——这样同一家店不管当时录的是编号、名字、还是编号+名字，
+  // 只要业务主管归并过或者编号前缀一样，筛选的时候都能一起找出来，不会漏单
+  if (shop) sales = sales.filter(s => extractStoreKey(s.shopCode || s.shopName || '') === shop);
   const wrap = document.getElementById('saleTableWrap');
   if (wrap) wrap.innerHTML = buildSalesTable(sales);
   // 显示当前筛选店家的快速统计
@@ -3382,8 +3397,9 @@ window.filterSales = function() {
     const active = sales.filter(s=>s.status==='进行中').length;
     const settled = sales.filter(s=>s.status==='已结清'||s.status==='提前结清').length;
     const totalAmt = sales.reduce((a,s)=>a+(+s.installmentAmount||0),0);
+    const shopDisplay = resolveStoreDisplayName(shop, sales.map(s => s.shopCode || s.shopName || '').filter(Boolean));
     badge.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap;padding:8px 12px;background:#e3f2fd;border-radius:8px;font-size:12px">
-      <span>🏪 <b>${esc(shop)}</b></span>
+      <span>🏪 <b>${esc(shopDisplay)}</b></span>
       <span>📋 共 <b>${total}</b> 笔</span>
       <span>🔄 进行中 <b class="text-blue">${active}</b></span>
       <span>✅ ${tl("已结清","Settled","រួច​រាល់")} <b class="text-green">${settled}</b></span>
@@ -3707,7 +3723,39 @@ function canAddStoreCode() {
   return SPECIAL_ADD_STORE_USERNAMES.includes((u?.username || '').toLowerCase());
 }
 
-// 店铺编号管理主弹窗：列出所有已有编号(可编辑/删除)，顶部有"新增"入口
+// ── 筛选列表里"不要的店家名"清理：这个下拉框是从stores表 + 所有历史合同的shopName原始文本
+// 合并去重出来的，不是一张能直接删的表，很多杂乱条目其实是历史合同里手打的文字变体
+// （比如"MPIN00001"跟"MPIN00001 - ភាណេណា"其实是同一家店的两种写法）。
+// 参考"隐藏离职业务员"的做法：只隐藏，不删除、不改动任何历史合同数据，随时可以恢复。
+function getHiddenShopNames() {
+  const list = DB_get('hiddenShopNames');
+  return Array.isArray(list) ? list : [];
+}
+function saveHiddenShopNames(list) { DB_set('hiddenShopNames', list); }
+
+window.hideShopName = function(name) {
+  if (!canAddStoreCode()) { alert(tl('没有权限做这个操作','No permission','គ្មានសិទ្ធិ')); return; }
+  if (!confirm(tl(
+    `确定要把「${name}」从店家筛选列表里移除吗？\n\n（只是不再出现在筛选下拉框里，不会删除或修改任何历史合同数据。如果需要恢复，回到这个管理界面点"恢复"就行。）`,
+    `Remove "${name}" from the store filter list? (It just won't show in the dropdown anymore — no historical contract data is changed. You can restore it here anytime.)`, ''
+  ))) return;
+  const hidden = getHiddenShopNames();
+  if (!hidden.includes(name)) hidden.push(name);
+  saveHiddenShopNames(hidden);
+  logActivity('隐藏店家名', name, '从店家筛选列表移除');
+  renderStoreCodeManagerList();
+};
+
+window.unhideShopName = function(name) {
+  if (!canAddStoreCode()) return;
+  const hidden = getHiddenShopNames().filter(n => n !== name);
+  saveHiddenShopNames(hidden);
+  logActivity('恢复店家名', name, '重新加回店家筛选列表');
+  renderStoreCodeManagerList();
+};
+
+// 店铺编号管理主弹窗：列出所有已有编号(可编辑/删除)，顶部有"新增"入口；
+// 下方另有"筛选列表清理"区域，专门处理销售查询页"全部店家"下拉里那些杂乱的历史文字变体
 window.openManageStoreCodesModal = function() {
   if (!canAddStoreCode()) return;
   showModal(`🔧 ${tl('店铺编号管理','Manage Store Codes','គ្រប់គ្រងលេខកូដហាង')}`, renderStoreCodeManagerBody());
@@ -3724,9 +3772,43 @@ function renderStoreCodeManagerBody() {
     <div id="storeCodeManagerList" style="max-height:340px;overflow-y:auto">
       ${storeCodeListHtml(stores)}
     </div>
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-weight:700;font-size:13px;margin-bottom:4px">🧹 ${tl('筛选列表清理','Clean Up Filter List','សម្អាតបញ្ជីតម្រង')}</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${tl('这里是"销售查询"页面"全部店家"下拉框里的杂乱店名（历史合同里手打的文字变体），可以隐藏不要的，不影响任何历史合同数据','Messy store name variants shown in the Sales List "All Stores" filter (typed on old contracts). Hide the ones you don\'t want — no historical contract data is affected.','')}</div>
+      <div id="shopNameCleanupList" style="max-height:260px;overflow-y:auto">
+        ${shopNameCleanupHtml()}
+      </div>
+    </div>
     <div style="text-align:right;margin-top:12px">
       <button onclick="closeModal()" class="btn btn-outline">${t('cancel')}</button>
     </div>`;
+}
+
+function shopNameCleanupHtml() {
+  const allSales = DB_get('sales') || [];
+  const stores = DB_get('stores') || [];
+  const hidden = getHiddenShopNames();
+  const visibleNames = [...new Set([
+    ...stores.map(s => s.name),
+    ...allSales.map(s => s.shopName||'').filter(Boolean)
+  ])].filter(Boolean).sort();
+
+  const visibleHtml = visibleNames.length ? `<table style="width:100%;font-size:12px">
+    ${visibleNames.map(n => `<tr>
+      <td style="padding:3px 0">${esc(n)}</td>
+      <td style="text-align:right;width:70px"><button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px;color:var(--red)" onclick="hideShopName('${esc(n).replace(/'/g,"\\'")}')">🙈 ${tl('隐藏','Hide','លាក់')}</button></td>
+    </tr>`).join('')}
+  </table>` : `<div style="color:var(--muted);font-size:12px;padding:8px;text-align:center">${tl('暂无数据','No data','')}</div>`;
+
+  const hiddenHtml = hidden.length ? `
+    <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${tl('已隐藏（点击恢复）','Hidden (click to restore)','')}：</div>
+      ${hidden.map(n => `<span style="display:inline-flex;align-items:center;gap:4px;background:#eceff1;border-radius:12px;padding:2px 8px 2px 10px;font-size:11px;margin:2px">
+        ${esc(n)} <button onclick="unhideShopName('${esc(n).replace(/'/g,"\\'")}')" style="border:none;background:none;color:var(--blue);cursor:pointer;font-size:11px">↩️ ${tl('恢复','Restore','')}</button>
+      </span>`).join('')}
+    </div>` : '';
+
+  return visibleHtml + hiddenHtml;
 }
 
 function storeCodeListHtml(stores) {
@@ -3751,6 +3833,8 @@ window.renderStoreCodeManagerList = function() {
   const filtered = q ? stores.filter(s => (s.code||'').toLowerCase().includes(q) || (s.nameKm||'').toLowerCase().includes(q) || (s.nameEn||'').toLowerCase().includes(q)) : stores;
   const listEl = document.getElementById('storeCodeManagerList');
   if (listEl) listEl.innerHTML = storeCodeListHtml(filtered);
+  const cleanupEl = document.getElementById('shopNameCleanupList');
+  if (cleanupEl) cleanupEl.innerHTML = shopNameCleanupHtml();
 };
 
 // 新增/编辑共用一个小表单：id为null是新增，否则是编辑对应记录
@@ -7149,8 +7233,67 @@ window.deleteExpense = function(id) {
 };
 
 // ══════════════════════════════════════════════════════
+// 店家名称/编号人工归并：同一家店有的合同只录了编号(MPIN00054)，有的只录了名字(HEA MAO)，
+// 有的编号+名字一起录（MPIN00054 - Hea Mao）——光靠"编号前缀相同"自动合并(见下面extractStoreKey)
+// 只能处理"两条记录都带编号"的情况，纯名字写法没有编号可比，自动合并不了。
+// 这里参考"业务员姓名归并"做一套一模一样的人工归并机制：业务员主管/老板手动把同一家店的
+// 不同写法归到一组，归并后不管店家统计还是销售查询筛选，这些写法名下的订单都会被当成同一家店，
+// 不会再出现"单子看着变少了/筛选不到"的情况。
+// 分组格式：[{ code:'MPIN00054'（可为空）, name:'展示名字', aliases:['所有原始写法',...] }, ...]
+// ══════════════════════════════════════════════════════
+function getStoreAliasGroups() {
+  const groups = DB_get('storeAliasGroups');
+  return Array.isArray(groups) ? groups : [];
+}
+function saveStoreAliasGroups(groups) { DB_set('storeAliasGroups', groups); }
+
+// 跟店铺编号匹配用的同一套"去隐形字符+去空格+忽略大小写"归一化
+function storeNorm(s) {
+  return (s || '').replace(/[​‌‍﻿­]/g, '').replace(/\s+/g, '').toUpperCase();
+}
+
+// ══════════════════════════════════════════════════════
 // STORE STATS 店家统计
 // ══════════════════════════════════════════════════════
+// 🔧 同一家店在不同合同上录入的shopName经常有细微差别（有没有横杠、空格、后缀名不一样，
+// 比如"MPIN00067 - ចេងហួរ" / "MPIN00067ចេងហួរ" / "MPIN00067 - ចេងហួរភូបល"），
+// 之前是按shopName原文一字不差地分组，导致同一家店被拆成好几行，单量、坏账率全部被稀释算错。
+// 这里改成优先按"店铺编号"分组(MPIN00067这种前缀)——编号才是真正唯一的店铺身份，名字怎么写都算一家；
+// 同时先查人工归并分组(storeAliasGroups)，命中就用归并后的统一key，这样纯名字写法也能跟对应编号的店合并。
+// 全局函数（不只是renderStoreStats内部用）：销售查询"全部店家"筛选也用同一套逻辑，两边口径必须一致。
+function extractStoreKey(nameOrCode) {
+  // 手机键盘（尤其高棉语输入法）经常在店铺编号中间夹带看不见的零宽字符(U+200B等)，
+  // 肉眼完全看不出来，但会把"MPIN00054"拆成"MPIN0005"+隐形字符+"4"，
+  // 导致这一条合同单独变成一个不存在的"新店铺"，没法跟同一家店的其他合同合并——这里统一先去掉这些隐形字符再分组
+  const raw = (nameOrCode || '').replace(/[​‌‍﻿­]/g, '').trim();
+  if (!raw) return '';
+  const aliasGroups = getStoreAliasGroups();
+  const n = storeNorm(raw);
+  const ag = aliasGroups.find(g => g.aliases.some(a => storeNorm(a) === n));
+  if (ag) return storeNorm(ag.code || ag.name); // 命中人工归并，直接用分组的统一key
+  const m = raw.match(/^([A-Za-z]+\s*\d+)/); // 编号前缀，比如 MPIN00067
+  if (m) return m[1].replace(/\s+/g, '').toUpperCase();
+  return raw.replace(/\s+/g, '').toUpperCase(); // 没有编号的，退回按名称(去空格/大小写)分组
+}
+
+// 给一个店家key(extractStoreKey算出来的)，返回统一展示名字：
+// 1) 先查人工归并分组的名字；2) 再查店铺编号库里的正式名称；3) 都没有就从传入的原始写法里挑一个信息最全的
+function resolveStoreDisplayName(key, rawValuesForKey) {
+  const ag = getStoreAliasGroups().find(a => storeNorm(a.code || a.name) === key);
+  if (ag) return ag.code ? `${ag.code} - ${ag.name || ''}` : (ag.name || ag.code);
+  const stores = DB_get('stores') || [];
+  const matched = stores.find(st => st.code && extractStoreKey(st.code) === key) || stores.find(st => extractStoreKey(st.name) === key);
+  if (matched) return matched.code ? `${matched.code} - ${matched.nameKm || matched.name || ''}` : matched.name;
+  if (rawValuesForKey && rawValuesForKey.length) {
+    return rawValuesForKey.slice().sort((a,b) => {
+      const aHas = /^[A-Za-z]+\s*\d+/.test(a), bHas = /^[A-Za-z]+\s*\d+/.test(b);
+      if (aHas !== bHas) return aHas ? -1 : 1;
+      return b.length - a.length;
+    })[0];
+  }
+  return key;
+}
+
 function renderStoreStats() {
   // 自动把销售记录里的店家同步进来
   syncShopsFromSales();
@@ -7188,21 +7331,7 @@ function renderStoreStats() {
     return { odRate, odAmt };
   }
 
-  // 🔧 同一家店在不同合同上录入的shopName经常有细微差别（有没有横杠、空格、后缀名不一样，
-  // 比如"MPIN00067 - ចេងហួរ" / "MPIN00067ចេងហួរ" / "MPIN00067 - ចេងហួរភូបល"），
-  // 之前是按shopName原文一字不差地分组，导致同一家店被拆成好几行，单量、坏账率全部被稀释算错。
-  // 这里改成优先按"店铺编号"分组(MPIN00067这种前缀)——编号才是真正唯一的店铺身份，名字怎么写都算一家。
-  function extractStoreKey(nameOrCode) {
-    // 手机键盘（尤其高棉语输入法）经常在店铺编号中间夹带看不见的零宽字符(U+200B等)，
-    // 肉眼完全看不出来，但会把"MPIN00054"拆成"MPIN0005"+隐形字符+"4"，
-    // 导致这一条合同单独变成一个不存在的"新店铺"，没法跟同一家店的其他合同合并——这里统一先去掉这些隐形字符再分组
-    const raw = (nameOrCode || '').replace(/[​‌‍﻿­]/g, '').trim();
-    if (!raw) return '';
-    const m = raw.match(/^([A-Za-z]+\s*\d+)/); // 编号前缀，比如 MPIN00067
-    if (m) return m[1].replace(/\s+/g, '').toUpperCase();
-    return raw.replace(/\s+/g, '').toUpperCase(); // 没有编号的，退回按名称(去空格/大小写)分组
-  }
-
+  // extractStoreKey 现在是全局函数（含人工归并查询），定义在文件前面，这里直接用，不用再重复定义一份
   const groups = {}; // key -> { key, storeSales:[], nameCounts:{}, matchedStore }
   sales.forEach(s => {
     const raw = s.shopCode || s.shopName || s.storeName || '';
@@ -7221,8 +7350,12 @@ function renderStoreStats() {
     groups[key].matchedStore = st;
   });
 
-  // 每组的展示名称：优先用"店铺编号管理"里登记的正式名称，其次用这组里出现次数最多的那个shopName写法
+  // 每组的展示名称：优先用人工归并分组里指定的名字，其次用"店铺编号管理"里登记的正式名称，
+  // 最后退回这组里出现次数最多的那个shopName写法
+  const _storeAliasGroups = getStoreAliasGroups();
   function pickDisplayName(g) {
+    const ag = _storeAliasGroups.find(a => storeNorm(a.code || a.name) === g.key);
+    if (ag) return ag.code ? `${ag.code} - ${ag.name || ''}` : ag.name;
     const matched = g.matchedStore || stores.find(st => st.code && extractStoreKey(st.code) === g.key);
     if (matched) return matched.code ? `${matched.code} - ${matched.nameKm || matched.name || ''}` : matched.name;
     const names = Object.keys(g.nameCounts).sort((a,b) => g.nameCounts[b] - g.nameCounts[a]);
@@ -7269,10 +7402,14 @@ function renderStoreStats() {
   const thisMonthAll = storeData.reduce((a,s)=>a+s.thisMonth,0);
 
   return `
-  <div class="page-header">
-    <div class="page-title">🏪 ${t('storeStats')}</div>
-    <div class="page-sub">${_lang==='km'?'ស្ថិតិតាមហាង':_lang==='en'?'Per-store order & bad debt analysis':'按店铺统计单量及坏账'}</div>
+  <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <div>
+      <div class="page-title">🏪 ${t('storeStats')}</div>
+      <div class="page-sub">${_lang==='km'?'ស្ថិតិតាមហាង':_lang==='en'?'Per-store order & bad debt analysis':'按店铺统计单量及坏账'}</div>
+    </div>
+    ${canAddStoreCode() ? `<button class="btn btn-outline btn-sm" onclick="openStoreAliasManager()">🔗 ${tl('店家归并管理','Merge Stores','បញ្ចូលហាងចូលគ្នា')}</button>` : ''}
   </div>
+  <div style="font-size:11px;color:var(--muted);margin:-8px 0 12px">${tl('同一家店有的合同录了编号、有的录了名字，把它们拖动合并（或点上面"店家归并管理"）就会自动统一计算，不会漏单','If the same store was entered with different code/name spellings, drag one row onto another (or use "Merge Stores" above) to combine them','')}</div>
 
   <!-- 顶部汇总 KPI -->
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
@@ -7352,9 +7489,12 @@ function renderStoreStats() {
           const riskBg = d.bd30Rate>10?'#fff0f0':d.bd30Rate>5?'#fffbe6':'';
           const odClass = d.odRate>10?'text-red':d.odRate>5?'text-amber':'text-green';
           const storeInfo = stores.find(s=>s.name===d.name);
-          return `<tr data-name="${esc(d.name)}" data-total="${d.total}" data-active="${d.active}" data-bd="${d.bd30Rate}" data-od="${d.odRate}" data-month="${d.thisMonth}" style="cursor:pointer;${riskBg?'background:'+riskBg:''}">
+          const canMerge = canAddStoreCode();
+          return `<tr data-name="${esc(d.name)}" data-total="${d.total}" data-active="${d.active}" data-bd="${d.bd30Rate}" data-od="${d.odRate}" data-month="${d.thisMonth}" data-storekey="${esc(d.key)}" style="cursor:pointer;${riskBg?'background:'+riskBg:''}"
+            ${canMerge ? `draggable="true" ondragstart="window._storeDragStart(event)" ondragover="window._storeDragOver(event)" ondragleave="window._storeDragLeave(event)" ondrop="window._storeDrop(event)"` : ''}>
             <td onclick="toggleStoreDetail('detail-${i}')" style="font-weight:600;color:var(--navy)">
               <span style="margin-right:6px;font-size:10px;color:var(--muted)" id="arrow-${i}">▶</span>
+              ${canMerge ? `<span title="${tl('按住拖到另一家店上可以合并','Drag onto another store to merge','')}" style="cursor:grab;color:var(--muted);margin-right:2px">⠿</span>` : ''}
               ${storeInfo?.qr?`<img src="${storeInfo.qr}" style="width:22px;height:22px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-right:6px">`:''}
               ${esc(d.name)}
             </td>
@@ -7372,7 +7512,7 @@ function renderStoreStats() {
               <span class="fw700 ${odClass}" style="font-size:14px">${d.odRate.toFixed(1)}%</span>
             </td>
             <td style="white-space:nowrap">
-              <button class="btn btn-outline btn-sm" onclick="nav('sale-list');setTimeout(()=>{const el=document.getElementById('saleShopFilter');if(el){el.value='${esc(d.name)}';filterSales();}},100)">🔍</button>
+              <button class="btn btn-outline btn-sm" onclick="nav('sale-list');setTimeout(()=>{const el=document.getElementById('saleShopFilter');if(el){el.value='${esc(d.key)}';filterSales();}},100)">🔍</button>
               ${storeInfo?`<button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteStore('${esc(d.name)}')">🗑️</button>`:''}
             </td>
           </tr>
@@ -8552,6 +8692,217 @@ window.renderAuditorTabTable = function() {
 function daysDiff(dateStr, today) {
   return Math.floor((new Date(today) - new Date(dateStr)) / 86400000);
 }
+
+// ══════════════════════════════════════════════════════
+// 店家归并：拖动合并 + 管理弹窗（跟"业务员姓名归并"是同一套思路）
+// ══════════════════════════════════════════════════════
+
+// 把 sourceKey 这家店合并进 targetKey：把sourceKey名下所有出现过的原始写法(编号/名字/编号+名字)
+// 都收进同一个人工归并分组，以后不管店家统计还是销售查询筛选，这些写法都会被当成同一家店
+window.mergeStoreNames = function(sourceKey, targetKey) {
+  if (!canAddStoreCode()) { alert(tl('没有权限做这个操作','No permission','គ្មានសិទ្ធិ')); return; }
+  if (!sourceKey || !targetKey || sourceKey === targetKey) return;
+
+  const allSales = DB_get('sales') || [];
+  const stores = DB_get('stores') || [];
+  const rawValuesFor = key => {
+    const set = new Set();
+    stores.forEach(s => { if (s.name && extractStoreKey(s.name) === key) set.add(s.name); });
+    allSales.forEach(s => {
+      const raw = s.shopCode || s.shopName || '';
+      if (raw && extractStoreKey(raw) === key) set.add(raw);
+    });
+    return [...set];
+  };
+
+  const sourceRaws = rawValuesFor(sourceKey);
+  const targetRaws = rawValuesFor(targetKey);
+  if (!sourceRaws.length) { alert(tl('找不到这家店对应的原始记录，无法合并','Could not find matching records to merge','')); return; }
+
+  const sourceDisplay = resolveStoreDisplayName(sourceKey, sourceRaws);
+  const targetDisplay = resolveStoreDisplayName(targetKey, targetRaws);
+  if (!confirm(tl(
+    `确定要把「${sourceDisplay}」合并到「${targetDisplay}」吗？\n\n合并后，这两家店名下所有合同都会统一算成「${targetDisplay}」一家店（店家统计、销售查询筛选都会同步），不会修改任何历史合同的原始数据，随时可以在"店家归并管理"里拆开。`,
+    `Merge "${sourceDisplay}" into "${targetDisplay}"? All their contracts will be counted as one store going forward (stats & filters). No historical contract data is changed — you can undo this anytime from "Merge Stores".`, ''
+  ))) return;
+
+  const groups = getStoreAliasGroups();
+  // 把source原本可能已经在的分组里的这些写法摘出来，避免一个写法同时属于两个分组
+  sourceRaws.forEach(raw => {
+    groups.forEach(g => { g.aliases = g.aliases.filter(a => storeNorm(a) !== storeNorm(raw)); });
+  });
+  for (let i = groups.length - 1; i >= 0; i--) if (!groups[i].aliases.length) groups.splice(i, 1);
+
+  // 找到（或新建）target所在的分组，把source的写法并进去
+  let tgtGroup = groups.find(g => storeNorm(g.code || g.name) === targetKey) ||
+    groups.find(g => g.aliases.some(a => storeNorm(a) === targetKey || targetRaws.some(tr => storeNorm(tr) === storeNorm(a))));
+  if (!tgtGroup) {
+    // target还没有分组，用它现在的展示名/编号当种子建一个新分组
+    const codeGuess = /^[A-Za-z]+\s*\d+$/.test(targetKey) ? targetKey : (targetRaws.find(r => /^[A-Za-z]+\s*\d+/.test(r)) || '');
+    tgtGroup = { code: codeGuess, name: targetDisplay, aliases: [...targetRaws] };
+    groups.push(tgtGroup);
+  }
+  sourceRaws.forEach(raw => { if (!tgtGroup.aliases.some(a => storeNorm(a) === storeNorm(raw))) tgtGroup.aliases.push(raw); });
+  if (!tgtGroup.name) tgtGroup.name = targetDisplay;
+
+  saveStoreAliasGroups(groups);
+  logActivity('合并店家', `${sourceDisplay} → ${targetDisplay}`, `${sourceRaws.length}种写法`);
+  nav('store-stats');
+  alert(tl(`✅ 已合并，「${sourceDisplay}」现在统一算成「${targetDisplay}」`, `✅ Merged — now counted as "${targetDisplay}"`, ''));
+};
+
+// 店家统计表格里的拖动合并交互（把一行拖到另一行上）
+window._storeDragStart = function(ev) {
+  ev.dataTransfer.setData('text/plain', ev.currentTarget.dataset.storekey);
+  ev.dataTransfer.effectAllowed = 'move';
+};
+window._storeDragOver = function(ev) {
+  ev.preventDefault();
+  ev.currentTarget.style.background = '#e3f2fd';
+  ev.dataTransfer.dropEffect = 'move';
+};
+window._storeDragLeave = function(ev) {
+  ev.currentTarget.style.background = '';
+};
+window._storeDrop = function(ev) {
+  ev.preventDefault();
+  ev.currentTarget.style.background = '';
+  const sourceKey = ev.dataTransfer.getData('text/plain');
+  const targetKey = ev.currentTarget.dataset.storekey;
+  window.mergeStoreNames(sourceKey, targetKey);
+};
+
+// 管理弹窗：查看/改名/拆分已归并的店家分组，也可以手动勾选原始写法归并成新的一组
+window.openStoreAliasManager = function() {
+  if (!canAddStoreCode()) return;
+  showModal(tl('🔗 店家归并管理','Merge Stores',''), renderStoreAliasManagerBody());
+};
+
+function _refreshAfterStoreAliasChange() {
+  showModal(tl('🔗 店家归并管理','Merge Stores',''), renderStoreAliasManagerBody());
+  nav(window._currentPage || 'store-stats');
+}
+
+function renderStoreAliasManagerBody() {
+  const allSales = DB_get('sales') || [];
+  const stores = DB_get('stores') || [];
+  const groups = getStoreAliasGroups();
+
+  // 所有原始写法(编号/名字/编号+名字)，按归并后的key分组，用来生成"未归并的写法"勾选列表
+  const rawByKey = {};
+  [...stores.map(s => s.name), ...allSales.map(s => s.shopCode || s.shopName || '')]
+    .filter(Boolean)
+    .forEach(raw => {
+      const key = extractStoreKey(raw);
+      if (!key) return;
+      (rawByKey[key] = rawByKey[key] || new Set()).add(raw);
+    });
+  const allKeys = Object.keys(rawByKey).sort();
+
+  let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${tl(
+    '勾选下面2个或以上的写法（可以是编号、名字、编号+名字混着选），点"合并"就会把它们统一算成同一家店。合并不会修改任何历史合同数据，随时可以在下面"已归并"里拆开。',
+    'Check 2 or more spellings below (code-only, name-only, or code+name) and click Merge to treat them as one store. No historical data is changed — you can ungroup anytime below.', ''
+  )}</div>`;
+
+  html += `<div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:10px">`;
+  allKeys.forEach(key => {
+    const raws = [...rawByKey[key]];
+    const display = resolveStoreDisplayName(key, raws);
+    html += `<label style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px;cursor:pointer">
+      <input type="checkbox" class="storeAliasPick" value="${esc(key)}">
+      <span>${esc(display)}</span>
+      <span style="color:var(--muted);font-size:11px">(${raws.length} ${tl('种写法','spellings','')})</span>
+    </label>`;
+  });
+  html += `</div>`;
+
+  html += `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+    <input id="storeAliasNewName" type="text" placeholder="${tl('展示名字（留空自动用其中一个写法）','Display name (optional)','ឈ្មោះបង្ហាញ')}" style="flex:1;min-width:160px;padding:6px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:12px">
+    <button class="btn btn-primary btn-sm" onclick="window.storeAliasMergeSelected()">🔗 ${tl('合并勾选的','Merge Selected','')}</button>
+  </div>`;
+
+  html += `<div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:8px">📋 ${tl('已归并的店家','Merged Stores','')} (${groups.length})</div>`;
+  html += groups.length ? groups.map((g, i) => `
+    <div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-weight:700;color:var(--navy)">${esc(g.code ? `${g.code} - ${g.name||''}` : g.name)}</span>
+        <span style="font-size:11px;color:var(--muted)">(${g.aliases.length} ${tl('种写法','spellings','')})</span>
+        <span style="margin-left:auto;display:flex;gap:6px">
+          <button style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer" onclick="window.storeAliasRenameGroup(${i})">✏️ ${tl('改名','Rename','')}</button>
+          <button style="font-size:11px;padding:3px 8px;border:1px solid #ffcdd2;color:#c62828;border-radius:6px;background:#fff;cursor:pointer" onclick="window.storeAliasDeleteGroup(${i})">🗑️ ${tl('取消归并','Ungroup','')}</button>
+        </span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${g.aliases.map(a => `<span style="display:inline-flex;align-items:center;gap:5px;background:#f0f4f9;border-radius:20px;padding:3px 8px 3px 10px;font-size:12px;color:#37474f">
+          ${esc(a)}${g.aliases.length>1 ? `<span style="cursor:pointer;color:#90a4ae;font-weight:700" onclick="window.storeAliasRemoveAlias(${i},'${esc(a).replace(/'/g,"\\'")}')">×</span>` : ''}
+        </span>`).join('')}
+      </div>
+    </div>`).join('') : `<div style="color:var(--muted);font-size:12px;padding:8px">${tl('暂无归并分组','No merged groups yet','')}</div>`;
+
+  html += `<div style="text-align:right;margin-top:12px">
+    <button onclick="closeModal()" class="btn btn-outline">${t('cancel')}</button>
+  </div>`;
+  return html;
+}
+
+window.storeAliasMergeSelected = function() {
+  const checks = [...document.querySelectorAll('.storeAliasPick:checked')].map(el => el.value);
+  if (checks.length < 2) { alert(tl('至少勾选2个写法才能合并','Select at least 2 spellings to merge','')); return; }
+
+  const allSales = DB_get('sales') || [];
+  const stores = DB_get('stores') || [];
+  const rawValuesFor = key => {
+    const set = new Set();
+    stores.forEach(s => { if (s.name && extractStoreKey(s.name) === key) set.add(s.name); });
+    allSales.forEach(s => {
+      const raw = s.shopCode || s.shopName || '';
+      if (raw && extractStoreKey(raw) === key) set.add(raw);
+    });
+    return [...set];
+  };
+
+  const allRaws = checks.flatMap(k => rawValuesFor(k));
+  const codeGuess = allRaws.find(r => /^[A-Za-z]+\s*\d+/.test(r)) || '';
+  const nameInput = document.getElementById('storeAliasNewName');
+  const name = (nameInput?.value || '').trim() || resolveStoreDisplayName(checks[0], rawValuesFor(checks[0]));
+
+  const groups = getStoreAliasGroups();
+  // 摘掉这些写法原本可能所在的其他分组，避免重复归属
+  allRaws.forEach(raw => { groups.forEach(g => { g.aliases = g.aliases.filter(a => storeNorm(a) !== storeNorm(raw)); }); });
+  for (let i = groups.length - 1; i >= 0; i--) if (!groups[i].aliases.length) groups.splice(i, 1);
+
+  groups.push({ code: /^[A-Za-z]+\s*\d+/.test(codeGuess) ? codeGuess : '', name, aliases: [...new Set(allRaws)] });
+  saveStoreAliasGroups(groups);
+  _refreshAfterStoreAliasChange();
+};
+
+window.storeAliasRenameGroup = function(i) {
+  const groups = getStoreAliasGroups();
+  const g = groups[i]; if (!g) return;
+  const nn = prompt(tl('输入新的展示名字','Enter new display name',''), g.name || '');
+  if (nn === null || !nn.trim()) return;
+  g.name = nn.trim();
+  saveStoreAliasGroups(groups);
+  _refreshAfterStoreAliasChange();
+};
+
+window.storeAliasDeleteGroup = function(i) {
+  const groups = getStoreAliasGroups();
+  if (!groups[i]) return;
+  if (!confirm(tl('确定要取消这个归并分组吗？里面的写法会变回各自独立统计。','Ungroup? Each spelling will be counted separately again.',''))) return;
+  groups.splice(i, 1);
+  saveStoreAliasGroups(groups);
+  _refreshAfterStoreAliasChange();
+};
+
+window.storeAliasRemoveAlias = function(i, alias) {
+  const groups = getStoreAliasGroups();
+  const g = groups[i]; if (!g) return;
+  g.aliases = g.aliases.filter(a => a !== alias);
+  if (!g.aliases.length) groups.splice(i, 1);
+  saveStoreAliasGroups(groups);
+  _refreshAfterStoreAliasChange();
+};
 
 window.toggleStoreDetail = function(id) {
   const row = document.getElementById(id);
@@ -11006,7 +11357,7 @@ window.openAuditDetail = async function(contractId) {
       </div>
       <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
         <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('店铺','Store','ហាង')}</div>
-        <input id="auditEdit_storeName_${contractId}" value="${esc(s.storeName||'')}" readonly
+        <input id="auditEdit_storeName_${contractId}" value="${esc(s.shopName || s.storeName || '')}" readonly
           style="width:100%;box-sizing:border-box;border:none;background:transparent;font-weight:600;font-size:13px;color:#263238;padding:0;font-family:inherit">
       </div>
       <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
@@ -11105,11 +11456,14 @@ window.saveAuditBasicEdit = async function(contractId) {
   if (idx === -1) { alert(tl('合同不存在','Contract not found','រកមិនឃើញកិច្ចសន្យា')); return; }
   const s = sales[idx];
 
+  // 🔧 修复"审核页店铺栏位显示不出来"的bug：合同创建时店铺是存进 shopName 字段的，
+  // 这里之前读写的却是 storeName（一个正常建单流程根本不会写入的字段），导致业务员明明填了店铺，
+  // 审核页永远显示空白。改成读写 shopName，跟销售查询/店家统计等其他地方保持一致。
   const newVals = {
     customer:      document.getElementById(`auditEdit_customer_${contractId}`)?.value?.trim() || '',
     customerPhone: document.getElementById(`auditEdit_customerPhone_${contractId}`)?.value?.trim() || '',
     modelName:     document.getElementById(`auditEdit_modelName_${contractId}`)?.value?.trim() || '',
-    storeName:     document.getElementById(`auditEdit_storeName_${contractId}`)?.value?.trim() || '',
+    shopName:      document.getElementById(`auditEdit_storeName_${contractId}`)?.value?.trim() || '',
     salesperson:   document.getElementById(`auditEdit_salesperson_${contractId}`)?.value?.trim() || '',
     note:          document.getElementById(`auditEdit_note_${contractId}`)?.value?.trim() || '',
     date:          document.getElementById(`auditEdit_date_${contractId}`)?.value?.trim() || ''
@@ -11127,14 +11481,16 @@ window.saveAuditBasicEdit = async function(contractId) {
     customer: tl('客户姓名','Customer Name','ឈ្មោះអតិថិជន'),
     customerPhone: tl('手机号','Phone','លេខទូរស័ព្ទ'),
     modelName: tl('型号','Model','ម៉ូដែល'),
-    storeName: tl('店铺','Store','ហាង'),
+    shopName: tl('店铺','Store','ហាង'),
     salesperson: tl('业务员','Salesperson','ភ្នាក់ងារ​លក់'),
     note: tl('备注','Note','កំណត់ចំណាំ'),
     date: tl('签约日期','Sign Date','ថ្ងៃចុះកិច្ចសន្យា')
   };
   const changed = [];
   Object.keys(newVals).forEach(k => {
-    const oldV = s[k] || '';
+    // 店铺字段老数据可能落在storeName上（比如老的导入脚本写的），对比"改没改"时两个字段都要看，
+    // 不然明明没改动，会因为s.shopName是空的、跟输入框回填的storeName值不一样，被误判成"改了"
+    const oldV = k === 'shopName' ? (s.shopName || s.storeName || '') : (s[k] || '');
     const newV = newVals[k];
     if (String(oldV) !== String(newV)) changed.push(`${fieldLabel[k]}: "${oldV||'—'}" → "${newV||'—'}"`);
   });
@@ -11143,7 +11499,14 @@ window.saveAuditBasicEdit = async function(contractId) {
 
   if (!confirm(tl('确认保存以下修改？\n\n','Confirm the following changes?\n\n','សូមបញ្ជាក់ការកែប្រែខាងក្រោម？\n\n') + changed.join('\n'))) return;
 
-  sales[idx] = { ...s, ...newVals };
+  // 店铺栏位是不是命中官方编号列表，用跟"新建合同"一样的归一化比较（去隐形字符/空格/大小写）重新核实一遍，
+  // 保证审核页改完店铺之后，销售查询列表的⚠️未匹配提示也能同步对上
+  const _stores = DB_get('stores') || [];
+  const shopMatchedNew = newVals.shopName
+    ? _stores.some(st => storeNorm(st.code) === storeNorm(newVals.shopName) || storeNorm(st.name) === storeNorm(newVals.shopName))
+    : s.shopMatched;
+
+  sales[idx] = { ...s, ...newVals, shopMatched: shopMatchedNew };
   DB_set('sales', sales);
 
   logActivity(
