@@ -3012,14 +3012,14 @@ window.submitSale = function() {
   const shopCodeSel = document.getElementById('sShopCode')?.value?.trim() || '';
   const salesperson = document.getElementById('sSalesperson')?.value?.trim() || '';
 
-  // 店铺是否命中官方编号列表：选了下拉项才算命中；手打的即使凑巧打对名字，也要求选中才算数（更严谨），
-  // 命中就带上店铺编号，没命中不阻止提交，但标记 shopMatched:false 方便以后核对
-  // 🔧 修复"编号明明选对了、还是被标⚠️"的bug：手机键盘（尤其高棉语输入法）经常在编号里
-  // 混入肉眼看不见的零宽字符，导致本来完全一样的编号用===比较判定成"不一样"。
-  // 这里改成跟"店家统计"分组逻辑用的同一套方式——先去掉这些隐形字符、去空格、忽略大小写再比较。
-  const _normShopCode = c => (c || '').replace(/[​‌‍﻿­]/g, '').replace(/\s+/g, '').toUpperCase();
+  // 店铺是否命中官方编号列表：只看"文字里的编号对不对"，不要求必须从下拉框里点选——
+  // 2026-08老板反馈很多业务员手打的店铺文字编号本身是对的，只是没专门点一下下拉项，
+  // 之前那么严格反而经常被冤枉成"未匹配"，改成宽松一点，业务主管主要看编号，编号对就行。
+  // 用extractStoreKey（跟店家统计/店铺编号管理同一套逻辑，含去隐形字符+人工归并分组）
+  // 从填的文字里提取编号前缀，能在店铺库里找到对应编号就算命中。
   const storesForMatch = DB_get('stores') || [];
-  const _matchedStore = shopCodeSel ? storesForMatch.find(s => _normShopCode(s.code) === _normShopCode(shopCodeSel)) : null;
+  const _shopKey = shopName ? extractStoreKey(shopName) : '';
+  const _matchedStore = _shopKey ? storesForMatch.find(s => s.code && extractStoreKey(s.code) === _shopKey) : null;
   const shopMatched = !!_matchedStore;
   const shopCode = shopMatched ? _matchedStore.code : ''; // 用店铺库里干净的编号，不用可能带隐形字符的原始输入，避免脏数据继续传下去
 
@@ -11499,11 +11499,12 @@ window.saveAuditBasicEdit = async function(contractId) {
 
   if (!confirm(tl('确认保存以下修改？\n\n','Confirm the following changes?\n\n','សូមបញ្ជាក់ការកែប្រែខាងក្រោម？\n\n') + changed.join('\n'))) return;
 
-  // 店铺栏位是不是命中官方编号列表，用跟"新建合同"一样的归一化比较（去隐形字符/空格/大小写）重新核实一遍，
-  // 保证审核页改完店铺之后，销售查询列表的⚠️未匹配提示也能同步对上
+  // 店铺栏位是不是命中官方编号列表，用跟"新建合同"一样的逻辑重新核实一遍（只看编号对不对，
+  // 不要求是不是从下拉框选的），保证审核页改完店铺之后，销售查询列表的⚠️提示也能同步对上
   const _stores = DB_get('stores') || [];
-  const shopMatchedNew = newVals.shopName
-    ? _stores.some(st => storeNorm(st.code) === storeNorm(newVals.shopName) || storeNorm(st.name) === storeNorm(newVals.shopName))
+  const _newShopKey = newVals.shopName ? extractStoreKey(newVals.shopName) : '';
+  const shopMatchedNew = _newShopKey
+    ? _stores.some(st => st.code && extractStoreKey(st.code) === _newShopKey)
     : s.shopMatched;
 
   sales[idx] = { ...s, ...newVals, shopMatched: shopMatchedNew };
