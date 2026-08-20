@@ -276,6 +276,7 @@ tr:hover td{background:#f8faff}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
 
@@ -4068,6 +4069,8 @@ function renderPaymentAdd() {
     <div class="btn-row">
       <button class="btn btn-success" onclick="submitPayment()">${t("confirmPayment")}</button>
       <button class="btn btn-outline" onclick="loadContractPeriods()">${t("refresh")}</button>
+      ${!isCollector ? `<button class="btn btn-outline" onclick="openReconImportModal()" style="border-color:#5e35b1;color:#5e35b1">📥 ${tl('导入核对结果','Import Reconciliation','នាំចូល')}</button>` : ''}
+      ${!isCollector ? `<button class="btn btn-outline" onclick="openDocxImportModal()" style="border-color:#0277bd;color:#0277bd">📎 ${tl('导入聊天记录(docx)','Import Chat Export (docx)','នាំចូល docx')}</button>` : ''}
     </div>
     <div id="payMsg"></div>
   </div>
@@ -4381,6 +4384,7 @@ function buildPayTableGrouped(pays, isCollector) {
             <div style="flex:1;min-width:120px">
               <div style="font-weight:700;font-size:13px">${esc(p.customer)}
                 ${p.reconstructed ? `<span style="background:#ede7f6;color:#5e35b1;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700;cursor:help" title="${esc(p.reconstructedNote||'')}">🔧 ${tl("系统补录","Reconstructed","")}</span>` : ''}
+                ${p.reconImported ? `<span style="background:#e1f5fe;color:#0277bd;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700;cursor:help" title="${esc(p.reconImportNote||'')}">📥 ${tl("核对导入","Recon Import","")}</span>` : ''}
                 ${p.isPartial ? `<span style="background:#fff3e0;color:#e65100;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">${tl("部分收款","Partial","ផ្នែក")}</span>` : ''}
                 ${isEarly ? `<span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">${tl("⚡提前还款","⚡Early","⚡សង​មុន")}</span>` : ''}
                 ${(+p.advanceDays||0)>30 ? `<span style="background:#ffebee;color:#c62828;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700" title="${tl('提前','Advance','មុន')}${p.advanceDays}${tl('天，超过1个月，建议核对','days, over 1 month, please verify','ថ្ងៃ')}">🔔${tl('提前','Advance','មុន')}${p.advanceDays}${tl('天','d','ថ្ងៃ')}</span>` : ''}
@@ -5233,6 +5237,657 @@ window.submitPayment = async function() {
     setTimeout(() => { window._submittingPayment = false; }, 800);
   }
 };
+
+// ══════════════════════════════════════════════════════
+// 📥 导入核对结果（催收员对账清单 → 批量登记还款）
+// ══════════════════════════════════════════════════════
+// 输入格式：一份 JSON 数组，每条记录代表"某合同某一期"的对账情况，字段包括
+// customer / contractId / dueDate / kind / verified / amount / amountCurrency / date / account / note / images
+// 只处理 verified===true 的记录；kind==='提前还款' 的不在这里自动处理（走"提前还款"页面单独登记）。
+window._reconImport = { raw: null, khrRate: 0 };
+
+window.openReconImportModal = function() {
+  window._reconImport = { raw: null, khrRate: 0 };
+  showModal(`📥 ${tl('导入核对结果','Import Reconciliation','នាំចូល')}`, `
+    <div style="font-size:13px;color:#546e7a;margin-bottom:14px;line-height:1.6">
+      ${tl(
+        '上传催收核对工具导出的 JSON 文件，系统只会处理里面标记"已核实"的记录，自动登记到对应合同的对应期次。<br>已经在系统里登记过的期次会自动跳过，不会重复登记；金额明显异常（远超该期应还）的记录会被单独列出来，不会自动登记，需要你人工核实。',
+        'Upload the reconciliation JSON exported by your collection tool. Only "verified" records are processed and matched to the right contract/period. Periods already registered are skipped automatically; amounts that look clearly abnormal are held out for manual review.',
+        ''
+      )}
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>${tl('核对结果 JSON 文件','Reconciliation JSON file','')}</label>
+      <input type="file" accept="application/json,.json" id="reconFileInput">
+    </div>
+    <div class="form-group" style="margin-bottom:6px">
+      <label>${tl('柬币(KHR)换算美元汇率','KHR → USD exchange rate','')} <span style="font-size:11px;font-weight:400;color:#90a4ae">${tl('例如 4050，1美元=4050瑞尔。这批数据里没有柬币记录的话可以留空','e.g. 4050. Leave blank if this batch has no KHR records','')}</span></label>
+      <input type="number" id="reconKhrRate" placeholder="4050" step="1">
+    </div>
+    <div id="reconParseMsg" style="font-size:12px;color:var(--red);margin:6px 0"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="reconImportParse()">🔍 ${tl('解析预览','Parse & Preview','')}</button>
+      <button class="btn btn-outline" onclick="closeModal()">${tl('取消','Cancel','បោះបង់')}</button>
+    </div>
+  `);
+};
+
+// 把一条 dataURL(base64) 图片转成 Blob，方便直接上传到 Supabase Storage
+function reconDataUrlToBlob(dataUrl) {
+  const m = /^data:(.*?);base64,(.*)$/.exec(dataUrl || '');
+  if (!m) return null;
+  const mime = m[1] || 'image/jpeg';
+  const bin = atob(m[2]);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+// 把一条对账记录里带的截图（base64）上传到跟普通收款登记同一个 Storage bucket，返回可访问URL数组
+async function reconUploadImages(images, paymentId) {
+  const urls = [];
+  if (!images || !images.length) return urls;
+  for (let i = 0; i < images.length; i++) {
+    const blob = reconDataUrlToBlob(images[i] && images[i].dataUrl);
+    if (!blob) continue;
+    const ext = (blob.type.split('/')[1] || 'jpg').split('+')[0];
+    const path = `payments/${paymentId}_recon_${i + 1}.${ext}`;
+    try {
+      const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${STORAGE_BUCKET}/${path}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': blob.type, 'x-upsert': 'true' },
+        body: blob,
+      });
+      if (res.ok) urls.push(`${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${path}`);
+      else console.error('核对导入截图上传失败:', await res.text());
+    } catch (e) { console.error('核对导入截图上传失败:', e.message); }
+  }
+  return urls;
+}
+
+// 核心分类逻辑：把一份原始对账JSON数组，按当前系统最新的 sales/payments 数据分成四类
+// - toRegister：可以直接登记
+// - anomalies：金额明显异常，需要人工核实
+// - skipped：各种原因跳过（找不到合同/期次、已登记过、缺数据等）
+// - earlySettle：提前还款类型，不在这里处理
+// 日期归一化：系统里不同批次导入的合同，到期日格式可能是'2026-05-27'也可能是'2026/05/27'，
+// 纯字符串拆分重组，不经过 new Date() 解析——避免'/'格式在不同时区下被当成本地时间解析导致日期偏移
+function reconNormDate(d) {
+  if (!d) return '';
+  const parts = String(d).trim().split(/[\/\-]/);
+  if (parts.length !== 3) return String(d).trim();
+  const [y, m, day] = parts;
+  return y.padStart(4, '0') + '-' + m.padStart(2, '0') + '-' + day.padStart(2, '0');
+}
+
+function reconParseEntries(entries, khrRate, sales, allPays) {
+  const salesById = {};
+  (sales || []).forEach(s => { salesById[String(s.id)] = s; });
+
+  const toRegister = [], anomalies = [], skipped = [], earlySettle = [];
+  const ANOMALY_MULT = 2, ANOMALY_EXTREME_MULT = 8, ANOMALY_FLOOR = 20; // 换算后金额 > 该期剩余应还*2 + $20，判定异常；> *8 判定为极可能录入有误
+
+  (entries || []).forEach(entry => {
+    if (!entry || entry.verified !== true) return; // 未核实的完全不处理，也不列入跳过（避免噪音太多）
+
+    if ((entry.kind || '') === '提前还款') { earlySettle.push(entry); return; }
+
+    if (entry.amount === null || entry.amount === undefined || entry.amount === '') {
+      skipped.push({ entry, reason: tl('缺少金额','Missing amount','') }); return;
+    }
+    if (!entry.date) {
+      skipped.push({ entry, reason: tl('缺少还款日期','Missing payment date','') }); return;
+    }
+
+    const currency = entry.amountCurrency || 'USD';
+    let usdAmount;
+    if (currency === 'KHR') {
+      if (!khrRate || khrRate <= 0) { skipped.push({ entry, reason: tl('柬币记录，未填汇率','KHR record, no exchange rate given','') }); return; }
+      usdAmount = (+entry.amount) / khrRate;
+    } else {
+      usdAmount = +entry.amount;
+    }
+    if (!(usdAmount > 0)) { skipped.push({ entry, reason: tl('金额无效','Invalid amount','') }); return; }
+
+    const contractId = String(entry.contractId || '').trim();
+    const sale = salesById[contractId];
+    if (!sale) { skipped.push({ entry, reason: tl('系统里找不到该合同号','Contract not found','') }); return; }
+
+    const sched = (sale.schedule || []).find(p => reconNormDate(p.dueDate) === reconNormDate(entry.dueDate));
+    if (!sched) { skipped.push({ entry, reason: tl('找不到到期日匹配的期次','No matching period by due date','') + `（${entry.dueDate}）` }); return; }
+
+    if (sched.paid) { skipped.push({ entry, reason: tl('该期系统里已登记为已还，自动跳过防重复','Period already marked paid, skipped','') }); return; }
+
+    const duePrincipal = +sched.principalDue || 0;
+    const dueInterest  = (+sched.interestDue || 0) + (+sched.serviceFeeDue || 0);
+    const dueTotal      = duePrincipal + dueInterest;
+
+    const priorPays = (allPays || []).filter(x => String(x.contractId) === contractId && +x.period === sched.period);
+    const priorPrincipal       = priorPays.reduce((a, x) => a + (+x.principal || 0), 0);
+    const priorInterest        = priorPays.reduce((a, x) => a + (+x.interest || 0), 0);
+    const priorWaivedPrincipal = priorPays.reduce((a, x) => a + (+x.waivedPrincipal || 0), 0);
+    const priorWaivedInterest  = priorPays.reduce((a, x) => a + (+x.waivedInterest || 0), 0);
+    const priorReceived        = priorPrincipal + priorInterest;
+
+    const remainingPrincipalDue = Math.max(0, duePrincipal - priorPrincipal - priorWaivedPrincipal);
+    const remainingInterestDue  = Math.max(0, dueInterest  - priorInterest  - priorWaivedInterest);
+    const remainingDue = remainingPrincipalDue + remainingInterestDue;
+
+    if (remainingDue <= 0.005 || usdAmount > remainingDue * ANOMALY_MULT + ANOMALY_FLOOR) {
+      let reason;
+      if (remainingDue <= 0.005) {
+        reason = tl('该期系统显示已无剩余应还，但记录仍有金额','Period has no remaining due but record has an amount','');
+      } else if (usdAmount > remainingDue * ANOMALY_EXTREME_MULT + ANOMALY_FLOOR) {
+        // 差距特别悬殊（比如几十倍），更可能是录入本身的问题（多打了0、币种填错等）
+        reason = tl('换算后金额与该期剩余应还差距悬殊，疑似录入错误（比如多打了0，或币种填错）','Converted amount is drastically larger than remaining due — likely a data entry error','');
+      } else {
+        // 差距在几倍以内，更可能是这一笔钱同时覆盖了后面几期，只是催收核对时没有按期拆开
+        reason = tl('金额超出该期剩余应还，可能这笔钱同时覆盖了后续期次，系统不会自动跨期拆分，请人工核实后手动登记','Amount exceeds this period\'s remaining due — it may also cover later periods; please verify and register manually','');
+      }
+      anomalies.push({ entry, usdAmount, remainingDue, dueTotal, contractId, sched, reason });
+      return;
+    }
+
+    const principal = Math.min(usdAmount, remainingPrincipalDue);
+    const interest  = Math.max(0, usdAmount - principal);
+    const effectiveTotal = priorReceived + usdAmount + priorWaivedPrincipal + priorWaivedInterest;
+    const TOLERANCE = 2.00;
+    const isFullPaid = effectiveTotal >= dueTotal - TOLERANCE;
+    const shortfall  = Math.max(0, dueTotal - effectiveTotal);
+
+    toRegister.push({
+      entry, sale, sched, contractId, currency, usdAmount, principal, interest,
+      priorPrincipal, priorInterest, priorWaivedPrincipal, priorWaivedInterest,
+      cumPrincipal: priorPrincipal + principal, cumInterest: priorInterest + interest,
+      isFullPaid, shortfall, dueTotal
+    });
+  });
+
+  return { toRegister, anomalies, skipped, earlySettle };
+}
+
+window.reconImportParse = function() {
+  const fileInput = document.getElementById('reconFileInput');
+  const rateInput = document.getElementById('reconKhrRate');
+  const msgEl = document.getElementById('reconParseMsg');
+  const file = fileInput && fileInput.files && fileInput.files[0];
+  if (!file) { if (msgEl) msgEl.textContent = tl('请先选择 JSON 文件','Please choose a JSON file',''); return; }
+  const khrRate = +(rateInput && rateInput.value) || 0;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    let arr;
+    try {
+      arr = JSON.parse(e.target.result);
+      if (!Array.isArray(arr)) throw new Error('not array');
+    } catch (err) {
+      if (msgEl) msgEl.textContent = tl('文件解析失败，请确认是核对工具导出的 JSON 文件','Failed to parse file — please confirm it is the correct JSON export','');
+      return;
+    }
+    window._reconImport = { raw: arr, khrRate };
+    const sales = DB_get('sales') || [];
+    const allPays = DB_get('payments') || [];
+    const result = reconParseEntries(arr, khrRate, sales, allPays);
+    reconImportRenderPreview(result);
+  };
+  reader.readAsText(file);
+};
+
+function reconImportRenderPreview(result) {
+  const { toRegister, anomalies, skipped, earlySettle } = result;
+  const totalAmt = toRegister.reduce((a, r) => a + r.usdAmount, 0);
+
+  function rowsHtml(list, maxShow) {
+    return list.slice(0, maxShow).map(r => {
+      const e = r.entry;
+      return `<div style="display:flex;gap:8px;padding:6px 10px;border-bottom:1px solid #f0f0f0;font-size:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:120px"><b>${esc(e.customer)}</b> <span style="color:#90a4ae">#${esc(e.contractId)}</span></div>
+        <div style="min-width:90px;color:#546e7a">${esc(e.dueDate||'-')}</div>
+        <div style="min-width:70px;text-align:right;color:var(--green);font-weight:700">${r.usdAmount ? fmt(r.usdAmount) : (e.amount||'-')}</div>
+        <div style="min-width:90px;color:#90a4ae">${esc(e.date||'-')}</div>
+        <div style="min-width:120px;color:#90a4ae">${esc(e.account||'-')}</div>
+        ${r.reason ? `<div style="width:100%;color:var(--red);font-size:11px">${esc(r.reason)}</div>` : ''}
+        ${!r.reason && e.note ? `<div style="width:100%;color:#e65100;font-size:11px">💬 ${esc(e.note)}</div>` : ''}
+      </div>`;
+    }).join('') + (list.length > maxShow ? `<div style="padding:6px 10px;font-size:11px;color:#90a4ae">…${tl('还有','and','')} ${list.length - maxShow} ${tl('笔未显示（导入时会一起处理）','more not shown (will still be included)','')}</div>` : '');
+  }
+
+  const skipReasons = {};
+  skipped.forEach(s => { skipReasons[s.reason] = (skipReasons[s.reason] || 0) + 1; });
+  const skipSummary = Object.keys(skipReasons).map(r => `<div style="font-size:12px;color:#546e7a;padding:3px 10px">• ${esc(r)} × ${skipReasons[r]}</div>`).join('');
+
+  showModal(`📥 ${tl('导入预览','Import Preview','')}`, `
+    <div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:13px">
+      ✅ ${tl('可登记','Ready to register','')} <b>${toRegister.length}</b> ${tl('笔','records','')} · ${tl('合计','Total','')} <b style="color:var(--green)">${fmt(totalAmt)}</b>
+    </div>
+
+    ${toRegister.length ? `
+    <div style="font-weight:700;font-size:13px;margin-bottom:6px">✅ ${tl('待登记','To Register','')}（${toRegister.length}）</div>
+    <div style="border:1px solid #e0e0e0;border-radius:8px;max-height:220px;overflow-y:auto;margin-bottom:16px">${rowsHtml(toRegister, 100)}</div>
+    ` : `<div style="color:#90a4ae;font-size:13px;margin-bottom:16px">${tl('没有可以自动登记的记录','No records ready to register','')}</div>`}
+
+    ${anomalies.length ? `
+    <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#e65100">⚠️ ${tl('异常，待人工复核（不会自动登记）','Anomalies, needs manual review (not auto-registered)','')}（${anomalies.length}）</div>
+    <div style="border:1px solid #ffcc80;background:#fff8e1;border-radius:8px;max-height:200px;overflow-y:auto;margin-bottom:16px">${rowsHtml(anomalies, 50)}</div>
+    ` : ''}
+
+    ${earlySettle.length ? `
+    <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#2e7d32">🔁 ${tl('提前还款，请到"提前还款"页面单独登记','Early settlements — register separately on the Early Payment page','')}（${earlySettle.length}）</div>
+    <div style="border:1px solid #c8e6c9;border-radius:8px;max-height:160px;overflow-y:auto;margin-bottom:16px">${rowsHtml(earlySettle.map(e=>({entry:e,usdAmount:e.amount})), 50)}</div>
+    ` : ''}
+
+    ${skipped.length ? `
+    <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#90a4ae">⏭ ${tl('跳过','Skipped','')}（${skipped.length}）</div>
+    <div style="border:1px solid #e0e0e0;border-radius:8px;margin-bottom:16px">${skipSummary}</div>
+    ` : ''}
+
+    <div id="reconConfirmMsg" style="font-size:12px;color:var(--red);margin-bottom:8px"></div>
+    <div class="btn-row">
+      <button class="btn btn-success" ${toRegister.length ? '' : 'disabled'} onclick="reconImportConfirm()">✅ ${tl('确认导入','Confirm Import','')} ${toRegister.length ? `${toRegister.length} ${tl('笔','','')}` : ''}</button>
+      <button class="btn btn-outline" onclick="openReconImportModal()">${tl('返回重新上传','Back','')}</button>
+      <button class="btn btn-outline" onclick="closeModal()">${tl('取消','Cancel','បោះបង់')}</button>
+    </div>
+  `);
+}
+
+window.reconImportConfirm = async function() {
+  if (window._reconImportRunning) return;
+  window._reconImportRunning = true;
+  const msgEl = document.getElementById('reconConfirmMsg');
+  try {
+    if (msgEl) msgEl.textContent = tl('正在核对最新数据...', 'Checking latest data...', '');
+    await flushPendingSave();
+    let freshData;
+    try {
+      const res = await fetch('/api/data', { cache: 'no-store' });
+      freshData = await res.json();
+    } catch (e) {
+      if (msgEl) msgEl.textContent = tl('网络异常，请重试', 'Network error, please retry', '');
+      return;
+    }
+    _db = freshData; _dbReady = true;
+    _snapshotBaseline(_db.sales, _salesBaseline);
+    _snapshotBaseline(_db.payments, _paymentsBaseline);
+
+    // 用最新数据重新跑一遍分类，避免用预览时的旧数据重复登记
+    const { raw, khrRate } = window._reconImport || {};
+    if (!raw) { if (msgEl) msgEl.textContent = tl('数据已丢失，请重新上传', 'Data lost, please re-upload', ''); return; }
+    const sales = DB_get('sales') || [];
+    const allPaysNow = DB_get('payments') || [];
+    const { toRegister } = reconParseEntries(raw, khrRate, sales, allPaysNow);
+
+    if (!toRegister.length) {
+      if (msgEl) msgEl.textContent = tl('没有可登记的记录了（可能已经被登记过）', 'Nothing left to register', '');
+      return;
+    }
+
+    const u = getCurrentUser();
+    const operatorLabel = (u?.displayName || u?.username || '') + tl('（核对导入）',' (recon import)','');
+    const pays = allPaysNow.slice();
+    let okCount = 0, failCount = 0;
+
+    for (let idx = 0; idx < toRegister.length; idx++) {
+      if (msgEl) msgEl.textContent = tl('正在导入 ', 'Importing ', '') + (idx + 1) + '/' + toRegister.length + '...';
+      const r = toRegister[idx];
+      const si = sales.findIndex(s => String(s.id) === r.contractId);
+      if (si < 0) { failCount++; continue; }
+      const pi = sales[si].schedule.findIndex(p => p.period === r.sched.period);
+      if (pi < 0 || sales[si].schedule[pi].paid) { failCount++; continue; } // 处理过程中可能被别的操作改过状态，稳妥起见再查一次
+
+      const entry = r.entry;
+      const newPayId = newId();
+      const noteText = `${tl('由核对信息批量导入','Imported from reconciliation','')} | ${tl('账户','Account','')}:${entry.account || '-'}${entry.note ? ' | ' + entry.note : ''}`;
+
+      if (r.isFullPaid) {
+        sales[si].schedule[pi] = {
+          ...sales[si].schedule[pi],
+          paid: true, paidDate: entry.date,
+          paidPrincipal: parseFloat(r.cumPrincipal.toFixed(2)),
+          paidInterest: parseFloat(r.cumInterest.toFixed(2)),
+          paidServiceFee: 0,
+          waivedPrincipal: parseFloat(r.priorWaivedPrincipal.toFixed(2)),
+          waivedInterest: parseFloat(r.priorWaivedInterest.toFixed(2)),
+          penalty: sales[si].schedule[pi].penalty || 0,
+          paidStatus: 'paid', shortfall: 0
+        };
+        if (sales[si].schedule.every(p => p.paid)) sales[si].status = '已结清';
+      } else {
+        sales[si].schedule[pi] = {
+          ...sales[si].schedule[pi],
+          paid: false, partialPaid: true, partialDate: entry.date,
+          partialPrincipal: parseFloat(r.cumPrincipal.toFixed(2)),
+          partialInterest: parseFloat(r.cumInterest.toFixed(2)),
+          partialPenalty: sales[si].schedule[pi].partialPenalty || 0,
+          waivedPrincipal: parseFloat(r.priorWaivedPrincipal.toFixed(2)),
+          waivedInterest: parseFloat(r.priorWaivedInterest.toFixed(2)),
+          shortfall: parseFloat(r.shortfall.toFixed(2))
+        };
+      }
+
+      let receiptUrls = [];
+      if (entry.images && entry.images.length) {
+        receiptUrls = await reconUploadImages(entry.images, newPayId);
+      }
+
+      pays.push({
+        id: newPayId, contractId: r.contractId, customer: r.sale.customer, period: r.sched.period,
+        date: entry.date, principal: parseFloat(r.principal.toFixed(2)), interest: parseFloat(r.interest.toFixed(2)),
+        serviceFee: 0, penalty: 0, waivedPrincipal: 0, waivedInterest: 0,
+        isPartial: !r.isFullPaid, shortfall: r.isFullPaid ? 0 : parseFloat(r.shortfall.toFixed(2)),
+        advanceDays: 0, recordedBy: operatorLabel, recordedByRole: u?.role || '',
+        receiptUrls, note: noteText, reconImported: true, reconImportNote: noteText
+      });
+
+      logActivity('批量导入还款(核对)', `#${r.contractId} ${r.sale.customer} 第${r.sched.period}期`,
+        `${tl('本金','P','')}$${r.principal.toFixed(2)} ${tl('利息','I','')}$${r.interest.toFixed(2)}（${entry.amountCurrency==='KHR'?`${entry.amount} KHR → `:''}$${r.usdAmount.toFixed(2)}）`);
+      okCount++;
+    }
+
+    DB_set('sales', sales);
+    DB_set('payments', pays);
+    await flushPendingSave();
+
+    closeModal();
+    updateBadges();
+    const allPaysAfter = (DB_get('payments') || []).slice().reverse();
+    const isC = getCurrentUser()?.role === 'collector';
+    const wrap = document.getElementById('payTableWrap');
+    if (wrap) wrap.innerHTML = buildPayTableGrouped(allPaysAfter, isC);
+    alert(`✅ ${tl('导入完成','Import finished','')}：${okCount} ${tl('笔成功','succeeded','')}${failCount ? `，${failCount} ${tl('笔失败（可能刚好被别人改过状态，请重新上传核对一次）','failed (state may have changed, please re-check)','')}` : ''}`);
+    nav('payment-add');
+  } finally {
+    window._reconImportRunning = false;
+  }
+};
+
+// ══════════════════════════════════════════════════════
+// 📎 导入聊天记录(docx) —— 从催收群聊天记录导出的Word文件里，自动拆出"客户名+转账截图"，
+// 员工只需要看图填金额，不用再手动一张张截图上传/一个个打字。填完之后直接复用上面
+// "导入核对结果"那一整套预览/去重/异常检测/批量登记逻辑（reconParseEntries / reconImportConfirm）。
+// ══════════════════════════════════════════════════════
+window._docxImport = { pairs: [] };
+
+window.openDocxImportModal = function() {
+  window._docxImport = { pairs: [] };
+  showModal(`📎 ${tl('导入聊天记录(docx)','Import Chat Export (docx)','')}`, `
+    <div style="font-size:13px;color:#546e7a;margin-bottom:14px;line-height:1.6">
+      ${tl(
+        '上传催收群聊天记录导出的 Word(.docx) 文件，系统会自动把里面的"客户名+转账截图"一条条拆出来。<br>金额需要你自己看截图填一下（系统读不出图片里的数字），其他步骤（匹配合同/期次、查重、异常检测、批量登记）都是自动的。',
+        'Upload the Word (.docx) export of your collection chat. The system automatically splits it into "customer name + transfer screenshot" cards. You still need to read the amount off each screenshot yourself — everything else (matching contract/period, dedup, anomaly check, batch registration) is automatic.',
+        ''
+      )}
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>${tl('聊天记录 Word 文件 (.docx)','Chat export Word file (.docx)','')}</label>
+      <input type="file" accept=".docx" id="docxFileInput">
+    </div>
+    <div id="docxParseMsg" style="font-size:12px;color:var(--red);margin:6px 0"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="docxImportParse()">🔍 ${tl('解析','Parse','')}</button>
+      <button class="btn btn-outline" onclick="closeModal()">${tl('取消','Cancel','បោះបង់')}</button>
+    </div>
+  `);
+};
+
+// 把 zip 里读出来的字节，按扩展名猜一个 mime type，组装成可以直接当 <img src> 和上传用的 dataURL
+function docxGuessMime(target) {
+  const ext = (target.split('.').pop() || '').toLowerCase();
+  if (ext === 'png') return 'image/png';
+  if (ext === 'gif') return 'image/gif';
+  if (ext === 'bmp') return 'image/bmp';
+  if (ext === 'webp') return 'image/webp';
+  return 'image/jpeg';
+}
+
+// 解析 docx（本质是个zip）：读 word/document.xml 拿文字+图片引用顺序，读 word/_rels/document.xml.rels
+// 把引用ID换算成实际图片文件，再从 word/media/ 里取出真正的图片字节。
+// 头像/表情这类"反复出现的同一张图"会被自动过滤掉（真正的转账截图每张都是独立的，不会重复出现）。
+async function parseDocxChatExport(file) {
+  const zip = await JSZip.loadAsync(file);
+  const docXml = await zip.file('word/document.xml').async('string');
+  const relsFile = zip.file('word/_rels/document.xml.rels');
+  const relsXml = relsFile ? await relsFile.async('string') : '';
+
+  const parser = new DOMParser();
+  const relsDoc = parser.parseFromString(relsXml, 'application/xml');
+  const relMap = {};
+  Array.from(relsDoc.getElementsByTagName('Relationship')).forEach(r => {
+    relMap[r.getAttribute('Id')] = r.getAttribute('Target');
+  });
+
+  const doc = parser.parseFromString(docXml, 'application/xml');
+  const paragraphs = Array.from(doc.getElementsByTagName('w:p'));
+
+  // 先扫一遍，统计每个图片target出现了几次——出现超过1次的判定为头像/装饰图，整体排除
+  const targetCount = {};
+  paragraphs.forEach(p => {
+    Array.from(p.getElementsByTagName('a:blip')).forEach(b => {
+      const rid = b.getAttribute('r:embed');
+      const target = rid && relMap[rid];
+      if (target) targetCount[target] = (targetCount[target] || 0) + 1;
+    });
+  });
+
+  // 聊天记录里一行文字经常是"{发送人}{M月D日} {HH:MM}{客户名}"或续行的"{HH:MM}{客户名}"粘在一起，
+  // 先把发送人/日期/时间这些前缀去掉，只留客户名本身，这样后面自动匹配合同才匹配得上
+  function cleanChatName(text) {
+    return text
+      .replace(/^.*?\d{1,2}月\d{1,2}日\s*\d{1,2}:\d{2}/, '')
+      .replace(/^\d{1,2}:\d{2}/, '')
+      .trim();
+  }
+
+  const pairs = [];
+  let pendingName = '';
+  for (const p of paragraphs) {
+    const text = Array.from(p.getElementsByTagName('w:t')).map(t => t.textContent).join('').trim();
+    const cleaned = cleanChatName(text);
+    if (cleaned) pendingName = cleaned; // 纯时间戳这类清理完是空字符串的，不覆盖上一个客户名
+
+    const blips = Array.from(p.getElementsByTagName('a:blip'));
+    for (const b of blips) {
+      const rid = b.getAttribute('r:embed');
+      const target = rid && relMap[rid];
+      if (!target || targetCount[target] > 1) continue; // 重复出现的图（头像/表情），跳过
+      const path = 'word/' + target.replace(/^\.\.\//, '');
+      const zf = zip.file(path);
+      if (!zf) continue;
+      const base64 = await zf.async('base64');
+      const dataUrl = `data:${docxGuessMime(target)};base64,${base64}`;
+      pairs.push({ name: pendingName, dataUrl });
+    }
+  }
+  return pairs;
+}
+
+window.docxImportParse = async function() {
+  const fileInput = document.getElementById('docxFileInput');
+  const msgEl = document.getElementById('docxParseMsg');
+  const file = fileInput && fileInput.files && fileInput.files[0];
+  if (!file) { if (msgEl) msgEl.textContent = tl('请先选择 docx 文件','Please choose a .docx file',''); return; }
+  if (msgEl) msgEl.textContent = tl('正在解析，文件比较大的话可能要几秒...','Parsing, may take a few seconds for large files...','');
+  try {
+    const pairs = await parseDocxChatExport(file);
+    if (!pairs.length) {
+      if (msgEl) msgEl.textContent = tl('没有从文件里解析出可用的"文字+图片"组合，请确认上传的是聊天记录导出的docx','No usable "name + image" pairs found. Please confirm this is the chat export docx','');
+      return;
+    }
+    window._docxImport = { pairs };
+    renderDocxReviewUI();
+  } catch (e) {
+    console.error(e);
+    if (msgEl) msgEl.textContent = tl('解析失败：', 'Parse failed: ', '') + e.message;
+  }
+};
+
+// 根据卡片里当前填的客户名，在"进行中"合同里找最匹配的一个，自动带出合同号+未还期次+建议金额
+window.docxResolveContract = function(i) {
+  const pair = window._docxImport.pairs[i];
+  if (!pair) return;
+  const nameInput = document.getElementById(`docxName_${i}`);
+  const contractInput = document.getElementById(`docxContract_${i}`);
+  const periodSel = document.getElementById(`docxPeriod_${i}`);
+  if (!periodSel) return;
+
+  const sales = (DB_get('sales') || []).filter(s => s.status === '进行中');
+  let sale = null;
+
+  // 先看合同输入框里有没有直接选中的datalist选项（客户名(合同号)格式）
+  const opts = document.querySelectorAll('#docxContractList option');
+  const cVal = contractInput ? contractInput.value : '';
+  opts.forEach(opt => { if (opt.value === cVal) sale = sales.find(s => String(s.id) === opt.dataset.id); });
+
+  // 没有精确选中的话，按名字模糊匹配（同名多个合同的话，取第一个进行中的）
+  if (!sale) {
+    const q = (nameInput ? nameInput.value : pair.name) || '';
+    const candidates = sales.filter(s => matchesSearchQuery(s.customer, q) || matchesSearchQuery(q, s.customer));
+    sale = candidates[0] || null;
+    if (sale && contractInput) contractInput.value = `${sale.customer} (#${sale.id})`;
+  }
+
+  pair.resolvedContractId = sale ? sale.id : null;
+
+  if (!sale) {
+    periodSel.innerHTML = `<option value="">${tl('未匹配到合同，请手动输入合同号','No contract matched, enter manually','')}</option>`;
+    return;
+  }
+
+  const unpaid = (sale.schedule || []).filter(p => !p.paid);
+  if (!unpaid.length) {
+    periodSel.innerHTML = `<option value="">${tl('该合同所有期次已还清','All periods already paid','')}</option>`;
+    return;
+  }
+  const allPays = DB_get('payments') || [];
+  periodSel.innerHTML = unpaid.map(p => {
+    const priorPays = allPays.filter(x => String(x.contractId) === String(sale.id) && +x.period === p.period);
+    const priorPrincipal = priorPays.reduce((a, x) => a + (+x.principal || 0), 0);
+    const priorInterest = priorPays.reduce((a, x) => a + (+x.interest || 0), 0);
+    const remain = Math.max(0, (+p.principalDue || 0) + (+p.interestDue || 0) + (+p.serviceFeeDue || 0) - priorPrincipal - priorInterest);
+    return `<option value="${p.period}" data-remain="${remain.toFixed(2)}">${p.period}${tl('期','','')}（${tl('到期','due','')}${p.dueDate}，${tl('剩余应还','remaining','')}$${remain.toFixed(2)}）</option>`;
+  }).join('');
+  docxFillSuggestedAmount(i);
+};
+
+window.docxFillSuggestedAmount = function(i) {
+  const periodSel = document.getElementById(`docxPeriod_${i}`);
+  const amountInput = document.getElementById(`docxAmount_${i}`);
+  if (!periodSel || !amountInput || amountInput.value) return; // 已经手动填过的不覆盖
+  const opt = periodSel.options[periodSel.selectedIndex];
+  if (opt && opt.dataset.remain) amountInput.value = opt.dataset.remain;
+};
+
+function renderDocxReviewUI() {
+  const pairs = window._docxImport.pairs;
+  const sales = (DB_get('sales') || []).filter(s => s.status === '进行中');
+  const contractOpts = sales.map(s => `<option value="${esc(s.customer)} (#${s.id})" data-id="${s.id}"></option>`).join('');
+
+  showModal(`📎 ${tl('核对每一笔（','Review each ('  )}${pairs.length}${tl('张截图）','screenshots)','')}`, `
+    <datalist id="docxContractList">${contractOpts}</datalist>
+    <div style="font-size:12px;color:#546e7a;margin-bottom:10px">
+      ${tl('系统已经按聊天记录顺序把客户名和截图配好了，帮你自动带出了最匹配的合同和建议金额——但一定要对照截图核实一遍金额和客户名是否正确，尤其是没自动匹配上合同的。','Names and screenshots are auto-paired in chat order, with a best-guess contract and suggested amount — please double check the amount and name against each screenshot, especially ones without an auto-matched contract.','')}
+    </div>
+    <div class="form-group" style="margin-bottom:10px;max-width:260px">
+      <label>${tl('柬币(KHR)换算美元汇率','KHR → USD rate','')} <span style="font-size:11px;color:#90a4ae">${tl('有柬币截图的话填一下','fill in if any screenshot is in KHR','')}</span></label>
+      <input type="number" id="docxKhrRate" placeholder="4050" step="1">
+    </div>
+    <div style="max-height:480px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:10px;padding:10px">
+      ${pairs.map((pair, i) => `
+        <div style="display:flex;gap:12px;padding:10px;border-bottom:1px solid #f0f0f0;flex-wrap:wrap" id="docxCard_${i}">
+          <img src="${pair.dataUrl}" style="width:90px;height:120px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:pointer" onclick="window.open('${pair.dataUrl}','_blank')" title="${tl('点击查看大图','Click to enlarge','')}">
+          <div style="flex:1;min-width:260px;display:grid;grid-template-columns:repeat(2,1fr);gap:6px">
+            <div class="form-group" style="margin:0"><label style="font-size:11px">${tl('客户名','Customer','')}</label>
+              <input id="docxName_${i}" value="${esc(pair.name)}" oninput="docxResolveContract(${i})" style="font-size:12px;padding:5px 8px">
+            </div>
+            <div class="form-group" style="margin:0"><label style="font-size:11px">${tl('匹配合同','Contract','')}</label>
+              <input id="docxContract_${i}" list="docxContractList" oninput="docxResolveContract(${i})" placeholder="${tl('自动匹配，或手动输入','auto-matched, or type to search','')}" style="font-size:12px;padding:5px 8px">
+            </div>
+            <div class="form-group" style="margin:0"><label style="font-size:11px">${tl('期次','Period','')}</label>
+              <select id="docxPeriod_${i}" onchange="docxFillSuggestedAmount(${i})" style="font-size:12px;padding:5px 8px"></select>
+            </div>
+            <div class="form-group" style="margin:0"><label style="font-size:11px">${tl('金额（看截图填）','Amount (read from image)','')}</label>
+              <div style="display:flex;gap:4px">
+                <input type="number" id="docxAmount_${i}" step="0.01" placeholder="0.00" style="font-size:12px;padding:5px 8px;flex:1">
+                <select id="docxCurrency_${i}" style="font-size:12px;padding:5px 4px;width:64px"><option value="USD">USD</option><option value="KHR">KHR</option></select>
+              </div>
+            </div>
+            <div class="form-group" style="margin:0"><label style="font-size:11px">${tl('还款日期','Date','')}</label>
+              <input type="date" id="docxDate_${i}" value="${today()}" style="font-size:12px;padding:5px 8px">
+            </div>
+            <div class="form-group" style="margin:0"><label style="font-size:11px">${tl('收款账户','Account','')}</label>
+              <input id="docxAccount_${i}" value="YAN YUDE" style="font-size:12px;padding:5px 8px">
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#90a4ae;white-space:nowrap">
+            <input type="checkbox" id="docxInclude_${i}" checked> ${tl('纳入本次导入','Include','')}
+          </label>
+        </div>
+      `).join('')}
+    </div>
+    <div id="docxSubmitMsg" style="font-size:12px;color:var(--red);margin:10px 0"></div>
+    <div class="btn-row">
+      <button class="btn btn-success" onclick="docxImportSubmitToPipeline()">✅ ${tl('核对完成，进入预览','Done, go to preview','')}</button>
+      <button class="btn btn-outline" onclick="openDocxImportModal()">${tl('返回重新上传','Back','')}</button>
+      <button class="btn btn-outline" onclick="closeModal()">${tl('取消','Cancel','បោះបង់')}</button>
+    </div>
+  `);
+
+  // 逐张自动尝试匹配合同+建议金额
+  pairs.forEach((_, i) => docxResolveContract(i));
+}
+
+// 把每张卡片里人工核对完的内容，拼成跟 reconParseEntries 兼容的 entries[]，
+// 然后直接复用"导入核对结果"那一整套预览/确认逻辑，不用另外再写一遍登记代码
+window.docxImportSubmitToPipeline = function() {
+  const pairs = window._docxImport.pairs;
+  const sales = DB_get('sales') || [];
+  const khrRate = +(document.getElementById('docxKhrRate')?.value || 0);
+  const msgEl = document.getElementById('docxSubmitMsg');
+
+  const entries = [];
+  let incomplete = 0;
+
+  pairs.forEach((pair, i) => {
+    const include = document.getElementById(`docxInclude_${i}`)?.checked;
+    if (!include) return;
+
+    const contractId = pair.resolvedContractId;
+    const periodSel = document.getElementById(`docxPeriod_${i}`);
+    const period = +(periodSel?.value || 0);
+    const amount = +(document.getElementById(`docxAmount_${i}`)?.value || 0);
+    const currency = document.getElementById(`docxCurrency_${i}`)?.value || 'USD';
+    const date = document.getElementById(`docxDate_${i}`)?.value || '';
+    const account = document.getElementById(`docxAccount_${i}`)?.value || '';
+    const customerNameInput = document.getElementById(`docxName_${i}`)?.value || pair.name;
+
+    const sale = sales.find(s => String(s.id) === String(contractId));
+    const sched = sale && (sale.schedule || []).find(p => p.period === period);
+
+    if (!sale || !sched || !amount || !date) { incomplete++; return; }
+
+    entries.push({
+      customer: sale.customer, contractId: sale.id, kind: '当月应还', dueDate: sched.dueDate,
+      dueAmount: parseFloat(((+sched.principalDue || 0) + (+sched.interestDue || 0) + (+sched.serviceFeeDue || 0)).toFixed(2)),
+      verified: true, amount, amountCurrency: currency, date, account,
+      note: tl('由聊天记录docx导入','Imported from chat export docx','') + (customerNameInput !== pair.name ? `（${tl('原始识别名','original name','')}: ${pair.name}）` : ''),
+      images: [{ dataUrl: pair.dataUrl }]
+    });
+  });
+
+  if (!entries.length) {
+    if (msgEl) msgEl.textContent = tl('没有可以提交的记录——请检查每张卡片是否都选中了合同和期次、填了金额和日期','No submittable records — please check contract/period/amount/date on each card','');
+    return;
+  }
+  if (incomplete > 0 && msgEl) {
+    msgEl.style.color = 'var(--amber)';
+    msgEl.textContent = `${incomplete} ${tl('张因为信息不全（没匹配合同/期次/金额/日期）被跳过，其余的正常提交','cards skipped due to missing info (contract/period/amount/date); the rest are submitted','')}`;
+  }
+
+  const allPays = DB_get('payments') || [];
+  window._reconImport = { raw: entries, khrRate };
+  const result = reconParseEntries(entries, khrRate, sales, allPays);
+  reconImportRenderPreview(result);
+};
+
 // ══════════════════════════════════════════════════════
 // STATS
 // ══════════════════════════════════════════════════════
@@ -7418,9 +8073,12 @@ function renderStoreStats() {
       <div class="page-title">🏪 ${t('storeStats')}</div>
       <div class="page-sub">${_lang==='km'?'ស្ថិតិតាមហាង':_lang==='en'?'Per-store order & bad debt analysis':'按店铺统计单量及坏账'}</div>
     </div>
-    ${canAddStoreCode() ? `<button class="btn btn-outline btn-sm" onclick="openStoreAliasManager()">🔗 ${tl('店家归并管理','Merge Stores','បញ្ចូលហាងចូលគ្នា')}</button>` : ''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${canAddStoreCode() ? `<button class="btn btn-outline btn-sm" onclick="openManageStoreCodesModal()">🔧 ${tl('店铺编号管理','Manage Store Codes','គ្រប់គ្រងលេខកូដហាង')}</button>` : ''}
+      ${canAddStoreCode() ? `<button class="btn btn-outline btn-sm" onclick="openStoreAliasManager()">🔗 ${tl('店家归并管理','Merge Stores','បញ្ចូលហាងចូលគ្នា')}</button>` : ''}
+    </div>
   </div>
-  <div style="font-size:11px;color:var(--muted);margin:-8px 0 12px">${tl('同一家店有的合同录了编号、有的录了名字，把它们拖动合并（或点上面"店家归并管理"）就会自动统一计算，不会漏单','If the same store was entered with different code/name spellings, drag one row onto another (or use "Merge Stores" above) to combine them','')}</div>
+  <div style="font-size:11px;color:var(--muted);margin:-8px 0 12px">${tl('新增/修改店铺编号点"店铺编号管理"；同一家店有的合同录了编号、有的录了名字，把它们拖动合并（或点"店家归并管理"）就会自动统一计算，不会漏单，也不会改动任何历史合同数据','Add/edit store codes via "Manage Store Codes". If the same store was entered with different code/name spellings, drag one row onto another (or use "Merge Stores") to combine them — no historical contract data is changed','')}</div>
 
   <!-- 顶部汇总 KPI -->
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
