@@ -11113,7 +11113,10 @@ function renderFundStats() {
       <button class="btn btn-outline btn-sm" onclick="toggleFundDateQuery(${g.id})">🔍 自定义日期查询</button>
       <button class="btn btn-outline btn-sm" onclick="toggleFundOverdue(${g.id})" style="color:var(--red)">🔴 逾期客户总表</button>
       <button class="btn btn-primary btn-sm" onclick="toggleInvestorStatement(${g.id})" style="background:#1e7e34">💼 投资人对账单</button>
+      <!-- 🎯收款账户核查：暂时隐藏入口（怕投资人看到未核实数据误解），功能代码都还在，
+           需要时把下面这行的注释去掉就能恢复：
       <button class="btn btn-primary btn-sm" onclick="toggleFundMismatch(${g.id})" style="background:#c62828">🎯 收款账户核查</button>
+      -->
     </div>
     <div id="fundInvestor_${g.id}" style="display:none;margin-top:12px">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
