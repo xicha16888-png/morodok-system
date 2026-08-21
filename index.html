@@ -1883,6 +1883,7 @@ function periodSelect(id, defaultVal, onchange) {
 const SUPABASE_URL = 'https://mkjvfjocmatgfhwxgamj.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ranZmam9jbWF0Z2Zod3hnYW1qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MzIxNDQsImV4cCI6MjA5NTAwODE0NH0.YDeuCQkt50wK9oHeLWlF_b6IYXeiDtplOWUa1-A4X30';
 const STORAGE_BUCKET = 'FXGJ';
+const DEFAULT_KHR_RATE = 4000; // 🔓 2026-08：老板确认的柬币兑美元汇率 1:4000，导入核对结果/聊天记录时默认带出这个值，可以手动改
 // ══════════════════════════════════════════════════════
 // 🔐 权限系统 AUTH SYSTEM
 // ══════════════════════════════════════════════════════
@@ -5261,8 +5262,8 @@ window.openReconImportModal = function() {
       <input type="file" accept="application/json,.json" id="reconFileInput">
     </div>
     <div class="form-group" style="margin-bottom:6px">
-      <label>${tl('柬币(KHR)换算美元汇率','KHR → USD exchange rate','')} <span style="font-size:11px;font-weight:400;color:#90a4ae">${tl('例如 4050，1美元=4050瑞尔。这批数据里没有柬币记录的话可以留空','e.g. 4050. Leave blank if this batch has no KHR records','')}</span></label>
-      <input type="number" id="reconKhrRate" placeholder="4050" step="1">
+      <label>${tl('柬币(KHR)换算美元汇率','KHR → USD exchange rate','')} <span style="font-size:11px;font-weight:400;color:#90a4ae">${tl('默认1美元=4000瑞尔，如果这批不一样可以手动改','Defaults to 1 USD = 4000 KHR — edit if this batch differs','')}</span></label>
+      <input type="number" id="reconKhrRate" value="${DEFAULT_KHR_RATE}" step="1">
     </div>
     <div id="reconParseMsg" style="font-size:12px;color:var(--red);margin:6px 0"></div>
     <div class="btn-row">
@@ -5787,8 +5788,8 @@ function renderDocxReviewUI() {
       ${tl('系统已经按聊天记录顺序把客户名和截图配好了，帮你自动带出了最匹配的合同和建议金额——但一定要对照截图核实一遍金额和客户名是否正确，尤其是没自动匹配上合同的。','Names and screenshots are auto-paired in chat order, with a best-guess contract and suggested amount — please double check the amount and name against each screenshot, especially ones without an auto-matched contract.','')}
     </div>
     <div class="form-group" style="margin-bottom:10px;max-width:260px">
-      <label>${tl('柬币(KHR)换算美元汇率','KHR → USD rate','')} <span style="font-size:11px;color:#90a4ae">${tl('有柬币截图的话填一下','fill in if any screenshot is in KHR','')}</span></label>
-      <input type="number" id="docxKhrRate" placeholder="4050" step="1">
+      <label>${tl('柬币(KHR)换算美元汇率','KHR → USD rate','')} <span style="font-size:11px;color:#90a4ae">${tl('默认1:4000，不一样可以改','Defaults to 1:4000 — edit if different','')}</span></label>
+      <input type="number" id="docxKhrRate" value="${DEFAULT_KHR_RATE}" step="1">
     </div>
     <div style="max-height:480px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:10px;padding:10px">
       ${pairs.map((pair, i) => `
