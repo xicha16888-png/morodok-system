@@ -1696,22 +1696,24 @@ function nav(page) {
     return;
   }
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
-  // 切换页面时拉取最新数据（静默刷新，不影响操作）
-  if (!_hasPendingLocalChanges()) {
-    loadDB().then(ok => {
-      if (ok) {
+  const fn = PAGES[page];
+  const mc = document.getElementById('mainContent');
+  // 🚀 本地已经有数据的话，立刻画出页面，不等网络请求——这是以前"点哪个模块都要转几秒"的主因
+  // （以前每次点菜单都要先等一次全量拉取数据库才画面，数据越多这一等就越久）
+  if (_dbReady && fn && mc) { mc.innerHTML = fn(); mc.scrollTop = 0; initPage(page); updateBadges(); }
+  // 后台静默拉取最新数据（不影响已经画出来的页面）；如果上一次刷新还没回来，就不再重复发起，
+  // 避免连续点几个模块时堆积好几个全量请求，越点越卡
+  if (!_hasPendingLocalChanges() && !window._navRefreshInFlight) {
+    window._navRefreshInFlight = true;
+    loadDB().then(result => {
+      window._navRefreshInFlight = false;
+      if (result.ok) {
         _lastSyncTime = Date.now();
-        const fn = PAGES[page];
-        const mc = document.getElementById('mainContent');
-        if (fn && mc) { mc.innerHTML = fn(); mc.scrollTop = 0; initPage(page); }
+        // 拉取期间用户可能已经切到别的页面了，只有还停留在这一页才用新数据重画，避免画错页
+        if (window._currentPage === page && fn && mc) { mc.innerHTML = fn(); mc.scrollTop = 0; initPage(page); }
         updateBadges();
       }
-    });
-  } else {
-    const fn = PAGES[page];
-    const mc = document.getElementById('mainContent');
-    if (fn && mc) { mc.innerHTML = fn(); mc.scrollTop = 0; initPage(page); }
-    updateBadges();
+    }).catch(() => { window._navRefreshInFlight = false; });
   }
 }
 document.querySelectorAll('.nav-item[data-page]').forEach(el => el.addEventListener('click', () => nav(el.dataset.page)));
@@ -1774,10 +1776,13 @@ const FORM_PAGES = ['sale-add','payment-add','early-payment','phones','suppliers
 setInterval(async () => {
   if (_hasPendingLocalChanges()) return;
   if (userIsTyping()) return;
+  if (window._navRefreshInFlight) return; // 刚点了菜单、后台刷新还没回来，不重复再发一次
   const page = document.querySelector('.nav-item.active')?.dataset?.page;
   if (FORM_PAGES.includes(page)) return;
   const prevHash = JSON.stringify(DB_get('sales'))?.length + '|' + JSON.stringify(DB_get('payments'))?.length;
+  window._navRefreshInFlight = true;
   const result = await loadDB();
+  window._navRefreshInFlight = false;
   if (result.ok) {
     const newHash = JSON.stringify(DB_get('sales'))?.length + '|' + JSON.stringify(DB_get('payments'))?.length;
     updateSyncTimeAgo();
@@ -10651,303 +10656,6 @@ window.toggleProblemFlag = function(contractId, groupId) {
   nav('fund-stats');
 };
 
-// ══════════════════════════════════════════════════════
-// 🎯 资金账户核查（收款实际到账账户 vs 应到账户）
-// 背景：催收员可能把两个收款二维码（YANYUDE / LINSHIKUI）搞混，导致客户还款进错账户。
-// 这里只是"标记"某一笔还款实际是从哪个账户收到的，方便和投资方结算时核对、纠正转账——
-// 不会改变合同/还款的金额数据。标记直接写在 payments 记录上（verifiedAccount/verifiedBy/verifiedAt）。
-// ══════════════════════════════════════════════════════
-window._mismatchFilter = {};
-
-function fundAccountShort(full) {
-  return (full || '').split('（')[0].trim();
-}
-
-// 当前系统里配置过的所有收款账户（供下拉选择用）
-function getFundAccountOptions() {
-  const groups = DB_get('fundGroups') || [];
-  const set = new Set();
-  groups.forEach(g => { const a = fundAccountShort(g.recvAccount); if (a) set.add(a); });
-  return Array.from(set);
-}
-
-function mismatchStatus(verifiedAccount, designated) {
-  if (!verifiedAccount) return 'pending';
-  if (verifiedAccount === 'AMBIG') return 'ambig';
-  return verifiedAccount === designated ? 'ok' : 'mismatch';
-}
-
-function mismatchStatusMeta(status) {
-  switch (status) {
-    case 'ok':       return { text: tl('账户正确','Correct','ត្រឹមត្រូវ'), color:'var(--green)', bg:'#e8f5e9' };
-    case 'mismatch': return { text: tl('账户错配','Mismatch','ខុសគណនី'), color:'var(--red)', bg:'#fce4ec' };
-    case 'ambig':    return { text: tl('账户不确定','Ambiguous','មិនច្បាស់'), color:'var(--amber)', bg:'#fff3e0' };
-    default:         return { text: tl('未核实','Unverified','មិនទាន់ត្រួតពិនិត្យ'), color:'var(--muted)', bg:'#f5f5f5' };
-  }
-}
-
-// 该资金组名下所有"正常还款"记录（不含提前结清，提前结清走单独页面，暂不纳入本核查）
-function getFundMismatchRows(groupId) {
-  const groups = DB_get('fundGroups') || [];
-  const g = groups.find(x => x.id === groupId);
-  if (!g) return [];
-  const designated = fundAccountShort(g.recvAccount);
-  const list = (window._fundGroupPays && window._fundGroupPays[groupId]) || [];
-  return list.filter(p => !p.isEarlySettlement).map(p => {
-    const status = mismatchStatus(p.verifiedAccount, designated);
-    return Object.assign({}, p, { designated, status });
-  });
-}
-
-window.toggleFundMismatch = function(groupId) {
-  const panel = document.getElementById('fundMismatch_' + groupId);
-  if (!panel) return;
-  const willShow = panel.style.display === 'none';
-  panel.style.display = willShow ? 'block' : 'none';
-  if (willShow) renderFundMismatchPanel(groupId);
-};
-
-window.filterFundMismatch = function(groupId) {
-  const kw = document.getElementById('fundMismatchSearch_' + groupId)?.value || '';
-  const status = document.getElementById('fundMismatchStatusSel_' + groupId)?.value || '';
-  const month = document.getElementById('fundMismatchMonthSel_' + groupId)?.value || '';
-  window._mismatchFilter[groupId] = { status, month, kw };
-  renderFundMismatchPanel(groupId);
-};
-
-window.setMismatchFilter = function(groupId, status, month) {
-  window._mismatchFilter[groupId] = { status, month, kw:'' };
-  const panel = document.getElementById('fundMismatch_' + groupId);
-  if (panel) panel.style.display = 'block';
-  renderFundMismatchPanel(groupId);
-};
-
-window.setPaymentVerifiedAccount = function(payId, groupId, value) {
-  const pays = DB_get('payments') || [];
-  const idx = pays.findIndex(p => String(p.id) === String(payId));
-  if (idx < 0) return;
-  const p = pays[idx];
-  const user = getCurrentUser();
-  if (!value) {
-    delete p.verifiedAccount; delete p.verifiedBy; delete p.verifiedAt;
-  } else {
-    p.verifiedAccount = value;
-    p.verifiedBy = user ? (user.displayName || user.username) : '';
-    p.verifiedAt = today();
-  }
-  DB_set('payments', pays);
-  // 同步更新缓存，避免整页重算也能立刻看到最新状态
-  const cache = (window._fundGroupPays && window._fundGroupPays[groupId]) || [];
-  const cp = cache.find(x => String(x.id) === String(payId));
-  if (cp) { cp.verifiedAccount = p.verifiedAccount; cp.verifiedBy = p.verifiedBy; cp.verifiedAt = p.verifiedAt; }
-  renderFundMismatchPanel(groupId);
-};
-
-function renderFundMismatchPanel(groupId) {
-  const wrap = document.getElementById('fundMismatchBody_' + groupId);
-  if (!wrap) return;
-  const rows = getFundMismatchRows(groupId);
-  const g = (DB_get('fundGroups')||[]).find(x => x.id === groupId) || {};
-  const filter = window._mismatchFilter[groupId] || (window._mismatchFilter[groupId] = { status:'', month:'', kw:'' });
-
-  const summary = { ok:0, mismatch:0, ambig:0, pending:0 };
-  const summaryAmt = { ok:0, mismatch:0, ambig:0, pending:0 };
-  rows.forEach(r => { summary[r.status]++; summaryAmt[r.status] += r.total; });
-
-  const byMonth = {};
-  rows.forEach(r => {
-    const m = r.dueMonth || tl('未知','Unknown','');
-    if (!byMonth[m]) byMonth[m] = { ok:0, mismatch:0, ambig:0, pending:0 };
-    byMonth[m][r.status]++;
-  });
-  const months = Object.keys(byMonth).sort();
-
-  let filtered = rows;
-  if (filter.status) filtered = filtered.filter(r => r.status === filter.status);
-  if (filter.month) filtered = filtered.filter(r => (r.dueMonth||'') === filter.month);
-  if (filter.kw) {
-    const kw = filter.kw.trim().toLowerCase();
-    filtered = filtered.filter(r => matchesSearchQuery(r.customer, kw) || String(r.contractId||'').toLowerCase().includes(kw));
-  }
-  filtered = filtered.slice().sort((a,b) => (b.date||'').localeCompare(a.date||''));
-
-  const accOptions = getFundAccountOptions();
-
-  wrap.innerHTML = `
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6">
-      ${tl('这里只是标记"这笔钱实际是从哪个账户收到的"，不会改变合同/还款金额。该阶段应到账户 = ','This only tags which account actually received the money — it never changes contract/payment amounts. Designated account for this phase = ','')}<b>${esc(fundAccountShort(g.recvAccount||''))}</b>
-    </div>
-    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px">
-      ${['ok','mismatch','ambig','pending'].map(st => {
-        const meta = mismatchStatusMeta(st);
-        return `<div class="stat-card" style="background:${meta.bg};border-left:3px solid ${meta.color};cursor:pointer" onclick="setMismatchFilter(${groupId}, '${st}', '')">
-          <div class="stat-label">${meta.text}</div>
-          <div class="stat-value" style="color:${meta.color}">${summary[st]} ${tl('笔','records','')}</div>
-          <div class="stat-sub">${fmt(summaryAmt[st])}</div>
-        </div>`;
-      }).join('')}
-    </div>
-    ${months.length ? `
-    <div class="table-wrap" style="margin-bottom:12px;max-height:240px;overflow-y:auto">
-      <table>
-        <tr><th>${tl('到期月','Due Month','')}</th><th style="color:var(--green)">${tl('正确','OK','')}</th><th style="color:var(--red)">${tl('错配','Mismatch','')}</th><th style="color:var(--amber)">${tl('不确定','Ambig','')}</th><th style="color:var(--muted)">${tl('未核实','Unverified','')}</th></tr>
-        ${months.map(m => { const r = byMonth[m]; return `<tr>
-          <td class="fw700">${esc(m)}</td>
-          <td style="cursor:pointer;color:var(--green)" onclick="setMismatchFilter(${groupId},'ok','${esc(m)}')">${r.ok||''}</td>
-          <td style="cursor:pointer;color:var(--red)" onclick="setMismatchFilter(${groupId},'mismatch','${esc(m)}')">${r.mismatch||''}</td>
-          <td style="cursor:pointer;color:var(--amber)" onclick="setMismatchFilter(${groupId},'ambig','${esc(m)}')">${r.ambig||''}</td>
-          <td style="cursor:pointer;color:var(--muted)" onclick="setMismatchFilter(${groupId},'pending','${esc(m)}')">${r.pending||''}</td>
-        </tr>`; }).join('')}
-      </table>
-    </div>` : ''}
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-      <input type="text" id="fundMismatchSearch_${groupId}" placeholder="${tl('按客户姓名或合同号搜索…','Search customer or contract…','')}" value="${esc(filter.kw||'')}" oninput="filterFundMismatch(${groupId})" style="flex:1;min-width:160px">
-      <select id="fundMismatchStatusSel_${groupId}" onchange="filterFundMismatch(${groupId})" style="padding:8px">
-        <option value="">${tl('全部状态','All Status','')}</option>
-        <option value="pending" ${filter.status==='pending'?'selected':''}>${tl('未核实','Unverified','')}</option>
-        <option value="ok" ${filter.status==='ok'?'selected':''}>${tl('账户正确','Correct','')}</option>
-        <option value="mismatch" ${filter.status==='mismatch'?'selected':''}>${tl('账户错配','Mismatch','')}</option>
-        <option value="ambig" ${filter.status==='ambig'?'selected':''}>${tl('账户不确定','Ambiguous','')}</option>
-      </select>
-      <select id="fundMismatchMonthSel_${groupId}" onchange="filterFundMismatch(${groupId})" style="padding:8px">
-        <option value="">${tl('全部月份','All Months','')}</option>
-        ${months.map(m=>`<option value="${esc(m)}" ${filter.month===m?'selected':''}>${esc(m)}</option>`).join('')}
-      </select>
-      <button class="btn btn-outline btn-sm" onclick="openFundMismatchLegacyImport(${groupId})">📥 ${tl('导入历史核对记录','Import Legacy Records','')}</button>
-      <button class="btn btn-outline btn-sm" onclick="exportFundMismatch(${groupId}, '${esc(g.label||'')}')">📥 ${tl('导出Excel','Export Excel','')}</button>
-    </div>
-    <div id="fundMismatchTable_${groupId}"></div>
-  `;
-  renderFundMismatchTableBody(groupId, filtered, accOptions);
-}
-
-function renderFundMismatchTableBody(groupId, rows, accOptions) {
-  const el = document.getElementById('fundMismatchTable_' + groupId);
-  if (!el) return;
-  if (!rows.length) {
-    el.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted)">${tl('没有匹配的记录','No matching records','')}</div>`;
-    return;
-  }
-  el.innerHTML = `<div class="table-wrap" style="max-height:420px;overflow-y:auto"><table>
-    <tr><th>${t('colCustomer')}</th><th>#</th><th>${tl('期','Period','')}</th><th>${tl('到期月','Due Month','')}</th><th>${tl('还款日','Paid Date','')}</th><th>${tl('金额','Amount','')}</th><th>${tl('状态','Status','')}</th><th>${tl('实际到账账户','Actual Account','')}</th><th>${tl('核实人/时间','Verified By/At','')}</th><th>${tl('凭证','Receipt','')}</th></tr>
-    ${rows.map(r => {
-      const meta = mismatchStatusMeta(r.status);
-      return `<tr>
-        <td class="fw700">${esc(r.customer||'')}</td>
-        <td class="text-blue">#${esc(String(r.contractId||''))}</td>
-        <td>${r.period||''}</td>
-        <td>${esc(r.dueMonth||'')}</td>
-        <td>${esc(r.date||'')}</td>
-        <td class="fw700">${fmt(r.total)}</td>
-        <td><span style="color:${meta.color};font-weight:700">${meta.text}</span></td>
-        <td>
-          <select onchange="setPaymentVerifiedAccount(${r.id}, ${groupId}, this.value)" style="padding:4px">
-            <option value="">-</option>
-            ${accOptions.map(a=>`<option value="${esc(a)}" ${r.verifiedAccount===a?'selected':''}>${esc(a)}</option>`).join('')}
-            <option value="AMBIG" ${r.verifiedAccount==='AMBIG'?'selected':''}>${tl('不确定/混合','Ambiguous','')}</option>
-          </select>
-        </td>
-        <td style="font-size:11px;color:var(--muted)">${esc(r.verifiedBy||'')}${r.verifiedAt?` (${esc(r.verifiedAt)})`:''}</td>
-        <td>${(r.receiptUrls&&r.receiptUrls.length)||r.receiptUrl ? `<button class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px" onclick="viewPayReceipts(${r.id})">📷${(r.receiptUrls&&r.receiptUrls.length>1)?r.receiptUrls.length:''}</button>` : '-'}</td>
-      </tr>`;
-    }).join('')}
-  </table></div>
-  <div style="margin-top:6px;font-size:12px;color:var(--muted)">${tl('共','Total','')} ${rows.length} ${tl('笔','records','')}</div>`;
-}
-
-window.exportFundMismatch = function(groupId, groupLabel) {
-  const rows = getFundMismatchRows(groupId).slice().sort((a,b) => (a.dueMonth||'').localeCompare(b.dueMonth||''));
-  if (!rows.length) { alert(tl('没有数据可导出','No data to export','')); return; }
-  const detailRows = rows.map(r => ({
-    '客户': r.customer||'', '合同号': r.contractId||'', '期数': r.period||'',
-    '到期月': r.dueMonth||'', '还款日': r.date||'', '金额': r.total,
-    '状态': mismatchStatusMeta(r.status).text, '应到账户': r.designated,
-    '实际到账账户': r.verifiedAccount||'', '核实人': r.verifiedBy||'', '核实时间': r.verifiedAt||'',
-  }));
-  const summary = { ok:0, mismatch:0, ambig:0, pending:0 };
-  const summaryAmt = { ok:0, mismatch:0, ambig:0, pending:0 };
-  rows.forEach(r => { summary[r.status]++; summaryAmt[r.status] += r.total; });
-  const summaryRows = ['ok','mismatch','ambig','pending'].map(st => ({
-    '状态': mismatchStatusMeta(st).text, '笔数': summary[st], '金额': summaryAmt[st]
-  }));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), '汇总');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailRows), '明细');
-  XLSX.writeFile(wb, `${groupLabel}_收款账户核查_${today()}.xlsx`);
-};
-
-// 导入旧版"对账工作台"导出的核对JSON（字段：id含"合同号_p期数"、contractId、account、verified、date），
-// 把里面已核实的"实际到账账户"信息补填到 payments 上——已经核实过的不覆盖，避免冲掉更新的数据。
-function fundMismatchNormAccount(raw) {
-  const a = (raw || '').trim();
-  if (!a) return '';
-  const up = a.toUpperCase();
-  if (up.includes('LINSHIKUI')) return 'LINSHIKUI';
-  if (up.includes('YAN YUDE') || up.includes('YANYUDE')) return 'YANYUDE';
-  if (a.includes('美元账户') || a.includes('柬币账户') || a.includes('不确定')) return 'AMBIG';
-  return '';
-}
-
-window.openFundMismatchLegacyImport = function(groupId) {
-  showModal(`📥 ${tl('导入历史核对记录','Import Legacy Records','')}`, `
-    <div style="font-size:13px;color:#546e7a;margin-bottom:14px;line-height:1.6">
-      ${tl('上传之前用对账工具核对过的 JSON 备份文件，系统会把里面已核实的"实际到账账户"信息，自动补填到对应合同期次上（已经核实过的不会被覆盖）。','Upload the old reconciliation tool\'s JSON backup — verified account info will be auto-filled onto matching contract periods (already-verified ones are kept, never overwritten).','')}
-    </div>
-    <div class="form-group" style="margin-bottom:12px">
-      <label>${tl('核对记录 JSON 文件','Reconciliation JSON file','')}</label>
-      <input type="file" accept="application/json,.json" id="fundMismatchLegacyFile_${groupId}">
-    </div>
-    <div id="fundMismatchLegacyMsg" style="font-size:12px;color:var(--red);margin:6px 0"></div>
-    <div class="btn-row">
-      <button class="btn btn-primary" onclick="importFundMismatchLegacy(${groupId})">📥 ${tl('导入','Import','')}</button>
-      <button class="btn btn-outline" onclick="closeModal()">${tl('取消','Cancel','បោះបង់')}</button>
-    </div>
-  `);
-};
-
-window.importFundMismatchLegacy = function(groupId) {
-  const fileInput = document.getElementById('fundMismatchLegacyFile_' + groupId);
-  const msgEl = document.getElementById('fundMismatchLegacyMsg');
-  const file = fileInput && fileInput.files && fileInput.files[0];
-  if (!file) { if (msgEl) msgEl.textContent = tl('请先选择 JSON 文件','Please choose a JSON file',''); return; }
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    let arr;
-    try {
-      arr = JSON.parse(e.target.result);
-      if (!Array.isArray(arr)) throw new Error('not array');
-    } catch (err) {
-      if (msgEl) msgEl.textContent = tl('文件解析失败，请确认文件格式','Failed to parse file','');
-      return;
-    }
-    const pays = DB_get('payments') || [];
-    const user = getCurrentUser();
-    const operator = (user ? (user.displayName || user.username) : '') + tl('（历史导入）',' (legacy import)','');
-    let filled = 0, skippedAlready = 0, notMatched = 0, noAccount = 0;
-    arr.forEach(rec => {
-      if (!rec || rec.verified !== true) return;
-      const acc = fundMismatchNormAccount(rec.account);
-      if (!acc) { noAccount++; return; }
-      const m = /^(.*)_p(\d+)$/.exec(String(rec.id || ''));
-      const contractId = m ? m[1] : String(rec.contractId || '');
-      const period = m ? +m[2] : null;
-      if (!contractId || !period) { notMatched++; return; }
-      const p = pays.find(x => String(x.contractId) === contractId && +x.period === period);
-      if (!p) { notMatched++; return; }
-      if (p.verifiedAccount) { skippedAlready++; return; }
-      p.verifiedAccount = acc;
-      p.verifiedBy = operator;
-      p.verifiedAt = rec.date || today();
-      filled++;
-    });
-    DB_set('payments', pays);
-    closeModal();
-    alert(`✅ ${tl('导入完成','Import finished','')}：${filled} ${tl('笔新填入','filled','')}，${skippedAlready} ${tl('笔已核实过（跳过）','already verified (skipped)','')}，${notMatched} ${tl('笔未匹配到还款记录','not matched','')}${noAccount?`，${noAccount} ${tl('笔无账户信息（跳过）','no account info (skipped)','')}`:''}`);
-    nav('fund-stats');
-  };
-  reader.readAsText(file);
-};
-
 function renderFundStats() {
   const sales    = DB_get('sales')||[];
   const pays     = DB_get('payments')||[];
@@ -11113,10 +10821,6 @@ function renderFundStats() {
       <button class="btn btn-outline btn-sm" onclick="toggleFundDateQuery(${g.id})">🔍 自定义日期查询</button>
       <button class="btn btn-outline btn-sm" onclick="toggleFundOverdue(${g.id})" style="color:var(--red)">🔴 逾期客户总表</button>
       <button class="btn btn-primary btn-sm" onclick="toggleInvestorStatement(${g.id})" style="background:#1e7e34">💼 投资人对账单</button>
-      <!-- 🎯收款账户核查：暂时隐藏入口（怕投资人看到未核实数据误解），功能代码都还在，
-           需要时把下面这行的注释去掉就能恢复：
-      <button class="btn btn-primary btn-sm" onclick="toggleFundMismatch(${g.id})" style="background:#c62828">🎯 收款账户核查</button>
-      -->
     </div>
     <div id="fundInvestor_${g.id}" style="display:none;margin-top:12px">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
@@ -11159,9 +10863,6 @@ function renderFundStats() {
         <button class="btn btn-outline btn-sm" onclick="exportFundDetail(${g.id}, '${esc(g.label)}')">📥 导出Excel</button>
       </div>
       <div id="fundDetailTable_${g.id}"></div>
-    </div>
-    <div id="fundMismatch_${g.id}" style="display:none;margin-top:12px">
-      <div id="fundMismatchBody_${g.id}"></div>
     </div>
   </div>`).join('')}
 
