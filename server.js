@@ -40,22 +40,32 @@ function getInitData() {
 }
 
 // ── 读取所有数据（分块存储版）──
+// 🚀 性能：数据量大了以后（现在合同+还款记录已经上万行），一页一页顺序等下去很慢——
+// 先读第一页，如果刚好读满说明后面还有，用 count 查一下总共多少页，再一次性并行把剩下的页都发出去，
+// 不用一页等完了才发下一页，大幅缩短这个接口的响应时间。
 async function loadData() {
   try {
-    // 读取所有数据，分页处理
-    let allData = [];
-    let from = 0;
     const pageSize = 1000;
-    while (true) {
-      const { data, error } = await supabase
+    let allData = [];
+    const first = await supabase.from('appdata').select('key, value').range(0, pageSize - 1);
+    if (first.error) throw new Error('DB_READ_ERROR: ' + first.error.message);
+    allData = allData.concat(first.data || []);
+    if ((first.data || []).length === pageSize) {
+      const { count, error: countErr } = await supabase
         .from('appdata')
-        .select('key, value')
-        .range(from, from + pageSize - 1);
-      if (error) throw new Error('DB_READ_ERROR: ' + error.message);
-      if (!data || data.length === 0) break;
-      allData = allData.concat(data);
-      if (data.length < pageSize) break;
-      from += pageSize;
+        .select('key', { count: 'exact', head: true });
+      if (countErr) throw new Error('DB_READ_ERROR: ' + countErr.message);
+      const totalPages = Math.ceil((count || 0) / pageSize);
+      const pagePromises = [];
+      for (let p = 1; p < totalPages; p++) {
+        const from = p * pageSize;
+        pagePromises.push(supabase.from('appdata').select('key, value').range(from, from + pageSize - 1));
+      }
+      const results = await Promise.all(pagePromises);
+      for (const r of results) {
+        if (r.error) throw new Error('DB_READ_ERROR: ' + r.error.message);
+        allData = allData.concat(r.data || []);
+      }
     }
 
     if (allData.length === 0) {
