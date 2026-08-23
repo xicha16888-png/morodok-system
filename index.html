@@ -1343,11 +1343,25 @@ async function loadDB() {
     _snapshotBaseline(_db.payments, _paymentsBaseline);
     recoverPendingLocalSaves(); // 🔁 找回上次可能没保存成功、还留在本地的改动，必须在snapshotBaseline之后调用
     _lastSyncTime = Date.now();
+    window._lastKnownDataVersion = data._dataVersion; // 🚀 记下这次拉到的数据版本号，配合 hasDataChanged() 用
     try { const el=document.getElementById('companyName'); if(el&&data.company?.name) el.textContent=data.company.name; } catch(e2){}
     return {ok:true};
   } catch(e) {
     return {ok:false, reason: e.name==='AbortError'?'Timeout 20s':e.message};
   }
+}
+
+// 🚀 性能：/api/data 每次都要传全部合同+还款记录，可能好几MB。这里先问一下服务器一个很小的
+// 版本号接口，只有真的有变化（有人保存了新数据）才值得再去拉一次全量数据，没变就跳过，
+// 省流量也省这次刷新本来要花的时间。查不到版本号或者网络异常时，保险起见当作"有变化"，
+// 照旧走一次完整拉取，不会因为这个优化漏掉真正的数据更新。
+async function hasDataChanged() {
+  try {
+    const res = await fetch('/api/data/version', {cache:'no-store'});
+    if (!res.ok) return true;
+    const j = await res.json();
+    return j.version !== window._lastKnownDataVersion;
+  } catch(e) { return true; }
 }
 
 async function saveDB() {
@@ -1701,18 +1715,22 @@ function nav(page) {
   // 🚀 本地已经有数据的话，立刻画出页面，不等网络请求——这是以前"点哪个模块都要转几秒"的主因
   // （以前每次点菜单都要先等一次全量拉取数据库才画面，数据越多这一等就越久）
   if (_dbReady && fn && mc) { mc.innerHTML = fn(); mc.scrollTop = 0; initPage(page); updateBadges(); }
-  // 后台静默拉取最新数据（不影响已经画出来的页面）；如果上一次刷新还没回来，就不再重复发起，
-  // 避免连续点几个模块时堆积好几个全量请求，越点越卡
+  // 后台静默检查数据有没有变化（不影响已经画出来的页面）；如果上一次检查还没回来，就不再重复发起，
+  // 避免连续点几个模块时堆积好几个请求，越点越卡。真的有变化才去拉全量数据，没变化的话
+  // 这一步只花一个很小的版本号请求，不会跟着传几MB的数据
   if (!_hasPendingLocalChanges() && !window._navRefreshInFlight) {
     window._navRefreshInFlight = true;
-    loadDB().then(result => {
-      window._navRefreshInFlight = false;
-      if (result.ok) {
-        _lastSyncTime = Date.now();
-        // 拉取期间用户可能已经切到别的页面了，只有还停留在这一页才用新数据重画，避免画错页
-        if (window._currentPage === page && fn && mc) { mc.innerHTML = fn(); mc.scrollTop = 0; initPage(page); }
-        updateBadges();
-      }
+    hasDataChanged().then(changed => {
+      if (!changed) { window._navRefreshInFlight = false; return; }
+      loadDB().then(result => {
+        window._navRefreshInFlight = false;
+        if (result.ok) {
+          _lastSyncTime = Date.now();
+          // 拉取期间用户可能已经切到别的页面了，只有还停留在这一页才用新数据重画，避免画错页
+          if (window._currentPage === page && fn && mc) { mc.innerHTML = fn(); mc.scrollTop = 0; initPage(page); }
+          updateBadges();
+        }
+      }).catch(() => { window._navRefreshInFlight = false; });
     }).catch(() => { window._navRefreshInFlight = false; });
   }
 }
@@ -1779,8 +1797,16 @@ setInterval(async () => {
   if (window._navRefreshInFlight) return; // 刚点了菜单、后台刷新还没回来，不重复再发一次
   const page = document.querySelector('.nav-item.active')?.dataset?.page;
   if (FORM_PAGES.includes(page)) return;
-  const prevHash = JSON.stringify(DB_get('sales'))?.length + '|' + JSON.stringify(DB_get('payments'))?.length;
   window._navRefreshInFlight = true;
+  // 🚀 先问一下很小的版本号接口，没变化就不用每15秒都拉一次几MB的全量数据——
+  // 这是以前系统一直"感觉卡"的一个常年在后台的隐藏原因，跟点不点菜单没关系，是自己一直在跑
+  if (!(await hasDataChanged())) {
+    window._navRefreshInFlight = false;
+    _lastSyncTime = Date.now(); // 没变化也说明刚确认过连上服务器了，"上次同步"时间照常刷新
+    updateSyncTimeAgo();
+    return;
+  }
+  const prevHash = JSON.stringify(DB_get('sales'))?.length + '|' + JSON.stringify(DB_get('payments'))?.length;
   const result = await loadDB();
   window._navRefreshInFlight = false;
   if (result.ok) {
@@ -8003,13 +8029,16 @@ function renderStoreStats() {
   function calcBadDebt(storeSales, days) {
     const totalAmt = storeSales.reduce((a,s) =>
       a + s.schedule.reduce((b,p) => b + (+p.principalDue||0) + (+p.interestDue||0), 0), 0);
-    const overdue = storeSales.flatMap(s =>
-      s.schedule.filter(p => !p.paid && Math.floor((new Date(td)-new Date(p.dueDate))/86400000) > days));
+    // 🚀 性能：以前算每期滞纳金要用 storeSales.find(s => s.schedule.includes(p)) 反查这一期属于哪笔合同，
+    // 店铺里合同一多，这个反查要跑很多遍。改成筛选逾期期次的时候顺手把对应合同一起记下来，不用再反查一次。
+    const overdueWithSale = storeSales.flatMap(s =>
+      s.schedule.filter(p => !p.paid && Math.floor((new Date(td)-new Date(p.dueDate))/86400000) > days)
+        .map(p => ({p, s})));
+    const overdue = overdueWithSale.map(x => x.p);
     const bdNoP  = overdue.reduce((a,p) => a + (+p.principalDue||0) + (+p.interestDue||0), 0);
     // With penalty: add dailyLateFee × overdue days per sale
-    const bdWithP = overdue.reduce((a,p) => {
-      const sale = storeSales.find(s => s.schedule.includes(p));
-      const dailyFee = sale ? (+sale.dailyLateFee||0) : 0;
+    const bdWithP = overdueWithSale.reduce((a,{p,s}) => {
+      const dailyFee = +s.dailyLateFee||0;
       const d = Math.max(0, Math.floor((new Date(td)-new Date(p.dueDate))/86400000));
       return a + (+p.principalDue||0) + (+p.interestDue||0) + dailyFee * d;
     }, 0);
