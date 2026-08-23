@@ -23,6 +23,13 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 console.log('SUPABASE_URL:', SUPABASE_URL ? SUPABASE_URL.substring(0, 30) + '...' : '❌ 未设置');
 console.log('SUPABASE_KEY:', SUPABASE_KEY ? SUPABASE_KEY.substring(0, 20) + '...' : '❌ 未设置');
 
+// 🚀 性能：数据量大了以后，/api/data 每次返回的都是全部合同+全部还款记录，可能好几MB。
+// 但前端每15秒就轮询一次看数据有没有变化——如果每次轮询都拉一次全量数据，等于常年在后台
+// 跑大流量，手机网络越差越明显，还会跟用户当下正在做的操作抢带宽，感觉像是"卡顿"。
+// 这里加一个内存里的版本号：谁写了数据（saveData成功后）版本号就变一次；前端轮询先问一下
+// 这个很小的版本号接口，版本没变就直接跳过，不用再拉一次全量数据。
+let _dataVersion = Date.now();
+
 function getInitData() {
   return {
     sales: [], payments: [], purchases: [], earlyPayments: [], expenses: [], stores: [], nextId: 1001,
@@ -181,6 +188,7 @@ async function saveData(dbData) {
     }
   }
   console.log(`✅ 成功保存 ${uniqueRows.length} 条记录（去重前${rows.length}条）`);
+  _dataVersion = Date.now();
 }
 
 // ── 删除单条合同 ──
@@ -190,6 +198,7 @@ async function deleteSale(id) {
     .delete()
     .eq('key', `sale_${id}`);
   if (error) throw error;
+  _dataVersion = Date.now();
 }
 
 // ── 删除单条还款记录 ──
@@ -199,6 +208,7 @@ async function deletePayment(id) {
     .delete()
     .eq('key', `pay_${id}`);
   if (error) throw error;
+  _dataVersion = Date.now();
 }
 
 // ── 删除单条提前还款记录 ──
@@ -208,9 +218,15 @@ async function deleteEarlyPayment(id) {
     .delete()
     .eq('key', `ep_${id}`);
   if (error) throw error;
+  _dataVersion = Date.now();
 }
 
 // ── API 路由 ──
+// 🚀 轻量版本号接口：只返回一个数字，前端轮询先问这个，没变就不用再拉全量数据了
+app.get('/api/data/version', (req, res) => {
+  res.json({ version: _dataVersion });
+});
+
 app.get('/api/data', async (req, res) => {
   try {
     const data = await loadData();
@@ -218,6 +234,7 @@ app.get('/api/data', async (req, res) => {
     arrKeys.forEach(k => { if (!Array.isArray(data[k])) data[k] = []; });
     if (!data.nextId) data.nextId = 1001;
     if (!data.company) data.company = {name:'MORODOK',address:'',phone:'',note:''};
+    data._dataVersion = _dataVersion;
     res.json(data);
   } catch (e) {
     console.error('GET /api/data 失败:', e.message);
@@ -274,6 +291,7 @@ app.post('/api/clear', async (req, res) => {
     if (e2) throw e2;
     const { error: e3 } = await supabase.from('appdata').delete().like('key', 'ep_%');
     if (e3) throw e3;
+    _dataVersion = Date.now();
     console.log('✅ 数据已清空');
     res.json({ ok: true, message: '清空成功' });
   } catch (e) {
@@ -291,6 +309,7 @@ app.post('/api/:collection', async (req, res) => {
       .from('appdata')
       .upsert([{ key: collection, value: req.body.value }], { onConflict: 'key' });
     if (error) throw error;
+    _dataVersion = Date.now();
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
