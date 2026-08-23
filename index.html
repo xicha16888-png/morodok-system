@@ -1801,7 +1801,7 @@ setInterval(async () => {
         openGroups.forEach(id => {
           const el = document.getElementById(id);
           const icon = document.getElementById(id + '_icon');
-          if (el) { el.style.display = ''; if (icon) icon.textContent = '▲'; }
+          if (el) { ensureSaleGroupBuilt(id); el.style.display = ''; if (icon) icon.textContent = '▲'; }
         });
       }
     }
@@ -3178,7 +3178,13 @@ window.submitSale = function() {
 // ══════════════════════════════════════════════════════
 // 销售查询页：审核人信息缓存（合同ID -> 审核记录 {auditor_name, status}）
 window._auditMap = window._auditMap || {};
+window._auditMapFetchedAt = window._auditMapFetchedAt || 0;
 async function loadAuditMapForSaleList() {
+  // 🚀 性能：以前每次一进销售查询页面就重新拉一次审核数据，拉完还要把整张表重新画一遍——
+  // 相当于每次进这个页面都多一趟网络请求 + 多一次全表重建。现在缓存60秒，短时间内重复进/切
+  // 出切回这个页面，不用重新拉也不用重画。
+  if (Date.now() - window._auditMapFetchedAt < 60000) return;
+  window._auditMapFetchedAt = Date.now();
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/morodok_audits?select=contract_id,auditor_name,status`,
       { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
@@ -3313,9 +3319,44 @@ function buildSaleMonthlyBreakdown() {
   <div style="font-size:11px;color:var(--muted);margin-top:6px">${tl('点击某个月可以直接筛选下面的列表','Click a month to filter the list below','')}</div>`;
 }
 
+// 🚀 性能：合同一多，以前是把每个日期分组的明细行一次性全部拼好HTML再整体插入页面——
+// 哪怕那组是收起来的（display:none）也照样先造好塞进DOM，单量一多（现在1300多单）这一下子
+// 插入的DOM节点太多，页面明显卡一下。现在改成：先只画出日期分组的标题行（一直都很少，几十到
+// 几百个），具体某一天的明细行等用户真的点开那一组时才现造并插入，没点开的组完全不占DOM开销。
+function buildSaleRowsHtml(rows) {
+  const ptc = {3:'pt3',5:'pt6',8:'pt9',11:'pt12'};
+  return rows.map(s => {
+    const paid = (s.schedule||[]).filter(p => p.paid).length;
+    return `<tr>
+      <td class="fw700 text-blue">#${s.id}</td><td>${s.date}</td>
+      <td><div class="fw700">${esc(s.customer)}</div><div class="text-muted" style="font-size:11px">${esc(s.customerPhone||'')}</div></td>
+      <td><span style="font-size:12px;background:#e3f2fd;color:var(--navy);padding:2px 8px;border-radius:12px;white-space:nowrap;cursor:pointer" onclick="document.getElementById('saleShopFilter').value='${esc(extractStoreKey(s.shopCode||s.shopName||''))}';filterSales()">${esc(s.shopName||'-')}</span>${s.shopName && s.shopMatched===false ? ` <span title="${tl('未从官方店铺列表选中，可能是手打的店名','Not selected from the official store list — may be a manually typed name','មិនបានជ្រើសរើសពីបញ្ជីហាងផ្លូវការទេ')}" style="color:var(--red);cursor:help">⚠️</span>` : ''}</td>
+      <td>${esc(s.modelName||'-')}</td><td>${fmt(s.salePrice)}</td><td>${fmt(s.deposit)}</td>
+      <td class="fw700">${fmt(s.installmentAmount)}</td>
+      <td><span class="${ptc[s.periods]||'pt6'}">${s.periods}${t('period')}</span></td>
+      <td class="fw700">${fmt(s.monthlyPayment)}</td>
+      <td><span style="font-size:12px">${paid}/${s.periods}</span>
+        <div style="background:#e3f2fd;height:4px;border-radius:2px;margin-top:4px;width:60px">
+          <div style="background:var(--sky);height:4px;border-radius:2px;width:${Math.round(paid/s.periods*100)}%"></div>
+        </div></td>
+      <td><span class="badge ${s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':s.status==='逾期'?'badge-red':'badge-blue'}">${s.status}</span></td>
+      <td>${renderAuditorBadge(s.id)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-outline btn-sm" onclick="viewSchedule('${s.id}')">${t('repaySchedule')}</button>
+        <button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="showContractImages('${s.id}')">📎 材料</button>
+        ${canEditSaleFull() ? `
+        <button class="btn btn-primary btn-sm" style="margin-left:4px" onclick="editSale('${s.id}')">${tl('编辑','Edit','កែប្រែ')}</button>
+        ` : ''}
+        ${canDeleteSale() ? `
+        <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSale('${s.id}')">${t('deleteBtn')}</button>
+        ` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
 function buildSalesTable(sales) {
   if (!sales.length) return `<div class="empty-state"><div class="ei">📭</div><p>${t('noContract')}</p></div>`;
-  const ptc = {3:'pt3',5:'pt6',8:'pt9',11:'pt12'};
   // 按日期分组（倒序）
   const sorted = sales.slice().reverse();
   const groups = {};
@@ -3326,12 +3367,16 @@ function buildSalesTable(sales) {
   });
   const uniqueDates = [...new Set(groupOrder)];
 
+  // 每组的明细行数据先存起来，点开时才用来现造行HTML（见 ensureSaleGroupBuilt）
+  window._saleListGroupRows = {};
+
   let html = `<div class="table-wrap"><table>
     <tr><th>${t("colNo")}</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>🏪 ${tl('店家','Store','ហាង')}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colDeposit")}</th><th>${t("colPrincipal")}</th><th>${t("colPeriods")}</th><th>${t("colMonthly")}</th><th>${t("colProgress")}</th><th>${t("colStatus")}</th><th>${tl('审核人','Auditor','អ្នកសវនកម្ម')}</th><th>${t("colAction")}</th></tr>`;
 
   uniqueDates.forEach(date => {
     const rows = groups[date];
     const groupId = 'dg_' + date.replace(/-/g,'');
+    window._saleListGroupRows[groupId] = rows;
     html += `<tr style="background:var(--navy);cursor:pointer" onclick="toggleDateGroup('${groupId}')">
       <td colspan="14" style="color:#fff;font-weight:700;padding:8px 12px;font-size:13px">
         📅 ${date} &nbsp;
@@ -3339,39 +3384,20 @@ function buildSalesTable(sales) {
         <span id="${groupId}_icon" style="float:right;font-size:16px">▼</span>
       </td>
     </tr>`;
-    html += `<tbody id="${groupId}" style="display:none">`;
-    rows.forEach(s => {
-      const paid = (s.schedule||[]).filter(p => p.paid).length;
-      html += `<tr>
-        <td class="fw700 text-blue">#${s.id}</td><td>${s.date}</td>
-        <td><div class="fw700">${esc(s.customer)}</div><div class="text-muted" style="font-size:11px">${esc(s.customerPhone||'')}</div></td>
-        <td><span style="font-size:12px;background:#e3f2fd;color:var(--navy);padding:2px 8px;border-radius:12px;white-space:nowrap;cursor:pointer" onclick="document.getElementById('saleShopFilter').value='${esc(extractStoreKey(s.shopCode||s.shopName||''))}';filterSales()">${esc(s.shopName||'-')}</span>${s.shopName && s.shopMatched===false ? ` <span title="${tl('未从官方店铺列表选中，可能是手打的店名','Not selected from the official store list — may be a manually typed name','មិនបានជ្រើសរើសពីបញ្ជីហាងផ្លូវការទេ')}" style="color:var(--red);cursor:help">⚠️</span>` : ''}</td>
-        <td>${esc(s.modelName||'-')}</td><td>${fmt(s.salePrice)}</td><td>${fmt(s.deposit)}</td>
-        <td class="fw700">${fmt(s.installmentAmount)}</td>
-        <td><span class="${ptc[s.periods]||'pt6'}">${s.periods}${t('period')}</span></td>
-        <td class="fw700">${fmt(s.monthlyPayment)}</td>
-        <td><span style="font-size:12px">${paid}/${s.periods}</span>
-          <div style="background:#e3f2fd;height:4px;border-radius:2px;margin-top:4px;width:60px">
-            <div style="background:var(--sky);height:4px;border-radius:2px;width:${Math.round(paid/s.periods*100)}%"></div>
-          </div></td>
-        <td><span class="badge ${s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':s.status==='逾期'?'badge-red':'badge-blue'}">${s.status}</span></td>
-        <td>${renderAuditorBadge(s.id)}</td>
-        <td style="white-space:nowrap">
-          <button class="btn btn-outline btn-sm" onclick="viewSchedule('${s.id}')">${t('repaySchedule')}</button>
-          <button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="showContractImages('${s.id}')">📎 材料</button>
-          ${canEditSaleFull() ? `
-          <button class="btn btn-primary btn-sm" style="margin-left:4px" onclick="editSale('${s.id}')">${tl('编辑','Edit','កែប្រែ')}</button>
-          ` : ''}
-          ${canDeleteSale() ? `
-          <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSale('${s.id}')">${t('deleteBtn')}</button>
-          ` : ''}
-        </td>
-      </tr>`;
-    });
-    html += `</tbody>`;
+    html += `<tbody id="${groupId}" style="display:none" data-built="0"></tbody>`;
   });
   html += `</table></div>`;
   return html;
+}
+
+// 点开的时候才把这一组的明细行现造出来插进对应tbody；已经造过的组不重复造
+function ensureSaleGroupBuilt(id) {
+  const el = document.getElementById(id);
+  if (el && el.dataset.built !== '1') {
+    const rows = (window._saleListGroupRows || {})[id] || [];
+    el.innerHTML = buildSaleRowsHtml(rows);
+    el.dataset.built = '1';
+  }
 }
 
 window.toggleDateGroup = function(id) {
@@ -3379,6 +3405,7 @@ window.toggleDateGroup = function(id) {
   const icon = document.getElementById(id + '_icon');
   if (!el) return;
   if (el.style.display === 'none') {
+    ensureSaleGroupBuilt(id);
     el.style.display = '';
     if (icon) icon.textContent = '▲';
   } else {
