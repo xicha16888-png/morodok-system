@@ -126,6 +126,38 @@ async function loadData() {
   }
 }
 
+// ── 读取增量数据（只读"某个时间点之后真正变过"的那几行）──
+// 🚀 依赖 appdata 表的 updated_at 字段（Supabase 里加一个数据库触发器自动维护，写入/更新任何一行
+// 都会自动盖上当前时间，代码这边完全不用操心）。数据量大了以后，日常同步不用再每次都把
+// 全部合同+全部还款记录传一遍——只传"自从上次同步之后真正被谁存过"的那几条，正常情况下
+// 一次也就几条到几十条，跟"全部一千多份合同"完全不是一个数量级。
+async function loadDataDelta(sinceISO) {
+  const pageSize = 1000;
+  let allRows = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('appdata')
+      .select('key, value')
+      .gt('updated_at', sinceISO)
+      .order('updated_at', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error('DB_READ_ERROR: ' + error.message);
+    if (!data || data.length === 0) break;
+    allRows = allRows.concat(data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  const result = { sales: [], payments: [], earlyPayments: [], other: {} };
+  allRows.forEach(row => {
+    if (row.key.startsWith('sale_')) result.sales.push(row.value);
+    else if (row.key.startsWith('pay_')) result.payments.push(row.value);
+    else if (row.key.startsWith('ep_')) result.earlyPayments.push(row.value);
+    else result.other[row.key] = row.value;
+  });
+  return result;
+}
+
 // ── 保存所有数据（分块存储版）──
 async function saveData(dbData) {
   const rows = [];
@@ -223,18 +255,41 @@ async function deleteEarlyPayment(id) {
 
 // ── API 路由 ──
 // 🚀 轻量版本号接口：只返回一个数字，前端轮询先问这个，没变就不用再拉全量数据了
+// （旧机制，加了下面的增量同步接口之后作为退路保留——万一 Supabase 那边还没加 updated_at 字段，
+// 或者增量接口出错，前端会自动退回这一套，不会直接坏掉）
 app.get('/api/data/version', (req, res) => {
   res.json({ version: _dataVersion });
 });
 
+// 🚀 增量同步接口：只返回"某个时间点之后真正变过"的记录，不用每次都传全部数据。
+// 需要 Supabase 的 appdata 表有 updated_at 字段（见部署说明里的一次性SQL）；
+// 如果这个字段还没加，Supabase 会报错，接口跟着返回500，前端会自动退回旧的全量方式，不影响使用。
+app.get('/api/data/delta', async (req, res) => {
+  try {
+    const since = req.query.since;
+    if (!since) return res.status(400).json({ error: 'MISSING_SINCE', message: '缺少 since 参数' });
+    // 先记下这次查询开始前的服务器时间，作为下一次同步的起点——
+    // 这样哪怕正好有别的请求在查询进行中同时写入，那条记录也不会被漏掉，最多晚一轮同步捞到
+    const queryStartTime = new Date().toISOString();
+    const delta = await loadDataDelta(since);
+    delta.since = queryStartTime;
+    res.json(delta);
+  } catch (e) {
+    console.error('GET /api/data/delta 失败:', e.message);
+    res.status(500).json({ error: 'DB_ERROR', message: e.message });
+  }
+});
+
 app.get('/api/data', async (req, res) => {
   try {
+    const queryStartTime = new Date().toISOString(); // 增量同步从这个时间点开始追，见 /api/data/delta
     const data = await loadData();
     const arrKeys = ['sales','payments','phones','suppliers','purchases','earlyPayments','expenses'];
     arrKeys.forEach(k => { if (!Array.isArray(data[k])) data[k] = []; });
     if (!data.nextId) data.nextId = 1001;
     if (!data.company) data.company = {name:'MORODOK',address:'',phone:'',note:''};
     data._dataVersion = _dataVersion;
+    data._syncSince = queryStartTime;
     res.json(data);
   } catch (e) {
     console.error('GET /api/data 失败:', e.message);
