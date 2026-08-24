@@ -3416,12 +3416,17 @@ function buildSalesTable(sales) {
   return html;
 }
 
-// 点开的时候才把这一组的明细行现造出来插进对应tbody；已经造过的组不重复造
+// 点开的时候才把这一组的明细行现造出来插进对应tbody；已经造过的组不重复造。
+// 🔒 注意：toggleDateGroup 这个开关函数是"销售查询"和"合同审核"两个页面共用的，
+// 但只有销售查询页的分组是懒加载的（内容登记在 window._saleListGroupRows 里）；
+// 合同审核页的分组行本来就是一次性造好、直接放进tbody的，不在这个表里——
+// 必须先判断这个id是不是"懒加载分组"，不是的话什么都不做，不能把tbody清空重造，
+// 不然点开合同审核的日期分组会把里面已经有的内容全部冲掉，变成点了没反应。
 function ensureSaleGroupBuilt(id) {
   const el = document.getElementById(id);
-  if (el && el.dataset.built !== '1') {
-    const rows = (window._saleListGroupRows || {})[id] || [];
-    el.innerHTML = buildSaleRowsHtml(rows);
+  if (!el || !window._saleListGroupRows || !(id in window._saleListGroupRows)) return;
+  if (el.dataset.built !== '1') {
+    el.innerHTML = buildSaleRowsHtml(window._saleListGroupRows[id] || []);
     el.dataset.built = '1';
   }
 }
