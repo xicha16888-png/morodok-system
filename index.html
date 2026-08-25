@@ -274,9 +274,14 @@ tr:hover td{background:#f8faff}
   .stats-grid{grid-template-columns:repeat(2,1fr)}
 }
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<!-- 🚀 性能：这三个库只有导出/导入Excel、导入聊天记录(docx)这几个功能才用得到，绝大多数人
+     打开系统只是登记还款、查合同，根本用不上。以前这三个是"阻塞式"加载——浏览器必须先把这三个
+     第三方文件（其中exceljs体积不小）从国外CDN下载完，才会开始显示页面任何内容，哪怕用户压根不用
+     导出功能，也要陪着等。加上 defer 之后，浏览器不用等它们下载完就能先把页面画出来（登录框、
+     侧边栏、加载动画都能立刻显示），这三个库继续在后台下载，等真的点导出/导入功能时它们早就好了 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
 </head>
 <body>
 
@@ -1343,8 +1348,7 @@ async function loadDB() {
     _snapshotBaseline(_db.payments, _paymentsBaseline);
     recoverPendingLocalSaves(); // 🔁 找回上次可能没保存成功、还留在本地的改动，必须在snapshotBaseline之后调用
     _lastSyncTime = Date.now();
-    window._lastKnownDataVersion = data._dataVersion; // 🚀 记下这次拉到的数据版本号，配合 hasDataChanged() 用（旧机制，增量同步不可用时的退路）
-    window._deltaSince = data._syncSince || window._deltaSince; // 🚀 记下这次全量同步的时间点，之后增量同步就从这里开始追
+    window._lastKnownDataVersion = data._dataVersion; // 🚀 记下这次拉到的数据版本号，配合 hasDataChanged() 用
     try { const el=document.getElementById('companyName'); if(el&&data.company?.name) el.textContent=data.company.name; } catch(e2){}
     return {ok:true};
   } catch(e) {
@@ -1352,9 +1356,10 @@ async function loadDB() {
   }
 }
 
-// 🚀 性能（旧机制，保留作退路）：/api/data 每次都要传全部合同+还款记录，可能好几MB。这里先问一下
-// 服务器一个很小的版本号接口，只有真的有变化才值得再去拉一次全量数据。查不到版本号或者网络异常时，
-// 保险起见当作"有变化"，照旧走一次完整拉取，不会因为这个优化漏掉真正的数据更新。
+// 🚀 性能：/api/data 每次都要传全部合同+还款记录，可能好几MB。这里先问一下服务器一个很小的
+// 版本号接口，只有真的有变化（有人保存了新数据）才值得再去拉一次全量数据，没变就跳过，
+// 省流量也省这次刷新本来要花的时间。查不到版本号或者网络异常时，保险起见当作"有变化"，
+// 照旧走一次完整拉取，不会因为这个优化漏掉真正的数据更新。
 async function hasDataChanged() {
   try {
     const res = await fetch('/api/data/version', {cache:'no-store'});
@@ -1362,66 +1367,6 @@ async function hasDataChanged() {
     const j = await res.json();
     return j.version !== window._lastKnownDataVersion;
   } catch(e) { return true; }
-}
-
-// 🚀 把服务器一批"哪些记录变了"的结果合并进本地缓存：按id对上号就替换，本地没有就追加。
-// 不影响数组里没变的其他记录，也不会像整份覆盖那样把还没保存上去的本地改动冲掉（see _hasPendingLocalChanges）
-function _mergeArrayById(existingArr, changedArr) {
-  const idx = {};
-  existingArr.forEach((item, i) => { if (item && item.id != null) idx[item.id] = i; });
-  changedArr.forEach(item => {
-    if (!item || item.id == null) return;
-    if (idx[item.id] !== undefined) existingArr[idx[item.id]] = item;
-    else { existingArr.push(item); idx[item.id] = existingArr.length - 1; }
-  });
-}
-
-// 🚀 增量同步：只拉"自从上次同步之后真正被存过"的那几条记录，而不是每次都拉全部一千多份合同+
-// 全部还款记录。依赖服务器 /api/data/delta 接口和 Supabase 那边 appdata 表的 updated_at 字段
-// （数据库触发器自动维护）。还没做过一次全量加载（没有 _deltaSince 起点）时没法用，交给调用方退回旧方式。
-async function loadDBDelta() {
-  if (!_dbReady || !window._deltaSince) return {ok:false, changed:false};
-  try {
-    const res = await fetch(`/api/data/delta?since=${encodeURIComponent(window._deltaSince)}`, {cache:'no-store'});
-    if (!res.ok) return {ok:false, changed:false}; // 比如 Supabase 还没加 updated_at 字段，接口会报错——交给调用方退回旧方式
-    const d = await res.json();
-    if (!d || typeof d !== 'object') return {ok:false, changed:false};
-    let changed = false;
-    if (Array.isArray(d.sales) && d.sales.length) {
-      _mergeArrayById(_db.sales, d.sales);
-      d.sales.forEach(s => { if (s && s.id != null) _salesBaseline[s.id] = JSON.stringify(s); });
-      changed = true;
-    }
-    if (Array.isArray(d.payments) && d.payments.length) {
-      _mergeArrayById(_db.payments, d.payments);
-      d.payments.forEach(p => { if (p && p.id != null) _paymentsBaseline[p.id] = JSON.stringify(p); });
-      changed = true;
-    }
-    if (Array.isArray(d.earlyPayments) && d.earlyPayments.length) {
-      _mergeArrayById(_db.earlyPayments, d.earlyPayments);
-      changed = true;
-    }
-    // 其余零散字段（phones/suppliers/purchases/company/nextId/expenses/stores/店铺归并分组等）
-    // 本来就是一整份存一行，有变化就整份替换
-    Object.keys(d.other || {}).forEach(k => { _db[k] = d.other[k]; changed = true; });
-    window._deltaSince = d.since || window._deltaSince;
-    if (changed) _lastSyncTime = Date.now();
-    return {ok:true, changed};
-  } catch(e) { return {ok:false, changed:false}; }
-}
-
-// 🚀 后台静默同步的统一入口：优先用增量同步（只传真正变了的那几条）；增量不可用时
-// （还没做过一次全量、或者服务器/数据库还没升级好）自动退回旧的"先问版本号，变了才整份重拉"方式，
-// 任何阶段都不会出错，只是没那么省流量而已
-async function syncLatestData() {
-  if (window._deltaSince) {
-    const d = await loadDBDelta();
-    if (d.ok) return d;
-  }
-  const changed = await hasDataChanged();
-  if (!changed) return {ok:true, changed:false};
-  const full = await loadDB();
-  return {ok: full.ok, changed: full.ok};
 }
 
 async function saveDB() {
@@ -1775,18 +1720,22 @@ function nav(page) {
   // 🚀 本地已经有数据的话，立刻画出页面，不等网络请求——这是以前"点哪个模块都要转几秒"的主因
   // （以前每次点菜单都要先等一次全量拉取数据库才画面，数据越多这一等就越久）
   if (_dbReady && fn && mc) { mc.innerHTML = fn(); mc.scrollTop = 0; initPage(page); updateBadges(); }
-  // 后台静默同步最新数据（不影响已经画出来的页面）；如果上一次同步还没回来，就不再重复发起，
-  // 避免连续点几个模块时堆积好几个请求，越点越卡。优先走增量同步（只传真正变了的那几条，
-  // 平时没什么流量），不可用时自动退回旧的"版本号没变就跳过"方式
+  // 后台静默检查数据有没有变化（不影响已经画出来的页面）；如果上一次检查还没回来，就不再重复发起，
+  // 避免连续点几个模块时堆积好几个请求，越点越卡。真的有变化才去拉全量数据，没变化的话
+  // 这一步只花一个很小的版本号请求，不会跟着传几MB的数据
   if (!_hasPendingLocalChanges() && !window._navRefreshInFlight) {
     window._navRefreshInFlight = true;
-    syncLatestData().then(result => {
-      window._navRefreshInFlight = false;
-      if (result.ok && result.changed) {
-        // 拉取期间用户可能已经切到别的页面了，只有还停留在这一页才用新数据重画，避免画错页
-        if (window._currentPage === page && fn && mc) { mc.innerHTML = fn(); mc.scrollTop = 0; initPage(page); }
-        updateBadges();
-      }
+    hasDataChanged().then(changed => {
+      if (!changed) { window._navRefreshInFlight = false; return; }
+      loadDB().then(result => {
+        window._navRefreshInFlight = false;
+        if (result.ok) {
+          _lastSyncTime = Date.now();
+          // 拉取期间用户可能已经切到别的页面了，只有还停留在这一页才用新数据重画，避免画错页
+          if (window._currentPage === page && fn && mc) { mc.innerHTML = fn(); mc.scrollTop = 0; initPage(page); }
+          updateBadges();
+        }
+      }).catch(() => { window._navRefreshInFlight = false; });
     }).catch(() => { window._navRefreshInFlight = false; });
   }
 }
@@ -1854,47 +1803,14 @@ setInterval(async () => {
   const page = document.querySelector('.nav-item.active')?.dataset?.page;
   if (FORM_PAGES.includes(page)) return;
   window._navRefreshInFlight = true;
-  // 🚀 优先增量同步——正常情况下这一步只传"自从上次同步之后真正被谁存过"的那几条，
-  // 不管现在有没有人在正常操作、数据在不在变，都不用每15秒传一次几MB的全量数据。
+  // 🚀 先问一下很小的版本号接口，没变化就不用每15秒都拉一次几MB的全量数据——
   // 这是以前系统一直"感觉卡"的一个常年在后台的隐藏原因，跟点不点菜单没关系，是自己一直在跑
-  const result = await syncLatestData();
-  window._navRefreshInFlight = false;
-  if (result.ok) {
-    _lastSyncTime = Date.now(); // 哪怕没变化，这一步也说明刚确认过连上服务器了，"上次同步"时间照常刷新
+  if (!(await hasDataChanged())) {
+    window._navRefreshInFlight = false;
+    _lastSyncTime = Date.now(); // 没变化也说明刚确认过连上服务器了，"上次同步"时间照常刷新
     updateSyncTimeAgo();
-    if (result.changed) {
-      updateBadges();
-      if (page && PAGES[page]) {
-        const openGroups = new Set();
-        if (page === 'sale-list') {
-          document.querySelectorAll('[id^="dg_"]').forEach(el => {
-            if (el.style.display !== 'none') openGroups.add(el.id);
-          });
-        }
-        document.getElementById('mainContent').innerHTML = PAGES[page]();
-        initPage(page);
-        if (page === 'sale-list' && openGroups.size > 0) {
-          openGroups.forEach(id => {
-            const el = document.getElementById(id);
-            const icon = document.getElementById(id + '_icon');
-            if (el) { ensureSaleGroupBuilt(id); el.style.display = ''; if (icon) icon.textContent = '▲'; }
-          });
-        }
-      }
-    }
+    return;
   }
-}, 15000);
-
-// 🚀 兜底：上面的增量同步理论上已经覆盖了正常的所有数据变化路径，但保险起见每10分钟做一次完整的
-// 全量校对，防止极少数边缘情况（比如有人直接在数据库层面动了数据）导致本地缓存悄悄跟服务器出现偏差
-// 却没人发现。10分钟一次，一天不到150次，不会对流量/性能有明显影响
-setInterval(async () => {
-  if (_hasPendingLocalChanges()) return;
-  if (userIsTyping()) return;
-  if (window._navRefreshInFlight) return;
-  const page = document.querySelector('.nav-item.active')?.dataset?.page;
-  if (FORM_PAGES.includes(page)) return;
-  window._navRefreshInFlight = true;
   const prevHash = JSON.stringify(DB_get('sales'))?.length + '|' + JSON.stringify(DB_get('payments'))?.length;
   const result = await loadDB();
   window._navRefreshInFlight = false;
@@ -1902,10 +1818,13 @@ setInterval(async () => {
     const newHash = JSON.stringify(DB_get('sales'))?.length + '|' + JSON.stringify(DB_get('payments'))?.length;
     updateSyncTimeAgo();
     updateBadges();
+    // 只有数据真正变化时才重新渲染
     if (newHash !== prevHash && page && PAGES[page]) {
       const openGroups = new Set();
       if (page === 'sale-list') {
-        document.querySelectorAll('[id^="dg_"]').forEach(el => { if (el.style.display !== 'none') openGroups.add(el.id); });
+        document.querySelectorAll('[id^="dg_"]').forEach(el => {
+          if (el.style.display !== 'none') openGroups.add(el.id);
+        });
       }
       document.getElementById('mainContent').innerHTML = PAGES[page]();
       initPage(page);
@@ -1918,7 +1837,7 @@ setInterval(async () => {
       }
     }
   }
-}, 600000);
+}, 15000);
 
 // ══════════════════════════════════════════════════════
 // HOME
