@@ -3245,18 +3245,70 @@ function renderSaleList() {
   // 编号前缀一样或者业务主管手动归并过，都会算成一家，筛选的时候才不会漏单
   // （隐藏掉业务主管/老板标记为"不要"的杂乱店名，见店铺编号管理里的"筛选列表清理"）
   const _hiddenShopNames = getHiddenShopNames();
+  // 🚀 性能：全局的 extractStoreKey/resolveStoreDisplayName 内部都是 aliasGroups.find()/stores.find()
+  // 这种线性扫描，而且 resolveStoreDisplayName 找店铺时对每个店铺又要再调用一次 extractStoreKey（里面
+  // 又是一次 aliasGroups 扫描），相当于 O(店家数 × 归并分组数) 这种量级——店家一多（现在已经涨到好几百家），
+  // 光是建一次筛选下拉框就要好几秒，点一下"销售查询"卡半天就是卡在这里。这里在 renderSaleList 内部建一次性的
+  // Map 索引，把所有线性扫描换成 O(1) 查找，只在这个函数内部用，不改全局的 extractStoreKey/resolveStoreDisplayName
+  // 本身（代码里还有十几处别的地方在用它们，保持不动避免影响那些地方）
+  const _aliasGroupsAll = getStoreAliasGroups();
+  const _aliasByAlias = new Map();   // 归一化后的别名 -> 分组
+  const _aliasByOwnKey = new Map();  // 归一化后的分组自身code/name -> 分组
+  _aliasGroupsAll.forEach(g => {
+    (g.aliases || []).forEach(a => { _aliasByAlias.set(storeNorm(a), g); });
+    _aliasByOwnKey.set(storeNorm(g.code || g.name), g);
+  });
+  function _fastExtractStoreKey(nameOrCode) {
+    const raw = (nameOrCode || '').replace(/[​‌‍﻿­]/g, '').trim();
+    if (!raw) return '';
+    const n = storeNorm(raw);
+    const ag = _aliasByAlias.get(n);
+    if (ag) return storeNorm(ag.code || ag.name);
+    const m = raw.match(/^([A-Za-z]+\s*\d+)/);
+    if (m) return m[1].replace(/\s+/g, '').toUpperCase();
+    return raw.replace(/\s+/g, '').toUpperCase();
+  }
+  // 店家key -> store对象：先按编号建一遍，再按名字补一遍（只在还没有的key上补），跟原逻辑
+  // "stores.find(按编号) || stores.find(按名字)"（编号优先、数组里先出现的先中）保持完全一致
+  const _storeByKey = new Map();
+  stores.forEach(st => {
+    if (!st.code) return;
+    const k = _fastExtractStoreKey(st.code);
+    if (k && !_storeByKey.has(k)) _storeByKey.set(k, st);
+  });
+  stores.forEach(st => {
+    const k = _fastExtractStoreKey(st.name);
+    if (k && !_storeByKey.has(k)) _storeByKey.set(k, st);
+  });
+  function _fastResolveStoreDisplayName(key, rawValuesForKey) {
+    const ag = _aliasByOwnKey.get(key);
+    if (ag) return ag.code ? `${ag.code} - ${ag.name || ''}` : (ag.name || ag.code);
+    const matched = _storeByKey.get(key);
+    if (matched) return matched.code ? `${matched.code} - ${matched.nameKm || matched.name || ''}` : matched.name;
+    if (rawValuesForKey && rawValuesForKey.length) {
+      return rawValuesForKey.slice().sort((a,b) => {
+        const aHas = /^[A-Za-z]+\s*\d+/.test(a), bHas = /^[A-Za-z]+\s*\d+/.test(b);
+        if (aHas !== bHas) return aHas ? -1 : 1;
+        return b.length - a.length;
+      })[0];
+    }
+    return key;
+  }
   const _rawShopValues = [
     ...stores.map(s => s.name),
     ...allSales.map(s => s.shopCode || s.shopName || '')
   ].filter(Boolean).filter(n => !_hiddenShopNames.includes(n));
   const _shopKeyRaws = {};
   _rawShopValues.forEach(raw => {
-    const key = extractStoreKey(raw);
+    const key = _fastExtractStoreKey(raw);
     if (!key) return;
     (_shopKeyRaws[key] = _shopKeyRaws[key] || []).push(raw);
   });
-  const shopKeys = Object.keys(_shopKeyRaws).sort((a,b) => resolveStoreDisplayName(a,_shopKeyRaws[a]).localeCompare(resolveStoreDisplayName(b,_shopKeyRaws[b])));
-  const shopOpts = shopKeys.map(key => `<option value="${esc(key)}">${esc(resolveStoreDisplayName(key, _shopKeyRaws[key]))}</option>`).join('');
+  const shopKeys = Object.keys(_shopKeyRaws);
+  const _shopDisplayNames = {};
+  shopKeys.forEach(key => { _shopDisplayNames[key] = _fastResolveStoreDisplayName(key, _shopKeyRaws[key]); });
+  shopKeys.sort((a,b) => _shopDisplayNames[a].localeCompare(_shopDisplayNames[b]));
+  const shopOpts = shopKeys.map(key => `<option value="${esc(key)}">${esc(_shopDisplayNames[key])}</option>`).join('');
   return `
   <div class="page-header"><div class="page-title">🔍 ${t('saleListTitle')}</div></div>
   <div class="card" style="margin-bottom:10px;padding:10px 16px">
