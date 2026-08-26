@@ -1920,6 +1920,48 @@ const SUPABASE_URL = 'https://mkjvfjocmatgfhwxgamj.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ranZmam9jbWF0Z2Zod3hnYW1qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MzIxNDQsImV4cCI6MjA5NTAwODE0NH0.YDeuCQkt50wK9oHeLWlF_b6IYXeiDtplOWUa1-A4X30';
 const STORAGE_BUCKET = 'FXGJ';
 const DEFAULT_KHR_RATE = 4000; // 🔓 2026-08：老板确认的柬币兑美元汇率 1:4000，导入核对结果/聊天记录时默认带出这个值，可以手动改
+
+// ══════════════════════════════════════════════════════
+// 🔓 2026-08：业务员名单（销售登记/编辑合同里"业务员"改成下拉选择，不再允许手打）——
+// 老板要求从根上解决"业务员登录账号跟合同上打的名字对不上号"的问题：以后业务员这一栏只能从
+// 登录账号（角色=业务员，且账号还在用）里选，选出来的文字就是账号的display_name，
+// 保证跟这个人登录后自己"我的业绩"里用来匹配的名字100%一致，不会再出现打错字/名字没对上号的情况。
+// 名单在app启动时预先拉一次（见startApp），之后每次进"销售登记"/打开"编辑合同"最多每30秒重新拉一次，
+// 老板在"员工管理"里新建/停用账号后，不用等重新登录，最多30秒内其他人打开这个下拉框就能看到最新的。
+// ══════════════════════════════════════════════════════
+window._salesStaffRoster = null;        // null=还没拉取过；[]=拉取过但目前没有业务员账号；[{username,displayName},...]=正常名单
+window._salesStaffRosterFetchedAt = 0;
+async function refreshSalesStaffRoster(force) {
+  if (!force && window._salesStaffRoster && Date.now() - window._salesStaffRosterFetchedAt < 30000) return window._salesStaffRoster;
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/morodok_users?role=eq.sales&active=eq.true&select=username,display_name&order=display_name.asc`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+    );
+    const rows = await res.json();
+    if (Array.isArray(rows)) {
+      window._salesStaffRoster = rows.map(r => ({ username: r.username, displayName: r.display_name || r.username })).filter(r => r.displayName);
+      window._salesStaffRosterFetchedAt = Date.now();
+    }
+    // 拉取失败/返回格式不对：保留上一次成功拉到的名单不动，不能因为这一次网络问题就把下拉框清空，卡住业务员登记合同
+  } catch(e) { /* 同上，保留旧名单 */ }
+  return window._salesStaffRoster;
+}
+// 生成"业务员"下拉框的<option>列表。currentValue：编辑合同时传入这份合同当前存的业务员文字——
+// 哪怕这个人现在不在名单里了（离职/账号被停用/是老数据手打的名字），也要把这个值保留成一个可选项，
+// 而且默认选中它，不然一编辑保存，这份合同的业务员归属就被悄悄改掉了
+function buildStaffRosterOptionsHtml(roster, currentValue) {
+  const list = Array.isArray(roster) ? roster : [];
+  const cur = (currentValue || '').trim();
+  const curInList = cur && list.some(r => staffNorm(r.displayName) === staffNorm(cur));
+  const legacyOpt = (cur && !curInList)
+    ? `<option value="${esc(cur)}" selected>${esc(cur)} (${tl('历史记录，未关联登录账号','existing record, not linked to a login','')})</option>`
+    : '';
+  const placeholderOpt = `<option value=""${!cur ? ' selected' : ''}>— ${tl('请选择业务员','Select salesperson','ជ្រើសរើសភ្នាក់ងារ')} —</option>`;
+  const opts = list.map(r => `<option value="${esc(r.displayName)}"${!legacyOpt && staffNorm(r.displayName)===staffNorm(cur) ? ' selected' : ''}>${esc(r.displayName)}</option>`).join('');
+  return placeholderOpt + legacyOpt + opts;
+}
+
 // ══════════════════════════════════════════════════════
 // 🔐 权限系统 AUTH SYSTEM
 // ══════════════════════════════════════════════════════
@@ -2070,6 +2112,7 @@ async function startApp() {
       setInterval(updateBadges, 60000);
       setInterval(refreshAuditBadge, 60000);
       refreshAuditBadge();
+      refreshSalesStaffRoster(); // 🔓 预先拉一次"业务员"下拉名单，等真正点进销售登记时基本已经是现成的，不用等
       return;
     }
     _retries++;
@@ -2468,10 +2511,14 @@ window.uploadExtraImages = async function(input, contractId) {
 function renderSaleAdd() {
   const phones = DB_get('phones') || [];
   const opts = phones.map(p => `<option value="${p.id}">${esc(p.brand)} ${esc(p.model)} ${esc(p.storage||'')} — ${tl('库存','Stock','ស្តុក')}${p.stock}${tl('台','pcs','គ្រឿង')} (${tl('建议','Suggested','ណែនាំ')}${fmt(p.price)})</option>`).join('');
-  const allSales = DB_get('sales') || [];
-  // 业务员选项：从历史合同中提取
-  const staffNames = [...new Set(allSales.map(s=>s.salesperson||'').filter(Boolean))].sort();
-  const staffOpts = staffNames.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  // 🔓 2026-08：业务员改成从登录账号里选，不再让手打（见文件前面的 refreshSalesStaffRoster/buildStaffRosterOptionsHtml）。
+  // 后台刷新一下名单（30秒内拉过就跳过，不会每次进这个页面都打一次Supabase），万一这次还没拉到过（刚开App就冲进来这个页面），
+  // 先用占位提示，拉到之后只更新这一个下拉框，不重新渲染整个页面，不会把客户已经填了一半的其他字段冲掉
+  refreshSalesStaffRoster().then(roster => {
+    const sel = document.getElementById('sSalesperson');
+    if (sel && window._currentPage === 'sale-add') sel.innerHTML = buildStaffRosterOptionsHtml(roster, sel.value);
+  });
+  const staffOptsHtml = buildStaffRosterOptionsHtml(window._salesStaffRoster, '');
   return `
   <div class="page-header">
     <div class="page-title">➕ 新建合同</div>
@@ -2495,8 +2542,8 @@ function renderSaleAdd() {
           <div id="storeDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:8px;max-height:220px;overflow-y:auto;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,.15)"></div>
         </div>
         <div class="form-group"><label>${t('salesperson')}</label>
-          <input id="sSalesperson" list="staffList" placeholder="${t('salesperson')}" autocomplete="off">
-          <datalist id="staffList">${staffOpts}</datalist>
+          <select id="sSalesperson">${staffOptsHtml}</select>
+          ${window._salesStaffRoster === null ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">${tl('业务员名单加载中…','Loading salesperson list…','')}</div>` : ''}
         </div>
       </div>
       <div id="phoneDupMsg"></div>
@@ -3650,6 +3697,12 @@ window.editSale = function(id) {
   const sales = DB_get('sales') || [];
   const s = sales.find(x => String(x.id) === String(id));
   if (!s) return;
+  // 🔓 后台顺手刷新一下业务员名单（30秒内拉过就跳过），拉到之后只更新这个弹窗里的下拉框本身，
+  // 不重新弹一次modal，避免打断老板正在编辑的其他字段
+  refreshSalesStaffRoster().then(roster => {
+    const sel = document.getElementById('eSalesperson');
+    if (sel) sel.innerHTML = buildStaffRosterOptionsHtml(roster, s.salesperson || '');
+  });
   const phones = DB_get('phones') || [];
   // 🔧 修复"列表显示是A型号，点编辑变成B型号"的bug：
   // 老合同/新建合同的 modelId 字段基本都是空的（新建合同时压根没存这个字段），
@@ -3675,7 +3728,7 @@ window.editSale = function(id) {
       <div><label style="font-size:11px;color:var(--muted)">${tl('客户姓名','Customer Name','ឈ្មោះអតិថិជន')}</label><input id="eCust" value="${s.customer}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('客户电话','Customer Phone','ទូរស័ព្ទអតិថិជន')}</label><input id="eCustPhone" value="${s.customerPhone||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('店铺名称','Store Name','ឈ្មោះហាង')}</label><input id="eShop" value="${s.shopName||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">${tl('业务员','Salesperson','ភ្នាក់ងារ')}</label><input id="eSalesperson" value="${s.salesperson||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('业务员','Salesperson','ភ្នាក់ងារ')}</label><select id="eSalesperson" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${buildStaffRosterOptionsHtml(window._salesStaffRoster, s.salesperson||'')}</select></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('手机型号','Phone Model','ម៉ូដែលទូរស័ព្ទ')}</label><select id="eModel" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${phoneOpts}</select></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('销售价格','Sale Price','តម្លៃលក់')} ($)</label><input id="eSalePrice" type="number" value="${s.salePrice}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('首付金额','Deposit','ប្រាក់ដាក់ដំបូង')} ($)</label><input id="eDeposit" type="number" value="${s.deposit}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
@@ -8451,7 +8504,10 @@ const STAFF_ALIAS_GROUPS = [
 ];
 
 // 名字规范化：去掉所有空格 + 转小写，"Seang Hai"/"SEANGHAI"/"seanghai" 会被认成同一个字符串
-const staffNorm = s => (s||'').replace(/\s+/g,'').toLowerCase();
+// 🔧 跟店铺编号的坑一样：手机键盘（尤其高棉语输入法）打字时经常在名字中间夹带看不见的零宽字符，
+// 肉眼完全看不出来，但会导致同一个人的某一笔合同被判定成"不是同一个人"，业务员自己查"我的业绩"时
+// 那笔单子就凭空消失了——这里统一先去掉这些隐形字符再比较，跟 storeNorm() 用的是同一套字符集
+const staffNorm = s => (s||'').replace(/[​‌‍﻿­]/g, '').replace(/\s+/g,'').toLowerCase();
 
 // 把每个单词首字母大写，其余小写："KEO PUTHI" -> "Keo Puthi"，用来统一展示格式（都用英文/规范大小写）
 function staffTitleCase(s) {
@@ -8818,8 +8874,9 @@ function renderMyPerformance() {
   const canViewAll = ['salesManager','manager','boss'].includes(role) || (role === 'auditor' && canViewMyPerformanceSpecial());
   const allSales = DB_get('sales') || [];
   const td = today();
-  // 去空格（不只是首尾，是全部空格都去掉）+ 转小写，"Thuon Chansreychess" 和 "Thuonchansreychess" 会被认成同一个人
-  const norm = s => (s||'').replace(/\s+/g,'').toLowerCase();
+  // 🔧 直接复用上面全局的 staffNorm（不再自己写一份一样的逻辑）——两处逻辑长得一样很容易改了一处忘了改另一处，
+  // 之前就出现过这种情况：这里少了 storeNorm() 那样的隐形字符过滤，导致个别业务员自己"我的业绩"漏单
+  const norm = staffNorm;
 
   function findAliasGroup(name) {
     const n = norm(name);
@@ -8985,11 +9042,25 @@ function renderMyPerformance() {
     // 🔧 点进"每日/每月出单"明细时(showStaffOrderDetail)，是按"分组后的统一展示名字"去匹配合同的，
     // 所以这里也要把stats.name换成同一个展示名，不然点进去会查不到任何记录
     if (matchedGroup) stats.name = matchedGroup.name;
+    // 🔧 一单都看不到，十有八九不是真的没出单，而是这个账号的登录用户名/花名还没跟合同上"业务员"
+    // 那一栏填的写法关联起来（常见于刚入职、或者名字写法跟登录名不完全一样）。以前这里是直接显示
+    // 一片空白，本人和主管都不知道是系统没配对好，只能反馈"看不到自己的单子"再靠人工排查半天——
+    // 现在直接把原因和该找谁讲清楚，本人一眼就知道怎么办，不用等着上报
+    const noMatchNotice = stats.total > 0 ? '' : `
+    <div class="card" style="border:1.5px solid #ffb74d;background:#fff8e1;margin-bottom:16px">
+      <div style="font-weight:700;color:#e65100;margin-bottom:6px">⚠️ ${tl('没有匹配到任何属于你账号的合同','No contracts matched to your account','')}</div>
+      <div style="font-size:12px;color:#795548;line-height:1.6">${tl(
+        '如果你确实有出过单，大概率是你的登录账号还没跟合同上"业务员"栏填的名字关联起来（比如刚入职、或者名字写法不完全一样）。请找主管或老板，在"业务员业绩 → 姓名归并管理"里把你的登录用户名加进你的分组，加完刷新这个页面就能看到了。',
+        "If you do have contracts on file, your login is probably not yet linked to however your name was typed on those contracts (e.g. newly added, or a spelling mismatch). Ask your manager to add your login username under your group in 'Sales Performance → Merge Names' — refresh this page once that's done.",
+        ''
+      )}</div>
+    </div>`;
     return `
     <div class="page-header">
       <div class="page-title">📊 ${tl('我的业绩','My Performance','សមិទ្ធិផលរបស់ខ្ញុំ')}</div>
       <div class="page-sub">${tl('查看自己的出单量统计','Your order volume stats','ស្ថិតិចំនួនកិច្ចសន្យារបស់អ្នក')}</div>
     </div>
+    ${noMatchNotice}
     ${kpiCardsHtml([
       ['📅', tl('今日出单','Today','ថ្ងៃនេះ'), stats.todayCount, 'var(--sky)'],
       ['📆', tl('本月出单','This Month','ខែនេះ'), stats.thisMonthCount, 'var(--green)'],
