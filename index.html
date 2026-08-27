@@ -1952,13 +1952,36 @@ async function refreshSalesStaffRoster(force) {
 // 而且默认选中它，不然一编辑保存，这份合同的业务员归属就被悄悄改掉了
 function buildStaffRosterOptionsHtml(roster, currentValue) {
   const list = Array.isArray(roster) ? roster : [];
+  // 🔓 2026-08老板反馈：有些老员工的登录账号display_name当初是老板自己方便认人，用中文花名设置的
+  // （比如"丽莎"/"小B"/"谢海"），但柬埔寨员工自己登录看不懂中文。这里下拉框不直接显示账号的
+  // display_name，而是先去"姓名归并管理"（staffAliasGroups）里查这个账号的登录名对应哪个分组，
+  // 有的话就显示那个分组已经维护好的英文名——这份名单本来就是给"业务员业绩"团队排行榜用的，
+  // 现在10个业务员账号也刚好都已经归并过、都有英文名了，直接复用，不用再单独维护一份。
+  // 如果这个账号还没被归并到任何分组（比如刚创建、还没人处理过），才退回显示账号本身的display_name。
+  const groups = getStaffAliasGroups();
+  const seenNames = new Set();
+  const resolved = [];
+  list.forEach(r => {
+    const loginNames = [r.displayName, r.username].filter(Boolean);
+    const matchedGroup = groups.find(g => g.aliases.some(a => loginNames.some(n => staffNorm(a) === staffNorm(n))));
+    const effectiveName = matchedGroup ? matchedGroup.name : r.displayName;
+    const key = staffNorm(effectiveName);
+    if (effectiveName && !seenNames.has(key)) { seenNames.add(key); resolved.push(effectiveName); }
+  });
+  resolved.sort((a,b) => a.localeCompare(b));
+
   const cur = (currentValue || '').trim();
-  const curInList = cur && list.some(r => staffNorm(r.displayName) === staffNorm(cur));
+  // 🔧 老合同存的可能是归并前的写法(比如中文花名"丽莎")——不能直接拿这个原文去跟下拉框里的英文名比对，
+  // 会比对不上、误判成"没归并的历史记录"。这里先按跟canonicalStaffDisplayName同一套归并规则把cur也
+  // 转成统一展示名(即"丽莎"→"You Doliza")，能对上分组的话就直接选中对应的英文选项，
+  // 不会因为编辑时换了个下拉框就多出一条看起来重复的"历史记录"选项
+  const curCanonical = cur ? canonicalStaffDisplayName(cur, groups) : '';
+  const curInList = cur && resolved.some(n => staffNorm(n) === staffNorm(curCanonical));
   const legacyOpt = (cur && !curInList)
     ? `<option value="${esc(cur)}" selected>${esc(cur)} (${tl('历史记录，未关联登录账号','existing record, not linked to a login','')})</option>`
     : '';
   const placeholderOpt = `<option value=""${!cur ? ' selected' : ''}>— ${tl('请选择业务员','Select salesperson','ជ្រើសរើសភ្នាក់ងារ')} —</option>`;
-  const opts = list.map(r => `<option value="${esc(r.displayName)}"${!legacyOpt && staffNorm(r.displayName)===staffNorm(cur) ? ' selected' : ''}>${esc(r.displayName)}</option>`).join('');
+  const opts = resolved.map(n => `<option value="${esc(n)}"${!legacyOpt && staffNorm(n)===staffNorm(curCanonical) ? ' selected' : ''}>${esc(n)}</option>`).join('');
   return placeholderOpt + legacyOpt + opts;
 }
 
@@ -8741,6 +8764,9 @@ window.staffAliasRenameGroup = function(i) {
   const nn = prompt(tl('输入新的显示名字','Enter new display name',''), g.name);
   if (nn === null || !nn.trim()) return;
   g.name = staffTitleCase(nn.trim());
+  // 🔧 改名后如果新名字本身还没在这个分组的"写法"列表里，顺手补进去——不然以后新合同存的都是这个新名字，
+  // 却因为不在aliases里而对不上号，反而跟这个人以前的老合同被拆成两个不同的人
+  if (!g.aliases.some(a => staffNorm(a) === staffNorm(g.name))) g.aliases.push(g.name);
   saveStaffAliasGroups(groups);
   _refreshAfterStaffAliasChange();
 };
