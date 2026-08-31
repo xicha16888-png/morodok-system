@@ -10954,7 +10954,9 @@ function renderFundStats() {
     const earlyProfit = earlyPays.filter(r=>gIds.has(String(r.contractId))).reduce((a,r)=>a+(+r.actualProfit||0),0);
     // 店家返点
     const rebate = gSales.reduce((a,s)=>a+(+s.storeRebate||0),0);
-    return { g, gSales, gPays, totalIn, recovered, remaining, interest, penalty, earlyProfit, rebate };
+    // 🔧 总投入金额 = 总投入本金 + 店家返点：投资人实际投入的总金额（本金放出去 + 给店家的返点也是投资人出的钱）
+    const investorTotal = totalIn + rebate;
+    return { g, gSales, gPays, totalIn, recovered, remaining, interest, penalty, earlyProfit, rebate, investorTotal };
   });
 
   // 供"查看明细"表格使用：把每组的还款流水（含客户姓名）存到全局变量
@@ -10977,7 +10979,7 @@ function renderFundStats() {
     <button class="btn btn-outline btn-sm" onclick="nav('fund-settings')" style="margin-left:auto">⚙️ 管理账户组</button>
   </div>
 
-  ${stats.map(({g, gSales, totalIn, recovered, remaining, interest, penalty, earlyProfit, rebate}) => `
+  ${stats.map(({g, gSales, totalIn, recovered, remaining, interest, penalty, earlyProfit, rebate, investorTotal}) => `
   <div class="card" style="margin-bottom:18px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
       <div>
@@ -10990,7 +10992,12 @@ function renderFundStats() {
       </div>
       <span class="badge badge-blue">${gSales.length} 笔合同</span>
     </div>
-    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="stats-grid" style="grid-template-columns:repeat(5,1fr)">
+      <div class="stat-card" style="background:#fff3e0;border-left:3px solid var(--amber)">
+        <div class="stat-label">总投入金额</div>
+        <div class="stat-value" style="color:var(--amber)">${fmt(investorTotal)}</div>
+        <div class="stat-sub">总投入本金 + 店家返点（投资人实投）</div>
+      </div>
       <div class="stat-card" style="background:#e3f2fd;border-left:3px solid var(--blue)">
         <div class="stat-label">总投入本金</div>
         <div class="stat-value" style="color:var(--blue)">${fmt(totalIn)}</div>
@@ -11009,7 +11016,7 @@ function renderFundStats() {
       <div class="stat-card" style="background:#f3e5f5;border-left:3px solid #9c27b0">
         <div class="stat-label">回收率</div>
         <div class="stat-value" style="color:#9c27b0">${totalIn>0?(recovered/totalIn*100).toFixed(1):0}%</div>
-        <div class="stat-sub">已回收 / 总投入</div>
+        <div class="stat-sub">已回收 / 总投入本金</div>
       </div>
     </div>
     <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-top:10px">
