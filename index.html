@@ -10925,8 +10925,10 @@ function renderFundStats() {
       const d = s.date.replace(/\//g,'-');
       return d >= start && d <= end;
     });
-    // 总投入 = 售价 - 首付
-    const totalIn = gSales.reduce((a,s) => a + ((+s.salePrice||0) - (+s.deposit||0)), 0);
+    // 🔧 2026-08修复：总投入本金 = 每笔订单的放款总额（installmentAmount，业务员登记的实际放款本金）
+    // 旧公式"售价-首付"在新方式合同下是错的：新方式 salePrice 存的是零售价参考数字（仅记录，不参与计算），
+    // deposit 固定为0，跟真实放款额对不上，导致资金统计跟月度财务报表的放款额不一致
+    const totalIn = gSales.reduce((a,s) => a + (+s.installmentAmount||0), 0);
     // 已回收本金
     const gIds = new Set(gSales.map(s=>String(s.id)));
     const gPaysRaw = pays.filter(p => gIds.has(String(p.contractId)));
@@ -10992,7 +10994,7 @@ function renderFundStats() {
       <div class="stat-card" style="background:#e3f2fd;border-left:3px solid var(--blue)">
         <div class="stat-label">总投入本金</div>
         <div class="stat-value" style="color:var(--blue)">${fmt(totalIn)}</div>
-        <div class="stat-sub">售价 − 首付 合计</div>
+        <div class="stat-sub">每笔订单放款额合计</div>
       </div>
       <div class="stat-card" style="background:#e8f5e9;border-left:3px solid var(--green)">
         <div class="stat-label">已回收本金</div>
