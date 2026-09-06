@@ -12449,6 +12449,17 @@ window.saveAudit = async function(contractId) {
     const checkRes = await fetch(
       `${SUPABASE_URL}/rest/v1/morodok_audits?contract_id=eq.${contractId}&select=id`,
       { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
+    // 🔧 修复"保存审核显示成功、但列表还是未审核"的bug：
+    // 以前这里不管Supabase服务器实际返回的状态码是什么，永远显示"保存成功"——
+    // 如果服务器因为权限(RLS)或者字段问题拒绝了这次写入，界面上完全看不出来，
+    // 只有回销售查询/合同审核列表才会发现其实根本没存上。现在每一步都先检查
+    // response.ok，任何一步失败都会：1)在控制台打印服务器返回的具体错误内容
+    // (方便排查是权限问题还是别的)；2)在页面上如实显示"保存失败"，不再谎报成功。
+    if (!checkRes.ok) {
+      const errText = await checkRes.text();
+      console.error('[审核保存] 查询是否已有记录失败:', checkRes.status, errText);
+      throw new Error(`查询失败(${checkRes.status})：${errText.slice(0,200)}`);
+    }
     const existing = await checkRes.json();
 
     const payload = {
@@ -12461,25 +12472,42 @@ window.saveAudit = async function(contractId) {
       updated_at: new Date().toISOString()
     };
 
-    if (existing.length) {
+    let writeRes;
+    if (Array.isArray(existing) && existing.length) {
       // UPDATE
-      await fetch(
+      writeRes = await fetch(
         `${SUPABASE_URL}/rest/v1/morodok_audits?contract_id=eq.${contractId}`,
         { method: 'PATCH', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`,
           'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
           body: JSON.stringify(payload) });
     } else {
       // INSERT
-      await fetch(
+      writeRes = await fetch(
         `${SUPABASE_URL}/rest/v1/morodok_audits`,
         { method: 'POST', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`,
           'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
           body: JSON.stringify(payload) });
     }
-    if (msgEl) { msgEl.textContent = '✅ '+tl('保存成功','Saved','បានរក្សាទុកជោគជ័យ'); setTimeout(()=>msgEl.textContent='', 3000); }
+    if (!writeRes.ok) {
+      const errText = await writeRes.text();
+      console.error('[审核保存] 写入失败:', writeRes.status, errText);
+      throw new Error(`写入失败(${writeRes.status})：${errText.slice(0,200)}`);
+    }
+    // 🔧 修复"明明保存成功，列表却还是显示未审核"的另一个真正原因：
+    // "销售查询"页和"合同审核"列表页里的"审核人"这一列(renderAuditorBadge)，
+    // 读的都是同一份全局缓存 window._auditMap，这份缓存有60秒的有效期(见
+    // loadAuditMapForSaleList)——保存审核之后如果60秒内没到、缓存没过期，
+    // 界面上"审核人"这一列就还是读到保存前的旧数据，看起来像是没保存上。
+    // 这里保存成功后立刻把这份缓存也同步更新掉、并把过期时间清零(强制下次
+    // 该刷新的地方一定会重新拉)，不用再等满60秒。
+    window._auditMap = window._auditMap || {};
+    window._auditMap[String(contractId)] = payload;
+    window._auditMapFetchedAt = 0;
+    if (msgEl) { msgEl.textContent = '✅ '+tl('保存成功','Saved','បានរក្សាទុកជោគជ័យ'); msgEl.style.color='var(--green)'; setTimeout(()=>msgEl.textContent='', 3000); }
     renderAuditList();
   } catch(e) {
     if (msgEl) { msgEl.textContent = '❌ '+tl('保存失败：','Save failed: ','រក្សាទុកមិនជោគជ័យ៖ ')+e.message; msgEl.style.color='red'; }
+    alert('❌ 审核保存失败：' + e.message + '\n\n请把这条错误截图发给管理员排查（也可以打开浏览器控制台F12查看更详细的信息）。');
   }
 };
 
