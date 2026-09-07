@@ -1779,7 +1779,7 @@ function updateBadges() {
   const td = today();
   // 🔖 侧边栏数字只算"完全没还"的，部分还款/历史数据修正的不计进来，跟逾期提醒页主列表口径保持一致
   const cnt = (DB_get('sales') || []).reduce((c, s) => {
-    if (s.status === '提前结清') return c;
+    if (s.status === '提前结清' || s.status === '已取消') return c;
     return c + s.schedule.filter(p => !p.paid && !p.partialPaid && !p.dataFixFlag && p.dueDate && p.dueDate.replace(/\//g,'-') < td).length;
   }, 0);
   // Desktop badge
@@ -1848,7 +1848,7 @@ function renderHome() {
   const td = today();
   const overdue = [];
   sales.forEach(s => {
-    if (s.status === '提前结清') return;
+    if (s.status === '提前结清' || s.status === '已取消') return;
     s.schedule.forEach(p => { if (!p.paid && p.dueDate && p.dueDate.replace(/\//g,'-') < td) overdue.push({s, p}); });
   });
   const tPaid = pays.reduce((a, p) => a + (+p.principal) + (+p.interest), 0);
@@ -6555,7 +6555,7 @@ window.filterProfitTable = function() {
 
 function renderReminderTomorrow() {
   const tomorrow = addDays(today(), 1), sales = DB_get('sales')||[], items = [];
-  sales.forEach(s => { if (s.status==='提前结清') return; s.schedule.forEach(p => { if (!p.paid && p.dueDate && p.dueDate.replace(/\//g,'-') === tomorrow) items.push({s,p}); }); });
+  sales.forEach(s => { if (s.status==='提前结清' || s.status==='已取消') return; s.schedule.forEach(p => { if (!p.paid && p.dueDate && p.dueDate.replace(/\//g,'-') === tomorrow) items.push({s,p}); }); });
   const total = items.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
   return `
   <div class="page-header"><div class="page-title">⏰ ${t('tomorrowTitle')}</div><div class="page-sub">${tomorrow} · ${t('tomorrowDue')}</div></div>
@@ -6595,7 +6595,7 @@ function renderReminderOverdue() {
   }
 
   sales.forEach(s => {
-    if (s.status === '提前结清') return;
+    if (s.status === '提前结清' || s.status === '已取消') return;
     s.schedule.forEach(p => {
       if (p.paid) return;
       // 🔖 这一期是脚本修正过的历史数据问题（之前被误标记"已还"，实际还差一点尾款），
@@ -6864,7 +6864,7 @@ window.filterOverdue = function() {
 function renderPaymentQuery() {
   const td = today(), nd = addDays(td, 30), sales = DB_get('sales')||[], items = [];
   sales.forEach(s => {
-    if (s.status === '提前结清' || s.status === '已结清') return;
+    if (s.status === '提前结清' || s.status === '已结清' || s.status === '已取消') return;
     s.schedule.forEach(p => {
       if (!p.paid && p.dueDate) {
         const dd = p.dueDate.replace(/\//g,'-');
@@ -7798,7 +7798,7 @@ function renderFinanceReport() {
       // 统计所有当前未还、到期日已过的期次（不限制到期日所属月份，与"逾期未还提醒"页面口径一致）
       const overduePeriods = [];
       allSales.forEach(s => {
-        if (s.status === '已结清' || s.status === '提前结清') return;
+        if (s.status === '已结清' || s.status === '提前结清' || s.status === '已取消') return;
         s.schedule.forEach(p => {
           if (!p.paid && p.dueDate && p.dueDate.replace(/\//g,'-') < td) {
             const diffDays = Math.floor((new Date(td) - new Date(p.dueDate)) / 86400000);
@@ -10099,7 +10099,7 @@ function getFundOverdueRows(groupId) {
   const td = today();
   const rows = [];
   sales.forEach(s => {
-    if (s.status === '提前结清') return;
+    if (s.status === '提前结清' || s.status === '已取消') return;
     const overduePeriods = (s.schedule||[]).filter(p => !p.paid && p.dueDate && p.dueDate.replace(/\//g,'-') < td);
     if (!overduePeriods.length) return;
     const maxDays = Math.max(...overduePeriods.map(p => Math.floor((new Date(td)-new Date(p.dueDate.replace(/\//g,'-')))/86400000)));
