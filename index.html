@@ -3411,6 +3411,7 @@ function renderSaleList() {
         <option value="进行中">${t('active')}</option>
         <option value="已结清">${t('settled')}</option>
         <option value="提前结清">${tl('提前结清','Early Settled','សង​មុន')}</option>
+        <option value="已取消">${tl('已取消','Cancelled','បានបោះបង់')}</option>
       </select>
       <select id="saleMonthFilter" onchange="filterSales()" style="min-width:130px">
         <option value="">${tl('全部月份','All Months','ខែ​ទាំង​អស់')}</option>
@@ -3492,13 +3493,16 @@ function buildSaleRowsHtml(rows) {
         <div style="background:#e3f2fd;height:4px;border-radius:2px;margin-top:4px;width:60px">
           <div style="background:var(--sky);height:4px;border-radius:2px;width:${Math.round(paid/s.periods*100)}%"></div>
         </div></td>
-      <td><span class="badge ${s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':s.status==='逾期'?'badge-red':'badge-blue'}">${s.status}</span></td>
+      <td><span class="badge ${s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':s.status==='已取消'?'badge-gray':s.status==='逾期'?'badge-red':'badge-blue'}">${s.status}</span></td>
       <td>${renderAuditorBadge(s.id)}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-outline btn-sm" onclick="viewSchedule('${s.id}')">${t('repaySchedule')}</button>
         <button class="btn btn-outline btn-sm" style="margin-left:4px" onclick="showContractImages('${s.id}')">📎 材料</button>
         ${canEditSaleFull() ? `
         <button class="btn btn-primary btn-sm" style="margin-left:4px" onclick="editSale('${s.id}')">${tl('编辑','Edit','កែប្រែ')}</button>
+        ` : ''}
+        ${canEditSaleFull() && s.status !== '已取消' && s.status !== '已结清' && s.status !== '提前结清' ? `
+        <button class="btn btn-outline btn-sm" style="margin-left:4px;color:var(--red);border-color:var(--red)" onclick="cancelSale('${s.id}')">${tl('取消订单','Cancel Order','បោះបង់ការបញ្ជាទិញ')}</button>
         ` : ''}
         ${canDeleteSale() ? `
         <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSale('${s.id}')">${t('deleteBtn')}</button>
@@ -4168,6 +4172,69 @@ window.deleteSale = function(id) {
     }
     logActivity('删除合同', `#${s.id} ${s.customer}`, `贷款金额$${s.installmentAmount||0}（已放入回收站）`);
     // 内审页面删的话，删完刷新审核列表；其它页面还是回销售查询页
+    if (document.getElementById('auditDetailModal')?.style.display === 'block') {
+      document.getElementById('auditDetailModal').style.display = 'none';
+      renderAuditList();
+    } else {
+      nav('sale-list');
+    }
+  });
+};
+
+// 🆕 2026-09："取消订单"功能——客户签约后、还没真正开始还款前反悔/换货/退货的场景，
+// 跟"删除合同"不一样：不放回收站，排期表原样保留只当历史记录，方便以后查；
+// 而且状态改成"已取消"以后会自动从逾期/明日到期/首页统计/需还款查询/月度财务报表/
+// 资金占用逾期这些地方排除掉，不会被误当成真的欠款客户去催收。
+window.cancelSale = function(id) {
+  if (!canEditSaleFull()) {
+    alert(tl('权限不足，无法取消订单','No permission to cancel this order','គ្មានសិទ្ធិ')); return;
+  }
+  const s = (DB_get('sales')||[]).find(x => String(x.id) === String(id));
+  if (!s) return;
+  if (s.status === '已取消') { alert(tl('这笔订单已经是"已取消"状态了','This order is already cancelled','')); return; }
+  const paidCount = (s.schedule||[]).filter(p=>p.paid).length;
+  showModal(`🚫 ${tl('取消订单','Cancel Order','បោះបង់ការបញ្ជាទិញ')} #${s.id} — ${esc(s.customer)}`, `
+    ${paidCount > 0 ? `<p style="margin-bottom:12px;color:var(--red)">⚠️ ${tl('这笔合同已经有','This contract already has','')} ${paidCount} ${tl('期收到过还款，取消前请确认清楚，还款记录不会被清除。','period(s) paid. Please confirm before cancelling — payment records will not be removed.','')}</p>` : ''}
+    <div class="form-group">
+      <label>${tl('取消日期','Cancel Date','កាលបរិច្ឆេទបោះបង់')}</label>
+      <input type="date" id="cancelDateInput" value="${today()}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">
+    </div>
+    <div class="form-group">
+      <label>${tl('违约金/罚金($，没有就填0)','Cancellation Fee ($, 0 if none)','ប្រាក់ពិន័យ')}</label>
+      <input type="number" id="cancelFeeInput" value="0" step="0.01" min="0" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">
+    </div>
+    <div class="form-group">
+      <label>${tl('备注(可选)','Note (optional)','កំណត់ចំណាំ')}</label>
+      <input type="text" id="cancelNoteInput" placeholder="${tl('例如：客户改拿OPPO','e.g. customer switched to OPPO','')}" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">
+    </div>
+    <div style="margin-top:14px;display:flex;gap:10px">
+      <button class="btn btn-danger" onclick="submitCancelSale('${id}')">${tl('确认取消订单','Confirm Cancel','បញ្ជាក់ការបោះបង់')}</button>
+      <button class="btn btn-outline" onclick="closeModal()">${tl('先不取消','Close','បិទ')}</button>
+    </div>
+  `);
+};
+
+window.submitCancelSale = function(id) {
+  const cancelDate = document.getElementById('cancelDateInput')?.value || today();
+  const cancelFee = +(document.getElementById('cancelFeeInput')?.value || 0);
+  const noteExtra = (document.getElementById('cancelNoteInput')?.value || '').trim();
+  const u0 = getCurrentUser(); const role0 = u0?.role || '';
+  const isAdmin = role0 === 'boss' || role0 === 'manager';
+  const confirmFn = isAdmin ? confirmDelete : confirmAuditorDelete; // 复用删除功能的密码确认，避免手滑误取消
+  confirmFn(`${tl('确认取消这笔订单','Confirm cancelling this order','')}？${tl('罚金','Fee','')} $${fmt(cancelFee)}`, function() {
+    const sales = DB_get('sales') || [];
+    const s = sales.find(x => String(x.id) === String(id));
+    if (!s) return;
+    const before = { status: s.status, contractNetProfit: s.contractNetProfit, storeRebate: s.storeRebate };
+    s.status = '已取消';
+    s.cancelDate = cancelDate;
+    s.cancelFee = cancelFee;
+    s.contractNetProfit = cancelFee;
+    s.storeRebate = 0;
+    s.note = (s.note ? s.note + '；' : '') + `客户取消订单，收取违约金$${cancelFee}` + (noteExtra ? '；' + noteExtra : '');
+    DB_set('sales', sales);
+    logActivity('订单取消', `#${s.id} ${s.customer}`, `取消订单，收违约金$${cancelFee}；状态${before.status}→已取消，合同净利润$${before.contractNetProfit||0}→$${cancelFee}，店铺返点$${before.storeRebate||0}→$0；排期表原样保留仅作历史记录`);
+    alert(`✅ ${tl('已按取消订单处理','Cancelled','')}`);
     if (document.getElementById('auditDetailModal')?.style.display === 'block') {
       document.getElementById('auditDetailModal').style.display = 'none';
       renderAuditList();
