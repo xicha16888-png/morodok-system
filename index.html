@@ -4272,15 +4272,34 @@ function renderPaymentAdd() {
   const monthPays  = pays.filter(p => (p.date||'').replace(/\//g,'-').slice(0,7) === monthPfx);
   const monthAmt   = monthPays.reduce((a,p)=>a+(+p.principal||0)+(+p.interest||0)+(+p.penalty||0),0);
 
+  // 今日应收/已收：口径跟"本月应收/实收"公式一致——今天到期的所有期次算应收，
+  // 这批期次里已经标记"已还"的算已收（不管是今天还是提前哪天实际还的）。
+  // sales 这里已经是"进行中"状态的合同（已取消/提前结清/已结清都不会有到期未走完的期次）。
+  const dueTodayPeriods = sales.flatMap(s => s.schedule.filter(p => p.dueDate && p.dueDate.replace(/\//g,'-') === td));
+  const dueTodayAmt = dueTodayPeriods.reduce((a,p)=>a+(+p.principalDue||0)+(+p.interestDue||0)+(+p.serviceFeeDue||0),0);
+  const dueTodayPaid = dueTodayPeriods.filter(p => p.paid);
+  const dueTodayCollected = dueTodayPaid.reduce((a,p)=>a+(+p.paidPrincipal||0)+(+p.paidInterest||0)+(+p.paidServiceFee||0),0);
+  const dueTodayRate = dueTodayPeriods.length > 0 ? (dueTodayCollected / (dueTodayAmt||1) * 100).toFixed(1) : null;
+
   return `
   <div class="page-header"><div class="page-title">💳 ${t('paymentTitle')}</div></div>
 
   <!-- 今日快览 -->
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:6px">
+    <div style="background:#fff;border-radius:10px;padding:14px 16px;border-left:4px solid #7e57c2;box-shadow:0 1px 4px rgba(0,0,0,.07)">
+      <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">${tl('今日应收','Due Today','ត្រូវ​ទទួល​ថ្ងៃ​នេះ')}</div>
+      <div style="font-size:20px;font-weight:800;color:#7e57c2">${fmt(dueTodayAmt)}</div>
+      <div style="font-size:11px;color:#90a4ae;margin-top:2px">${dueTodayPeriods.length} ${tl('期到期','due','ដល់​កំណត់')}</div>
+    </div>
     <div style="background:#fff;border-radius:10px;padding:14px 16px;border-left:4px solid var(--green);box-shadow:0 1px 4px rgba(0,0,0,.07)">
-      <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">${tl('今日收款','Today','ថ្ងៃ​នេះ')}</div>
-      <div style="font-size:20px;font-weight:800;color:var(--green)">${fmt(todayAmt)}</div>
-      <div style="font-size:11px;color:#90a4ae;margin-top:2px">${todayPays.length} ${tl('笔','records','ករណី')}</div>
+      <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">${tl('今日已收','Collected of Today','ទទួល​បាន')}</div>
+      <div style="font-size:20px;font-weight:800;color:var(--green)">${fmt(dueTodayCollected)}</div>
+      <div style="font-size:11px;color:#90a4ae;margin-top:2px">${dueTodayPaid.length}/${dueTodayPeriods.length} ${tl('期','','')} ${dueTodayRate!==null?`· ${tl('完成','Rate','')} ${dueTodayRate}%`:''}</div>
+    </div>
+    <div style="background:#fff;border-radius:10px;padding:14px 16px;border-left:4px solid var(--sky);box-shadow:0 1px 4px rgba(0,0,0,.07)">
+      <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">${tl('今日收款(现金到账)','Cash In Today','ថ្ងៃ​នេះ')}</div>
+      <div style="font-size:20px;font-weight:800;color:var(--sky)">${fmt(todayAmt)}</div>
+      <div style="font-size:11px;color:#90a4ae;margin-top:2px">${todayPays.length} ${tl('笔，含补收逾期/提前还款','records, incl. overdue/early','ករណី')}</div>
     </div>
     <div style="background:#fff;border-radius:10px;padding:14px 16px;border-left:4px solid var(--blue);box-shadow:0 1px 4px rgba(0,0,0,.07)">
       <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">${tl('本月收款','This Month','ខែ​នេះ')}</div>
@@ -4292,6 +4311,9 @@ function renderPaymentAdd() {
       <div style="font-size:20px;font-weight:800;color:var(--amber)">${pays.length}</div>
       <div style="font-size:11px;color:#90a4ae;margin-top:2px">${tl('全部收款记录','All Records','កំណត់​ត្រា​ទាំង​អស់')}</div>
     </div>
+  </div>
+  <div style="font-size:11px;color:#90a4ae;margin:0 2px 14px">
+    ${tl('今日应收 = 今天到期的期次(本金+利息)；今日已收 = 这批期次里已还的部分（不管哪天实际还的）','Due Today = periods due today; Collected of Today = the paid portion of that same batch (whenever it was actually paid)','')}
   </div>
 
   <!-- 录入表单 -->
