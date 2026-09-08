@@ -2005,12 +2005,24 @@ const ROLE_PAGES = {
                'reminder-tomorrow','reminder-overdue','payment-query'],
   auditor:   ['audit'],
   reviewClerk: ['audit','sale-list'],
+  // 🆕 2026-09：财务角色——只给看数据的页面，不给sale-add/payment-add/early-payment/audit/
+  // purchase-add/inventory/company/phones/suppliers这些能新建/编辑业务数据的页面。
+  // 混进来的几个页面(expenses/staff-stats/fund-stats)里原本就有的编辑/合并/删除按钮，
+  // 已经用isFinanceReadOnly()单独挡掉了，财务角色进去只能看，按钮不会显示。
+  finance:   ['home','sale-list','stats-collection','stats-profit','finance-report','expenses',
+               'store-stats','staff-stats','fund-stats','reminder-tomorrow','reminder-overdue','payment-query'],
 };
 
 const ROLE_LABEL = {
   boss:'老板', manager:'主管', salesManager:'业务主管', sales:'业务员',
-  entry:'录入员', collector:'催收员', auditor:'内审员', reviewClerk:'审核文员'
+  entry:'录入员', collector:'催收员', auditor:'内审员', reviewClerk:'审核文员', finance:'财务'
 };
+
+// 🆕 2026-09：判断当前登录用户是不是"财务"这个只读角色——凡是这个函数返回true的地方，
+// 页面里对应的新增/编辑/删除/合并按钮都不显示，financeROLE只能看数据，不能改任何数据
+function isFinanceReadOnly() {
+  return (getCurrentUser()?.role || '') === 'finance';
+}
 
 // SHA-256 加密
 async function sha256(text) {
@@ -3425,7 +3437,7 @@ function renderSaleList() {
         <option value="">${tl('全部店家','All Stores','ហាង​ទាំង​អស់')}</option>
         ${shopOpts}
       </select>
-      <button class="btn btn-primary btn-sm" onclick="nav('sale-add')">${t('newContractBtn')}</button>
+      ${!isFinanceReadOnly() ? `<button class="btn btn-primary btn-sm" onclick="nav('sale-add')">${t('newContractBtn')}</button>` : ''}
       ${canAddStoreCode() ? `<button class="btn btn-outline btn-sm" onclick="openManageStoreCodesModal()">🔧 ${tl('店铺编号管理','Manage Store Codes','គ្រប់គ្រងលេខកូដហាង')}</button>` : ''}
     </div>
     <div id="saleShopBadge" style="margin-bottom:8px"></div>
@@ -8029,6 +8041,7 @@ function renderExpenses() {
     <div class="page-sub">${tl('记录日常运营支出，自动纳入月度财务与利润统计','Record daily operating expenses, auto-included in monthly finance & profit stats','កត់ត្រាចំណាយប្រតិបត្តិការប្រចាំថ្ងៃ ដោយស្វ័យប្រវត្តិបញ្ចូលទៅរបាយការណ៍ហិរញ្ញវត្ថុ')}</div>
   </div>
 
+  ${!isFinanceReadOnly() ? `
   <div class="card">
     <div class="card-title" style="margin-bottom:16px">${t("addExpense")}</div>
     <div class="form-grid">
@@ -8048,6 +8061,7 @@ function renderExpenses() {
     </div>
     <div id="exMsg"></div>
   </div>
+  ` : ''}
 
   <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px">
     <div class="card">
@@ -8122,7 +8136,7 @@ function buildExpenseTable(expenses) {
       <td class="fw700 text-red">${fmt(e.amount)}</td>
       <td style="color:var(--muted);font-size:12px">${e.otherBiz ? '<span class="badge badge-amber" style="margin-right:4px">⚠️需核实</span>' : ''}${esc(e.note||'—')}</td>
       <td style="font-size:12px">${esc(e.person||'—')}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.id})">${t('deleteBtn')}</button></td>
+      <td>${!isFinanceReadOnly() ? `<button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.id})">${t('deleteBtn')}</button>` : ''}</td>
     </tr>`).join('')}
   </table></div>`;
 }
@@ -9041,6 +9055,8 @@ function renderMyPerformance() {
       const nameAttr = esc(d.name).replace(/"/g,'&quot;');
       const nameCell = isUnfilled
         ? `<td style="font-weight:600;position:sticky;left:0;background:#fafafa;color:#90a4ae">${esc(d.name)}</td>`
+        : isFinanceReadOnly()
+        ? `<td style="font-weight:600;position:sticky;left:0;background:#fff;color:var(--navy)">${esc(d.name)}</td>`
         : `<td class="matrixNameCell" draggable="true" data-staffname="${nameAttr}"
              ondragstart="window._staffDragStart(event)" ondragover="window._staffDragOver(event)"
              ondragleave="window._staffDragLeave(event)" ondrop="window._staffDrop(event)"
@@ -9206,7 +9222,7 @@ function renderMyPerformance() {
       <div class="page-title">📊 ${tl('业务员业绩','Sales Performance','សមិទ្ធិផលភ្នាក់ងារលក់')}</div>
       <div class="page-sub">${tl('点击业务员姓名查看每日/每月出单明细','Click a name to see daily/monthly breakdown','ចុចឈ្មោះដើម្បីមើលព័ត៌មានលម្អិត')}</div>
     </div>
-    <button class="btn btn-outline" style="font-size:12px;padding:8px 14px;white-space:nowrap" onclick="window.openStaffAliasManager()">🔧 ${tl('姓名归并管理','Merge Names','')}</button>
+    ${!isFinanceReadOnly() ? `<button class="btn btn-outline" style="font-size:12px;padding:8px 14px;white-space:nowrap" onclick="window.openStaffAliasManager()">🔧 ${tl('姓名归并管理','Merge Names','')}</button>` : ''}
   </div>
   ${kpiCardsHtml([
     ['👥', tl('业务员数','Salespeople','ចំនួន'), board.length, 'var(--sky)'],
@@ -11043,7 +11059,7 @@ function renderFundStats() {
   return `
   <div class="page-header">
     <div class="page-title">🏦 资金统计</div>
-    <button class="btn btn-outline btn-sm" onclick="nav('fund-settings')" style="margin-left:auto">⚙️ 管理账户组</button>
+    ${!isFinanceReadOnly() ? `<button class="btn btn-outline btn-sm" onclick="nav('fund-settings')" style="margin-left:auto">⚙️ 管理账户组</button>` : ''}
   </div>
 
   ${stats.map(({g, gSales, totalIn, recovered, remaining, interest, penalty, earlyProfit, rebate, investorTotal}) => `
@@ -12798,6 +12814,7 @@ function renderUserMgmt() {
           <option value="collector">催收员</option>
           <option value="auditor">内审员</option>
           <option value="reviewClerk">审核文员</option>
+          <option value="finance">财务</option>
           <option value="manager">主管</option>
           <option value="boss">老板</option>
         </select>
@@ -12857,9 +12874,9 @@ window.loadUserList = async function() {
     if (!Array.isArray(users)||!users.length) {
       wrap.innerHTML='<div style="padding:20px;color:#90a4ae;text-align:center">暂无账号</div>'; return;
     }
-    const roleBg = {boss:'#ffebee',manager:'#e8eaf6',salesManager:'#e0f2f1',sales:'#e8f5e9',entry:'#e3f2fd',collector:'#fff3e0',auditor:'#f3e5f5',reviewClerk:'#eceff1'};
-    const roleColor = {boss:'#c62828',manager:'#283593',salesManager:'#00695c',sales:'#2e7d32',entry:'#1565c0',collector:'#e65100',auditor:'#6a1b9a',reviewClerk:'#455a64'};
-    const roleOrder = ['boss','manager','salesManager','sales','entry','collector','auditor','reviewClerk'];
+    const roleBg = {boss:'#ffebee',manager:'#e8eaf6',salesManager:'#e0f2f1',sales:'#e8f5e9',entry:'#e3f2fd',collector:'#fff3e0',auditor:'#f3e5f5',reviewClerk:'#eceff1',finance:'#e0f7fa'};
+    const roleColor = {boss:'#c62828',manager:'#283593',salesManager:'#00695c',sales:'#2e7d32',entry:'#1565c0',collector:'#e65100',auditor:'#6a1b9a',reviewClerk:'#455a64',finance:'#00838f'};
+    const roleOrder = ['boss','manager','salesManager','sales','entry','collector','auditor','reviewClerk','finance'];
 
     // 🔧 按角色分组，同类角色排在一起
     const byRole = {};
