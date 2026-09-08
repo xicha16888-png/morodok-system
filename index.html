@@ -2920,11 +2920,23 @@ function conditionLabel(c) {
 function buildPhoneCatalog() {
   const phones = DB_get('phones') || [];
   const cat = { Apple: {}, OPPO: {} };
+  const brandOf = p => p.brand === 'OPPO' ? 'OPPO' : 'Apple';
   phones.forEach(p => {
-    if (!p.maxLoanAmount) return; // 只收录有额度上限配置的型号
-    const brand = p.brand === 'OPPO' ? 'OPPO' : 'Apple';
+    if (!p.model || !p.maxLoanAmount) return; // 只收录有型号名+配置了放款限额的型号
+    const brand = brandOf(p);
     if (!cat[brand][p.model]) cat[brand][p.model] = {};
     cat[brand][p.model][p.storage || '标准'] = p.maxLoanAmount;
+  });
+  // 🛡️ 保险：如果某个品牌下一个"配了限额"的型号都没有(比如"手机型号管理"那边还没配置)，
+  // 不能让下拉框直接空掉卡住业务员开单——退一步，把该品牌下所有型号先列出来(不限额，
+  // getCurrentMaxLoan会返回null，updateLoanRange本来就能处理"没有上限"这种情况)。
+  ['Apple', 'OPPO'].forEach(brand => {
+    if (Object.keys(cat[brand]).length > 0) return;
+    phones.forEach(p => {
+      if (!p.model || brandOf(p) !== brand) return;
+      if (!cat[brand][p.model]) cat[brand][p.model] = {};
+      cat[brand][p.model][p.storage || '标准'] = p.maxLoanAmount || null;
+    });
   });
   return cat;
 }
@@ -2989,6 +3001,14 @@ function populateModelDropdown(brand) {
   const sel = document.getElementById('sModelName');
   if (!sel || !window.PHONE_CATALOG) return;
   const models = sortModelNames(Object.keys(window.PHONE_CATALOG[brand] || {}));
+  if (models.length === 0) {
+    // 🛡️ "手机型号管理"里这个品牌完全没有任何型号数据——下拉框不能干瞪眼空着，
+    // 明确提示业务员，并引导切换到"老方式(自由填写)"先把单开出来，不耽误做生意
+    sel.innerHTML = `<option value="">${esc(tl('（该品牌暂无型号数据，请用"老方式"或先去"手机型号管理"添加）','(No models configured for this brand — use "Old method" or add models first)','គ្មានទិន្នន័យម៉ូដែល'))}</option>`;
+    window._saleUIState.modelName = '';
+    onModelNameChange();
+    return;
+  }
   sel.innerHTML = models.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
   window._saleUIState.modelName = models[0] || '';
   onModelNameChange();
