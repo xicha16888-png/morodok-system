@@ -8036,9 +8036,14 @@ function renderExpenses() {
     byMonth[m] += +e.amount;
   });
   return `
-  <div class="page-header">
-    <div class="page-title">🧾 ${t('expensesTitle')}</div>
-    <div class="page-sub">${tl('记录日常运营支出，自动纳入月度财务与利润统计','Record daily operating expenses, auto-included in monthly finance & profit stats','កត់ត្រាចំណាយប្រតិបត្តិការប្រចាំថ្ងៃ ដោយស្វ័យប្រវត្តិបញ្ចូលទៅរបាយការណ៍ហិរញ្ញវត្ថុ')}</div>
+  <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <div>
+      <div class="page-title">🧾 ${t('expensesTitle')}</div>
+      <div class="page-sub">${tl('记录日常运营支出，自动纳入月度财务与利润统计','Record daily operating expenses, auto-included in monthly finance & profit stats','កត់ត្រាចំណាយប្រតិបត្តិការប្រចាំថ្ងៃ ដោយស្វ័យប្រវត្តិបញ្ចូលទៅរបាយការណ៍ហិរញ្ញវត្ថុ')}</div>
+    </div>
+    ${!isFinanceReadOnly() ? `<label class="btn btn-outline" style="cursor:pointer;white-space:nowrap">📥 ${tl('导入工资/提成表','Import Payroll Table','នាំចូលតារាងប្រាក់ខែ')}
+      <input type="file" accept=".xlsx,.xls" onchange="importExcel(this)" style="display:none">
+    </label>` : ''}
   </div>
 
   ${!isFinanceReadOnly() ? `
@@ -11310,13 +11315,14 @@ function renderCompany() {
     <button class="btn btn-primary" onclick="exportExcel()" style="background:#1e7e34">📊 ${_lang==='km'?'នាំចេញ Excel':_lang==='en'?'Export to Excel':'导出 Excel 报表'}</button>
     <button class="btn btn-primary" onclick="localBackup()" style="background:#7b1fa2">💾 ${_lang==='km'?'បម្រុងទុកខែនេះ':_lang==='en'?'Monthly Backup':'月度备份下载'}</button>
     <label class="btn btn-primary" style="background:#e65100;cursor:pointer;margin:0">
-      📥 导入 Excel 总表
+      📥 智能导入 Excel（合同/工资表）
       <input type="file" accept=".xlsx,.xls" onchange="importExcel(this)" style="display:none">
     </label>
   </div>
   <div id="backupReminder" style="margin-top:10px"></div>
   <div style="font-size:12px;color:var(--muted);margin-top:6px">
-    📊 ${_lang==='km'?'Excel រួមមាន: កិច្ចសន្យា, ការបង់ប្រាក់, ការចំណាយ':_lang==='en'?'Excel includes: Contracts, Payments, Expenses, Summary':'Excel 包含：合同列表、还款记录、开支记录、月度汇总 4 个工作表，可直接用 WPS/Excel 打开'}
+    📊 ${_lang==='km'?'Excel រួមមាន: កិច្ចសន្យា, ការបង់ប្រាក់, ការចំណាយ':_lang==='en'?'Excel includes: Contracts, Payments, Expenses, Summary':'Excel 包含：合同列表、还款记录、开支记录、月度汇总 4 个工作表，可直接用 WPS/Excel 打开'}<br>
+    📥 ${_lang==='km'?'ក៏អាចនាំចូលតារាងប្រាក់ខែ/ប្រាក់កំរៃ (ជួរឈរ "ឈ្មោះ" + ចំនួនទឹកប្រាក់) ដោយស្វ័យប្រវត្តិ':_lang==='en'?'Also auto-detects payroll/commission tables (a "Name" column + an amount column)':'也支持自动识别工资/提成表（含"姓名"列+金额列的表格），自动按人拆成日常开支记录，不用再单独找我写脚本导入'}
   </div>
   </div></div>`;
 }
@@ -11603,8 +11609,34 @@ window.importExcel = function(input) {
       }
       const isPeriodTableFormat = periodTableSheets.length > 0;
 
+      // 格式四：工资/提成表——部门/姓名/昵称/明细/实发提成(或实发工资/应发工资/金额)这种表，
+      // 老板每个月手动整理发给财务的那种。识别依据：某个工作表第1行表头里同时有"姓名"
+      // 和一个"实发/应发xx"或"金额"这样的钱数列。命中的话直接按"每人一笔员工工资开支"
+      // 导入，不会跟合同/还款数据混在一起处理。
+      let payrollSheet = null, payrollAmountCol = -1, payrollNameCol = -1;
       if (!isNewFormat && !isOldFormat && !isPeriodTableFormat) {
-        alert('❌ 找不到合适的工作表。\n新格式需要「合同基本信息」+「每期还款明细」\n旧格式需要「合同总表」\n或业务员原始表格式（需含"合同编号"列）');
+        const AMOUNT_HEADERS = ['实发总计','实发合计','总发工资','应发合计','实发提成','实发工资','应发工资','实发金额','应发金额','实发','应发'];
+        for (const name of wb.SheetNames) {
+          const sh = wb.Sheets[name];
+          const headerRows = XLSX.utils.sheet_to_json(sh, { header: 1, range: 0, defval: '' });
+          const header = (headerRows[0] || []).map(h => String(h||'').trim());
+          const nameCol = header.indexOf('姓名');
+          if (nameCol === -1) continue;
+          let amtCol = -1;
+          for (const h of AMOUNT_HEADERS) { const i = header.indexOf(h); if (i !== -1) { amtCol = i; break; } }
+          if (amtCol === -1) continue;
+          payrollSheet = name; payrollNameCol = nameCol; payrollAmountCol = amtCol;
+          break;
+        }
+      }
+
+      if (payrollSheet) {
+        importPayrollSheet(wb, payrollSheet, payrollNameCol, payrollAmountCol);
+        return;
+      }
+
+      if (!isNewFormat && !isOldFormat && !isPeriodTableFormat) {
+        alert('❌ 找不到合适的工作表。\n新格式需要「合同基本信息」+「每期还款明细」\n旧格式需要「合同总表」\n或业务员原始表格式（需含"合同编号"列）\n或工资/提成表（需含"姓名"+"实发/应发金额"这样的列）');
         return;
       }
 
@@ -12086,6 +12118,71 @@ window.importExcel = function(input) {
   reader.readAsArrayBuffer(file);
 };
 
+// 工资/提成表导入——每人一行的表(部门/姓名/昵称/明细/实发提成 这种)，转成"每人一笔员工工资
+// 开支记录"批量写进日常开支，跟老板/财务之前手动一笔笔录进去的格式完全一样(cat固定"员工工资"，
+// 日期定在归属月份10号，备注写"姓名 X月提成/工资")。为了防止同一份表不小心传两次导致重复计入，
+// 导入前会先按"备注"去重——已经存在一模一样备注的那一行会跳过，不会重复算钱。
+function importPayrollSheet(wb, sheetName, nameCol, amountCol) {
+  const sh = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sh, { header: 1, range: 0, defval: '' });
+  const header = (rows[0] || []).map(h => String(h||'').trim());
+  const deptCol = header.indexOf('部门');
+  const noteCol = (() => { const i = header.indexOf('明细'); return i !== -1 ? i : header.indexOf('备注'); })();
+
+  // 表名/表头猜"提成"还是"工资"，猜不出就用通用的"薪资"
+  const kindLabel = /提成/.test(sheetName) ? '提成' : /工资|薪资/.test(sheetName) ? '工资' : '薪资';
+  // 表名里抓"2026年8月"这样的年月，抓不到就用今天所在月份兜底
+  const ym = (() => {
+    const m = sheetName.match(/(\d{4})\D{0,2}(\d{1,2})\s*月/);
+    if (m) return { y: +m[1], m: +m[2] };
+    const t = today().split('-');
+    return { y: +t[0], m: +t[1] };
+  })();
+  const dateStr = `${ym.y}-${String(ym.m).padStart(2,'0')}-10`;
+  const monthLabel = `${ym.m}月`;
+
+  const candidates = [];
+  for (let ri = 1; ri < rows.length; ri++) {
+    const r = rows[ri];
+    const name = String(r[nameCol] || '').trim();
+    const amt = +r[amountCol];
+    // 跳过小计/总计/部门分隔这类行：没有姓名，或者姓名/部门栏写着"小计""总计"字样
+    if (!name || /小计|总计|合计/.test(name)) continue;
+    if (deptCol !== -1 && /小计|总计|合计/.test(String(r[deptCol]||''))) continue;
+    if (!isFinite(amt) || amt === 0) continue;
+    const detail = noteCol !== -1 ? String(r[noteCol]||'').trim() : '';
+    candidates.push({ name, amt, detail });
+  }
+
+  if (!candidates.length) {
+    alert(`❌ 识别到"${sheetName}"是工资/提成表格式，但没找到能导入的数据行(需要"姓名"列+对应金额都不为空)`);
+    return;
+  }
+
+  const expenses = DB_get('expenses') || [];
+  const existingNotes = new Set(expenses.map(e => e.note));
+  const toAdd = [], skipped = [];
+  candidates.forEach(c => {
+    const note = `${c.name} ${monthLabel}${kindLabel}`;
+    if (existingNotes.has(note)) { skipped.push(note); return; }
+    toAdd.push({ id: null, date: dateStr, cat: '员工工资', amount: +c.amt.toFixed(2), note, person: c.name, payDate: '' });
+  });
+
+  const total = toAdd.reduce((a,e)=>a+e.amount, 0);
+  const preview = toAdd.slice(0,8).map(e => `${e.person}：$${fmt(e.amount)}`).join('\n') + (toAdd.length>8 ? `\n...等共${toAdd.length}人` : '');
+  const msg = `识别到"${sheetName}"是工资/提成表，共${candidates.length}人，其中${toAdd.length}人是新的、准备导入：\n\n${preview || '(无)'}\n\n合计 $${fmt(total)}，全部计入"日常开支→员工工资"，日期定为${dateStr}。` +
+    (skipped.length ? `\n\n⚠️ ${skipped.length}人这个月已经导入过(备注一模一样)，本次自动跳过，不会重复计入：${skipped.slice(0,5).join('、')}${skipped.length>5?'等':''}` : '') +
+    `\n\n确定要导入吗？`;
+  if (!confirm(msg)) return;
+
+  if (!toAdd.length) { alert('本次没有新增记录(可能都已经导入过了)。'); return; }
+
+  toAdd.forEach(e => { e.id = newId(); expenses.push(e); });
+  DB_set('expenses', expenses);
+  logActivity('导入工资/提成表', sheetName, `导入${toAdd.length}人，合计$${fmt(total)}，计入员工工资开支(${dateStr})` + (skipped.length ? `；跳过${skipped.length}人(已导入过)` : ''));
+  alert(`✅ 导入完成，共新增${toAdd.length}笔员工工资开支，合计$${fmt(total)}。` + (skipped.length ? `\n（另有${skipped.length}人本月已导入过，自动跳过）` : ''));
+  nav('expenses');
+}
 
 // ══════════════════════════════════════════════════════
 function renderAudit() {
