@@ -12778,8 +12778,14 @@ window.saveAudit = async function(contractId) {
     window._auditMap = window._auditMap || {};
     window._auditMap[String(contractId)] = payload;
     window._auditMapFetchedAt = 0;
-    if (msgEl) { msgEl.textContent = '✅ '+tl('保存成功','Saved','បានរក្សាទុកជោគជ័យ'); msgEl.style.color='var(--green)'; setTimeout(()=>msgEl.textContent='', 3000); }
+    if (msgEl) { msgEl.textContent = '✅ '+tl('保存成功','Saved','បានរក្សាទុកជោគជ័យ'); msgEl.style.color='var(--green)'; }
     renderAuditList();
+    // 🔧 保存成功后自动关掉这个审核详情弹窗，不用手动点右上角的×。
+    // 留200毫秒让"保存成功"这行字能被看到一眼，再关窗口。
+    setTimeout(() => {
+      const modal = document.getElementById('auditDetailModal');
+      if (modal) modal.style.display = 'none';
+    }, 200);
   } catch(e) {
     if (msgEl) { msgEl.textContent = '❌ '+tl('保存失败：','Save failed: ','រក្សាទុកមិនជោគជ័យ៖ ')+e.message; msgEl.style.color='red'; }
     alert('❌ 审核保存失败：' + e.message + '\n\n请把这条错误截图发给管理员排查（也可以打开浏览器控制台F12查看更详细的信息）。');
@@ -13177,4 +13183,3 @@ window.initPage = function(page) {
 </script>
 </body>
 </html>
-  
