@@ -2166,6 +2166,48 @@ async function startApp() {
   _connect();
 }
 
+// 🔧 修复"合同审核列表明明保存过、却一直显示待审核"的真正根源：
+// Supabase/PostgREST 对不带分页参数的查询有默认上限(每次最多回1000条)，超过部分会被
+// 服务器直接静默截断——不报错、HTTP状态也是200，只是数组长度封顶在1000。之前"合同审核"
+// 列表页、销售查询页的审核人角标、内审员绩效统计这三处，读 morodok_audits 表全表数据时
+// 都是一次性 select=*，完全没考虑到这张表现在已经超过1000条了：超出的那部分（包括最近
+// 新审核的记录）读不到，页面上就一直显示成默认的"待审核/未审核"，跟数据库里的真实数据完
+// 全对不上，看着就像是"保存了但没生效"。这个函数用 Range 请求头分页，1000条一批，一直拉到
+// 拉不满一批为止，保证不管这张表将来涨到多少条，都能读到全部数据，不会再被服务器悄悄截断。
+async function fetchAllMorodokAudits(selectClause) {
+  const pageSize = 1000;
+  let all = [];
+  let from = 0;
+  while (true) {
+    let res;
+    try {
+      res = await fetch(
+        `${SUPABASE_URL}/rest/v1/morodok_audits?select=${selectClause}`,
+        { headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Range-Unit': 'items',
+            'Range': `${from}-${from + pageSize - 1}`
+          } }
+      );
+    } catch(e) {
+      console.error('[审核数据分页拉取] 网络请求失败:', e);
+      break;
+    }
+    if (!res.ok && res.status !== 206) {
+      console.error('[审核数据分页拉取] 第' + (from / pageSize + 1) + '页失败:', res.status, await res.text().catch(()=>''));
+      break;
+    }
+    let rows;
+    try { rows = await res.json(); } catch(e) { break; }
+    if (!Array.isArray(rows)) break;
+    all = all.concat(rows);
+    if (rows.length < pageSize) break; // 这一页没拉满，说明已经是最后一页
+    from += pageSize;
+  }
+  return all;
+}
+
 // 刷新内审通知角标
 async function refreshAuditBadge() {
   const u = getCurrentUser();
@@ -3319,9 +3361,7 @@ async function loadAuditMapForSaleList() {
   if (Date.now() - window._auditMapFetchedAt < 60000) return;
   window._auditMapFetchedAt = Date.now();
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/morodok_audits?select=contract_id,auditor_name,status`,
-      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
-    const rows = await res.json();
+    const rows = await fetchAllMorodokAudits('contract_id,auditor_name,status');
     if (Array.isArray(rows)) {
       window._auditMap = {};
       rows.forEach(r => { window._auditMap[r.contract_id] = r; });
@@ -9558,10 +9598,7 @@ window.loadAuditorTabContent = async function() {
 
   let audits = [];
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/morodok_audits?select=*`,
-      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
-    const rows = await res.json();
-    if (Array.isArray(rows)) audits = rows;
+    audits = await fetchAllMorodokAudits('*');
   } catch(e) {}
 
   // 若切换到别的 tab 了，异步结果回来时不要覆盖
@@ -12309,10 +12346,8 @@ window.renderAuditList = async function() {
   // 获取审核记录
   let auditMap = {};
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/morodok_audits?select=*`,
-      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } });
-    const rows = await res.json();
-    if (Array.isArray(rows)) rows.forEach(r => { auditMap[r.contract_id] = r; });
+    const rows = await fetchAllMorodokAudits('*');
+    rows.forEach(r => { auditMap[r.contract_id] = r; });
   } catch(e) {}
   window._auditMap = auditMap; // 与销售查询页共用同一份缓存
 
@@ -13142,3 +13177,4 @@ window.initPage = function(page) {
 </script>
 </body>
 </html>
+  
