@@ -12700,20 +12700,38 @@ window.saveAudit = async function(contractId) {
       writeRes = await fetch(
         `${SUPABASE_URL}/rest/v1/morodok_audits?contract_id=eq.${contractId}`,
         { method: 'PATCH', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`,
-          'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          // 🔧 之前用 return=minimal，PostgREST 遇到 RLS(行级安全)悄悄把这次更新的
+          // 目标行数过滤成0条时，仍然会回 204/成功——用 anon key 写、又没有真的登录
+          // Supabase Auth 的情况下，这种"HTTP显示成功、其实一行都没真正改到"的情况
+          // 完全测不出来，界面永远显示"保存成功"，回头一看却还是原来的状态。改成
+          // return=representation，让服务器把实际改动的那一行数据回传回来，下面
+          // 再检查这个返回数组是不是真的有数据，才是真正确认"写没写进去"的办法。
+          'Content-Type': 'application/json', 'Prefer': 'return=representation' },
           body: JSON.stringify(payload) });
     } else {
       // INSERT
       writeRes = await fetch(
         `${SUPABASE_URL}/rest/v1/morodok_audits`,
         { method: 'POST', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`,
-          'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          'Content-Type': 'application/json', 'Prefer': 'return=representation' },
           body: JSON.stringify(payload) });
     }
     if (!writeRes.ok) {
       const errText = await writeRes.text();
       console.error('[审核保存] 写入失败:', writeRes.status, errText);
       throw new Error(`写入失败(${writeRes.status})：${errText.slice(0,200)}`);
+    }
+    // 🔧 真正的确认：return=representation 之后，服务器会把实际写进去的那一行数据传回来。
+    // 如果 HTTP 状态是成功、但传回来的数组是空的——那就是 RLS(权限规则)在服务器那边
+    // 把这次写入悄悄拦下了(常见原因：anon key 没有真的登录 Supabase Auth，触发不了
+    // 要求"已登录用户"的权限规则)，实际上一行都没存进数据库。这种情况绝不能再显示
+    // "保存成功"，要老实报错，并且提示这是权限问题，不是网络或代码问题，需要去
+        // Supabase 后台检查 morodok_audits 表的 RLS policy。
+    let writtenRows = [];
+    try { writtenRows = await writeRes.json(); } catch(e) { /* 某些情况下body为空，走下面的空数组分支 */ }
+    if (!Array.isArray(writtenRows) || writtenRows.length === 0) {
+      console.error('[审核保存] HTTP显示成功，但服务器实际没有返回任何写入的行——大概率是Supabase的RLS(行级安全策略)拦截了这次写入。');
+      throw new Error('数据库拒绝了这次写入(可能是权限设置问题)，界面显示的"保存成功"是假的。请联系管理员检查Supabase后台 morodok_audits 表的RLS策略。');
     }
     // 🔧 修复"明明保存成功，列表却还是显示未审核"的另一个真正原因：
     // "销售查询"页和"合同审核"列表页里的"审核人"这一列(renderAuditorBadge)，
