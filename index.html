@@ -1083,13 +1083,14 @@ function buildSidebar() {
       ${navItem('inventory','📦',t('inventory'))}
       ${navItem('company','⚙️',t('company'))}
     </div>`:''}
-    ${role==='boss'?`
+    ${(role==='boss'||role==='salesManager')?`
     <div class="nav-divider"></div>
     <div style="padding:4px 0">
       <div class="sb-label">系统管理</div>
-      <div class="nav-item" data-page="user-mgmt"><span class="nav-icon">👥</span>账号管理</div>
+      <div class="nav-item" data-page="user-mgmt"><span class="nav-icon">👥</span>${role==='salesManager'?'业务员账号':'账号管理'}</div>
+      ${role==='boss'?`
       <div class="nav-item" data-page="activity-log"><span class="nav-icon">📜</span>操作日志</div>
-      <div class="nav-item" data-page="trash"><span class="nav-icon">🗑️</span>回收站</div>
+      <div class="nav-item" data-page="trash"><span class="nav-icon">🗑️</span>回收站</div>`:''}
     </div>`:''}
     <div style="height:16px"></div>`;
 
@@ -1997,7 +1998,12 @@ const ROLE_PAGES = {
                'store-stats','audit','staff-stats','fund-stats','reminder-tomorrow','reminder-overdue',
                'payment-query','phones','suppliers','purchase-add','inventory','company','my-performance'],
   // 🔓 2026-08：加上store-stats，业务主管才能进"店家统计"页操作店家归并（拖动合并/归并管理）
-  salesManager: ['home','sale-add','sale-list','audit','store-stats','reminder-tomorrow','reminder-overdue','payment-query','my-performance'],
+  // 🔓 2026-09：加上user-mgmt——业务主管可以自己给新入职的业务员开账号，不用再麻烦老板。
+  // 注意：这不是把整个"账号管理"页面开放给业务主管，renderUserMgmt/loadUserList等函数
+  // 内部对salesManager角色做了严格限制（见下方isSalesManagerLimited()相关逻辑），
+  // 业务主管在这个页面里只能看到/新增"业务员"角色的账号，看不到、也改不了老板/主管/
+  // 内审员/财务等其他角色的账号，更不能把任何账号改成老板/主管权限。
+  salesManager: ['home','sale-add','sale-list','audit','store-stats','reminder-tomorrow','reminder-overdue','payment-query','my-performance','user-mgmt'],
   sales:     ['home','sale-add','sale-list','reminder-tomorrow','reminder-overdue','payment-query','my-performance'],
   entry:     ['home','sale-add','sale-list','payment-add','early-payment',
                'reminder-tomorrow','reminder-overdue','payment-query'],
@@ -13019,7 +13025,59 @@ window.purgeTrashUI = function(key, id) {
   });
 };
 
+// 🔓 2026-09：业务主管(salesManager)进"账号管理"页是受限模式——只能看/加"业务员"角色的账号，
+// 看不到、也动不了老板/主管/内审员/财务等其他账号。所有相关函数里但凡涉及权限范围的地方，
+// 统一用这个函数判断，不用到处重复写角色判断。
+function isUserMgmtLimited() {
+  return getCurrentUser()?.role === 'salesManager';
+}
+
 function renderUserMgmt() {
+  const limited = isUserMgmtLimited();
+  if (limited) {
+    return `
+    <div class="page-header">
+      <div class="page-title">👥 业务员账号</div>
+      <div class="page-sub">新员工入职，在这里直接给他开业务员账号，不用麻烦老板</div>
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div class="card-title" style="margin:0">业务员账号列表</div>
+        <button onclick="showAddUserForm()" class="btn btn-primary">➕ 新增业务员</button>
+      </div>
+      <div id="userListWrap"><div style="text-align:center;padding:20px;color:#90a4ae">加载中...</div></div>
+    </div>
+    <div class="card" id="addUserCard" style="display:none">
+      <div class="card-title">➕ 新增业务员账号</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#546e7a;display:block;margin-bottom:5px">用户名</label>
+          <input id="nuUsername" type="text" placeholder="登录用户名（英文）"
+            style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#546e7a;display:block;margin-bottom:5px">显示姓名</label>
+          <input id="nuDisplay" type="text" placeholder="员工姓名"
+            style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#546e7a;display:block;margin-bottom:5px">密码</label>
+          <input id="nuPassword" type="password" placeholder="初始密码"
+            style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#546e7a;display:block;margin-bottom:5px">角色</label>
+          <input type="text" value="业务员" disabled
+            style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:#f5f7fa;color:#546e7a">
+        </div>
+      </div>
+      <div id="addUserMsg" style="margin-bottom:10px;font-size:12px"></div>
+      <div style="display:flex;gap:10px">
+        <button onclick="saveNewUser()" class="btn btn-primary">💾 保存</button>
+        <button onclick="document.getElementById('addUserCard').style.display='none'" class="btn btn-outline">取消</button>
+      </div>
+    </div>`;
+  }
   return `
   <div class="page-header">
     <div class="page-title">👥 账号管理</div>
@@ -13079,15 +13137,19 @@ window.showAddUserForm = function() {
   document.getElementById('nuUsername').value = '';
   document.getElementById('nuDisplay').value = '';
   document.getElementById('nuPassword').value = '';
-  document.getElementById('nuRole').value = 'sales';
+  const roleSel = document.getElementById('nuRole'); // 受限模式下这个下拉框被替换成了禁用的文字框，不存在，跳过
+  if (roleSel) roleSel.value = 'sales';
   document.getElementById('addUserMsg').textContent = '';
 };
 
 window.saveNewUser = async function() {
+  const limited = isUserMgmtLimited();
   const username = document.getElementById('nuUsername')?.value.trim().toLowerCase();
   const display  = document.getElementById('nuDisplay')?.value.trim();
   const password = document.getElementById('nuPassword')?.value.trim().toLowerCase();
-  const role     = document.getElementById('nuRole')?.value;
+  // 🔒 受限模式（业务主管）下，角色框只是个禁用的展示文字，不读它的值——不管页面怎么被改，
+  // 业务主管新建的账号一律强制是"业务员"，没有办法通过这个入口开出更高权限的账号。
+  const role = limited ? 'sales' : document.getElementById('nuRole')?.value;
   const msg = document.getElementById('addUserMsg');
   if (!username||!display||!password||!role) {
     if(msg){msg.textContent='❌ 请填写所有字段';msg.style.color='red';} return;
@@ -13102,6 +13164,7 @@ window.saveNewUser = async function() {
       const err = await res.json();
       throw new Error(err.message || '创建失败');
     }
+    logActivity && logActivity(limited ? '业务主管新增业务员账号' : '新增账号', username, `角色：${ROLE_LABEL[role]||role}`);
     if(msg){msg.textContent='✅ 账号创建成功';msg.style.color='green';}
     document.getElementById('addUserCard').style.display='none';
     loadUserList();
@@ -13113,16 +13176,40 @@ window.saveNewUser = async function() {
 window.loadUserList = async function() {
   const wrap = document.getElementById('userListWrap');
   if (!wrap) return;
+  const limited = isUserMgmtLimited();
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/morodok_users?select=*&order=created_at.asc`,
-      { headers:{ 'apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}` } });
+    // 🔒 受限模式：直接在查询里就只要role=sales的账号，业务主管连老板/主管/内审员等
+    // 其他角色账号的数据都不会拉到本地，不是靠前端隐藏，从数据源头就隔开。
+    const url = limited
+      ? `${SUPABASE_URL}/rest/v1/morodok_users?select=*&role=eq.sales&order=created_at.asc`
+      : `${SUPABASE_URL}/rest/v1/morodok_users?select=*&order=created_at.asc`;
+    const res = await fetch(url, { headers:{ 'apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}` } });
     const users = await res.json();
     if (!Array.isArray(users)||!users.length) {
-      wrap.innerHTML='<div style="padding:20px;color:#90a4ae;text-align:center">暂无账号</div>'; return;
+      wrap.innerHTML = `<div style="padding:20px;color:#90a4ae;text-align:center">${limited?'暂无业务员账号':'暂无账号'}</div>`; return;
     }
     const roleBg = {boss:'#ffebee',manager:'#e8eaf6',salesManager:'#e0f2f1',sales:'#e8f5e9',entry:'#e3f2fd',collector:'#fff3e0',auditor:'#f3e5f5',reviewClerk:'#eceff1',finance:'#e0f7fa'};
     const roleColor = {boss:'#c62828',manager:'#283593',salesManager:'#00695c',sales:'#2e7d32',entry:'#1565c0',collector:'#e65100',auditor:'#6a1b9a',reviewClerk:'#455a64',finance:'#00838f'};
     const roleOrder = ['boss','manager','salesManager','sales','entry','collector','auditor','reviewClerk','finance'];
+
+    if (limited) {
+      // 受限模式：全是业务员，不用按角色分组，也不给角色下拉框（不能把人改成别的角色）
+      wrap.innerHTML = `<div class="table-wrap"><table>
+        <tr><th>用户名</th><th>显示姓名</th><th>状态</th><th>创建时间</th><th>操作</th></tr>
+        ${users.map(u=>`<tr>
+          <td class="fw700">${esc(u.username)}</td>
+          <td>${esc(u.display_name)}</td>
+          <td>${u.active?'<span style="color:var(--green)">✅ 正常</span>':'<span style="color:var(--red)">🚫 禁用</span>'}</td>
+          <td style="font-size:12px;color:#90a4ae">${u.created_at?.slice(0,10)||''}</td>
+          <td>
+            <button onclick="resetUserPwd('${u.id}','${esc(u.username)}')" class="btn btn-outline btn-sm" style="font-size:11px;margin-right:4px">🔑 重置密码</button>
+            <button onclick="toggleUserActive('${u.id}',${u.active})" class="btn btn-outline btn-sm" style="font-size:11px;color:${u.active?'var(--red)':'var(--green)'}">${u.active?'禁用':'启用'}</button>
+            <button onclick="deleteUser('${u.id}','${esc(u.username)}')" class="btn btn-danger btn-sm" style="font-size:11px;margin-left:4px">🗑️ 删除</button>
+          </td>
+        </tr>`).join('')}
+      </table></div>`;
+      return;
+    }
 
     // 🔧 按角色分组，同类角色排在一起
     const byRole = {};
@@ -13159,6 +13246,9 @@ window.loadUserList = async function() {
 };
 
 window.changeUserRole = async function(userId, newRole, username) {
+  // 🔒 业务主管的受限列表里根本没有这个角色下拉框（见loadUserList），正常操作不会走到这里；
+  // 这里再加一道防线，防止有人直接在控制台里手动调用这个函数改权限。
+  if (isUserMgmtLimited()) { alert('您没有权限修改账号角色'); return; }
   if (!confirm(`确定把 ${username} 的角色改成"${ROLE_LABEL[newRole]||newRole}"吗？`)) { loadUserList(); return; }
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/morodok_users?id=eq.${userId}`,
@@ -13199,15 +13289,28 @@ window.toggleUserActive = async function(userId, current) {
 };
 
 window.deleteUser = async function(userId, username) {
+  const limited = isUserMgmtLimited();
+  if (limited) {
+    // 🔒 受限模式下再查一次这个账号真实的角色，防止有人绕开受限列表直接调用这个函数
+    // 去删业务员以外的账号（哪怕删除密码也对不上，双重保险）。
+    try {
+      const chk = await fetch(`${SUPABASE_URL}/rest/v1/morodok_users?id=eq.${userId}&select=role`,
+        { headers:{ 'apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}` } });
+      const rows = await chk.json();
+      if (!Array.isArray(rows) || rows[0]?.role !== 'sales') { alert('您没有权限删除这个账号'); return; }
+    } catch(e) { alert('校验失败，已取消删除'); return; }
+  }
   if (!confirm(`⚠️ 确定要彻底删除账号 "${username}" 吗？此操作不可撤销！`)) return;
   const pwd = prompt('请输入删除密码确认：');
-  if (pwd !== DELETE_PWD) { alert('密码错误，已取消删除'); return; }
+  // 🔓 2026-08起的约定：内审员+业务主管统一用0000这个删除密码，跟老板/主管的cao分开(见AUDITOR_DELETE_PWD)
+  const requiredPwd = limited ? AUDITOR_DELETE_PWD : DELETE_PWD;
+  if (pwd !== requiredPwd) { alert('密码错误，已取消删除'); return; }
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/morodok_users?id=eq.${userId}`,
       { method:'DELETE', headers:{ 'apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}`,
         'Prefer':'return=minimal' } });
     if (!res.ok) throw new Error('状态码 ' + res.status);
-    logActivity && logActivity('删除账号', username, '账号已彻底删除');
+    logActivity && logActivity(limited ? '业务主管删除业务员账号' : '删除账号', username, '账号已彻底删除');
     alert(`✅ 账号 "${username}" 已删除`);
     loadUserList();
   } catch(e) { alert('删除失败：'+e.message); }
