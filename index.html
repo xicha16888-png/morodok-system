@@ -2085,15 +2085,28 @@ window.doLogin = async function() {
   if(errEl) errEl.style.display='none';
   try {
     const hash = await sha256(password);
+    // 🔧 2026-09：用户名里有没有空格，登录的时候打不打这个空格都应该能登进去——不管是像
+    // "San Sokheng"这种当初不小心把姓名整个填进用户名栏、变成"san sokheng"的历史账号，
+    // 还是以后新建账号时用户名/姓名两栏填法不统一，都不该因为一个空格登不进去。
+    // 做法：不再用ilike只精确按打出来的字符串去数据库筛，而是把所有启用中的账号都拉出来，
+    // 本地按"去掉所有空格、转小写"之后是否一致来匹配——这张表也就十几二十个人，拉全量没有负担。
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/morodok_users?username=ilike.${encodeURIComponent(username)}&active=eq.true&select=*`,
+      `${SUPABASE_URL}/rest/v1/morodok_users?active=eq.true&select=*`,
       { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
     );
     const users = await res.json();
     if (!Array.isArray(users) || users.length === 0) {
       throw new Error(tl('用户名不存在或已禁用','User not found or disabled','អ្នកប្រើ​មិន​មាន ឬ​ត្រូវបាន​បិទ'));
     }
-    const user = users[0];
+    const stripSpaces = s => String(s||'').trim().toLowerCase().replace(/\s+/g,'');
+    const usernameNoSpace = stripSpaces(username);
+    // 先按"转小写后完全一致(带空格原样比)"精确匹配；匹配不到再放宽成"去掉所有空格后一致"，
+    // 这样万一真的存在"abc"和"a bc"两个不同账号，优先认精确匹配的那个，不会认错人。
+    let user = users.find(u => String(u.username||'').trim().toLowerCase() === username);
+    if (!user) user = users.find(u => stripSpaces(u.username) === usernameNoSpace);
+    if (!user) {
+      throw new Error(tl('用户名不存在或已禁用','User not found or disabled','អ្នកប្រើ​មិន​មាន ឬ​ត្រូវបាន​បិទ'));
+    }
     if (user.password_hash !== hash) throw new Error(tl('密码错误','Incorrect password','ពាក្យ​សម្ងាត់​មិន​ត្រូវ'));
     // 保存登录状态（localStorage持久化，12小时内免登录）
     localStorage.setItem('morodok_user', JSON.stringify({
@@ -13162,6 +13175,9 @@ window.saveNewUser = async function() {
   if (!username||!display||!password||!role) {
     if(msg){msg.textContent='❌ 请填写所有字段';msg.style.color='red';} return;
   }
+  // 🔧 2026-09：出过实际案例——有人把"San Sokheng"整个姓名填进了"用户名"栏，用户名里带了个
+  // 空格(存成"san sokheng")，本人登录时没打这个空格，提示"用户名不存在"。这里不卡用户名
+  // 有没有空格（不强制改人家的填写习惯），改成登录那边做成"打不打空格都认"，见doLogin。
   try {
     const hash = await sha256(password);
     const res = await fetch(`${SUPABASE_URL}/rest/v1/morodok_users`,
