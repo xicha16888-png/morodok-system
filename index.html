@@ -1127,6 +1127,11 @@ const MOB_MORE_ITEMS = [
   {page:'purchase-add', icon:'🛒', label:'purchaseAdd'},
   {page:'inventory',    icon:'📦', label:'inventory'},
   {page:'company',      icon:'⚙️', label:'company'},
+  {divider:true},
+  // 🔓 2026-09：之前"账号管理"只加在了桌面端侧边栏的"系统管理"分组里，手机端"更多"菜单里
+  // 一直没有这一项——业务主管基本都是用手机操作，所以手机上根本进不去，等于白加了。
+  // 这里补上，老板/业务主管都能在手机"更多"菜单里看到（标签文字按角色显示不同，见buildMobileMore）。
+  {page:'user-mgmt',    icon:'👥', label:'账号管理'},
 ];
 
 const MORE_LABEL = {zh:'更多', en:'More', km:'ច្រើនទៀត'};
@@ -1163,8 +1168,11 @@ function buildMobileMore(activePage) {
       if (item.divider) return '<div class="mob-more-divider"></div>';
       const isActive = item.page === activePage;
       // "业务员业绩"这一项跟桌面端侧栏一样，业务员自己看到的叫"我的业绩"，其他角色看到"业务员业绩"
+      // "账号管理"这一项：业务主管看到的是受限版，标签改成"业务员账号"，跟桌面端侧边栏保持一致
       const label = item.page === 'my-performance'
         ? (role==='sales' ? tl('我的业绩','My Performance','សមិទ្ធិផលរបស់ខ្ញុំ') : tl('业务员业绩','Sales Performance','សមិទ្ធិផលភ្នាក់ងារលក់'))
+        : item.page === 'user-mgmt'
+        ? (role==='salesManager' ? '业务员账号' : '账号管理')
         : (t(item.label)||item.label);
       return `<button class="mob-more-item" onclick="closeMobMore();nav('${item.page}')" style="${isActive?'background:#f0f7ff;':''}">
         <span class="mmi">${item.icon}</span>
