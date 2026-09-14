@@ -8244,7 +8244,7 @@ function renderFinanceReport() {
 // ══════════════════════════════════════════════════════
 // 🆕 2026-09：加了"日常开销"这个类别——老板自己用银行账户流水表记账时，习惯把非工资的
 // 零散支出统一叫"日常开销"，加这个类别方便以后导入/手动录入时跟老板自己的叫法对上。
-const EXPENSE_CATS = ['房租','水电','员工工资','通讯费','交通费','餐饮','维修','广告推广','办公用品','税费','手机采购','锁机费用','AI数据费用','业务公关','日常开销','其他'];
+const EXPENSE_CATS = ['房租','水电','员工工资','提成','通讯费','交通费','餐饮','维修','广告推广','办公用品','税费','手机采购','锁机费用','AI数据费用','业务公关','日常开销','其他'];
 
 function renderExpenses() {
   const expenses = (DB_get('expenses')||[]).slice().reverse();
@@ -8352,7 +8352,7 @@ function buildCatSummary(list) {
 
 function buildExpenseTable(expenses) {
   if (!expenses.length) return `<div class="empty-state"><div class="ei">🧾</div><p>${t("noRecord")}</p></div>`;
-  const catColors = {'房租':'badge-red','员工工资':'badge-red','税费':'badge-red','水电':'badge-amber','通讯费':'badge-amber','交通费':'badge-amber','餐饮':'badge-blue','维修':'badge-amber','广告推广':'badge-purple','办公用品':'badge-blue','手机采购':'badge-green','锁机费用':'badge-amber','AI数据费用':'badge-purple','业务公关':'badge-blue','日常开销':'badge-gray','其他':'badge-gray'};
+  const catColors = {'房租':'badge-red','员工工资':'badge-red','提成':'badge-purple','税费':'badge-red','水电':'badge-amber','通讯费':'badge-amber','交通费':'badge-amber','餐饮':'badge-blue','维修':'badge-amber','广告推广':'badge-purple','办公用品':'badge-blue','手机采购':'badge-green','锁机费用':'badge-amber','AI数据费用':'badge-purple','业务公关':'badge-blue','日常开销':'badge-gray','其他':'badge-gray'};
   return `<div class="table-wrap"><table>
     <tr><th>日期</th><th>实际发放日期</th><th>类别</th><th>金额</th><th>说明</th><th>经手人</th><th>操作</th></tr>
     ${expenses.map(e=>`<tr${e.otherBiz ? ' style="background:#fff3e0"' : ''}>
