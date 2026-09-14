@@ -4491,6 +4491,17 @@ function renderPaymentAdd() {
         <label style="color:var(--red);font-weight:700">${tl('本次减免','Waived This Time','បង់​បន្ថយ')} ($) <span style="font-size:11px;font-weight:400;color:#90a4ae">${tl('跟客户协商好不收的部分，会当已还处理','Agreed-upon waived amount, counted as paid','ចំនួន​ដែល​យល់ព្រម​មិន​យក')}</span></label>
         <input type="number" id="pWaive" value="0" step="0.01" oninput="calcCollectorTotal()" style="border:1.5px solid var(--red)">
       </div>
+      <!-- 🆕 2026-09：这笔钱有没有转进linshikui临时柜账户——月底经常有一堆钱不知道到底进了哪个账户，
+           催收员登记还款时强制选一下(是/否)，不选不让保存；其他角色可选可不选，不强制。 -->
+      <div class="form-group">
+        <label>${tl('转到临时柜(linshikui)账户？','Routed to Temp Account (linshikui)?','')} ${isCollector?'<span style="color:var(--red)">*</span>':''}</label>
+        <div style="display:flex;gap:8px;margin-top:2px">
+          <button type="button" onclick="setToTempAccount(true)" id="pToTempYesBtn" class="btn btn-outline btn-sm" style="flex:1;font-weight:700">${tl('是','Yes','បាទ/ចាស')}</button>
+          <button type="button" onclick="setToTempAccount(false)" id="pToTempNoBtn" class="btn btn-outline btn-sm" style="flex:1;font-weight:700">${tl('否','No','ទេ')}</button>
+        </div>
+        <input type="hidden" id="pToTemp" value="">
+        ${isCollector?`<div style="font-size:11px;color:var(--red);margin-top:3px">${tl('必选——方便月底核对这笔钱到底进了哪个账户','Required — helps reconcile where the cash ended up','')}</div>`:''}
+      </div>
       <div class="form-group"><label>${t('remarks')}</label><input id="pNote" placeholder="${tl('建议写清楚减免原因，方便以后核对','Recommend noting the reason for the waiver','សូម​កត់​ហេតុផល')}"></div>
       <div class="form-group span3">
         <label>${tl('收款凭证截图（可选，最多3张，方便日后核实）','Payment Screenshots (optional, up to 3)','រូបភាព​បញ្ជាក់​ការ​បង់​ប្រាក់ (រហូតដល់ 3)')}</label>
@@ -4532,6 +4543,9 @@ function renderPaymentAdd() {
           <option value="week">${tl('本周','This Week','អាទិត្យ​នេះ')}</option>
           <option value="month">${tl('本月','This Month','ខែ​នេះ')}</option>
         </select>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#546e7a;padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;user-select:none">
+          <input type="checkbox" id="payToTempFilter" onchange="filterPays()" style="margin:0">🏦 ${tl('只看转临时柜','Temp account only','')}
+        </label>
       </div>
     </div>
     <div id="payTableWrap">${buildPayTableGrouped(pays, isCollector)}</div>
@@ -4556,6 +4570,7 @@ window.setPayView = function(mode) {
 window.filterPays = function() {
   const q  = (document.getElementById('paySearch')?.value||'').toLowerCase();
   const df = document.getElementById('payDateFilter')?.value||'';
+  const toTempOnly = document.getElementById('payToTempFilter')?.checked||false;
   const td = today();
   const u  = getCurrentUser();
   const isC = u?.role === 'collector';
@@ -4565,6 +4580,7 @@ window.filterPays = function() {
   if (df === 'today') pays = pays.filter(p => (p.date||'').replace(/\//g,'-') === td);
   else if (df === 'week')  { const w=addDays(td,-6); pays=pays.filter(p=>{const d=(p.date||'').replace(/\//g,'-');return d>=w&&d<=td;}); }
   else if (df === 'month') pays=pays.filter(p=>(p.date||'').replace(/\//g,'-').slice(0,7)===td.slice(0,7));
+  if (toTempOnly) pays = pays.filter(p => p.toTempAccount === true); // 🆕 只看转到临时柜(linshikui)账户的记录
 
   const wrap = document.getElementById('payTableWrap');
   if (!wrap) return;
@@ -4668,6 +4684,17 @@ function buildPayTableEarly(pays, isCollector) {
 
 
 
+// 🆕 2026-09：还款登记表单里"是否转到临时柜(linshikui)账户"这两个按钮的点击处理——
+// 用隐藏input存值('1'/'0')，没点过之前是空字符串(未回答)，催收员必须点一下才能保存。
+window.setToTempAccount = function(val) {
+  const hidden = document.getElementById('pToTemp');
+  if (hidden) hidden.value = val ? '1' : '0';
+  const yesBtn = document.getElementById('pToTempYesBtn');
+  const noBtn = document.getElementById('pToTempNoBtn');
+  if (yesBtn) { yesBtn.style.background = val ? 'var(--navy)' : '#fff'; yesBtn.style.color = val ? '#fff' : '#546e7a'; }
+  if (noBtn)  { noBtn.style.background  = val ? '#fff' : 'var(--navy)'; noBtn.style.color  = val ? '#546e7a' : '#fff'; }
+};
+
 // 催收员：按合同比例自动拆分本金/利息
 window.calcCollectorTotal = function() {
   const received = +(document.getElementById('pTotalReceived')?.value||0);
@@ -4719,7 +4746,7 @@ function buildPayTableByMonth(pays, isCollector) {
       const bg = i%2===0?'#fff':'#f9fafb';
       return '<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:'+bg+';border-bottom:1px solid #f0f0f0;flex-wrap:wrap">'
         + '<div style="flex:1;min-width:120px">'
-        + '<div style="font-weight:700;font-size:13px">' + esc(p.customer) + '</div>'
+        + '<div style="font-weight:700;font-size:13px">' + esc(p.customer) + (p.toTempAccount ? ' <span style="background:#e0f2f1;color:#00695c;font-size:10px;padding:1px 6px;border-radius:8px;font-weight:700">🏦 ' + tl("转临时柜","Temp Acct","") + '</span>' : '') + '</div>'
         + '<div style="font-size:11px;color:#90a4ae">#' + p.contractId + ' · ' + tl('第','','ខែ') + p.period + tl('期','','') + ' · ' + p.date + '</div>'
         + '</div>'
         + (isCollector
@@ -4819,6 +4846,7 @@ function buildPayTableGrouped(pays, isCollector) {
                 ${p.reconstructed ? `<span style="background:#ede7f6;color:#5e35b1;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700;cursor:help" title="${esc(p.reconstructedNote||'')}">🔧 ${tl("系统补录","Reconstructed","")}</span>` : ''}
                 ${p.reconImported ? `<span style="background:#e1f5fe;color:#0277bd;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700;cursor:help" title="${esc(p.reconImportNote||'')}">📥 ${tl("核对导入","Recon Import","")}</span>` : ''}
                 ${p.isPartial ? `<span style="background:#fff3e0;color:#e65100;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">${tl("部分收款","Partial","ផ្នែក")}</span>` : ''}
+                ${p.toTempAccount ? `<span style="background:#e0f2f1;color:#00695c;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">🏦 ${tl("转临时柜","Temp Acct","")}</span>` : ''}
                 ${isEarly ? `<span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">${tl("⚡提前还款","⚡Early","⚡សង​មុន")}</span>` : ''}
                 ${(+p.advanceDays||0)>30 ? `<span style="background:#ffebee;color:#c62828;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700" title="${tl('提前','Advance','មុន')}${p.advanceDays}${tl('天，超过1个月，建议核对','days, over 1 month, please verify','ថ្ងៃ')}">🔔${tl('提前','Advance','មុន')}${p.advanceDays}${tl('天','d','ថ្ងៃ')}</span>` : ''}
                 ${suspicious ? `<span onclick="event.stopPropagation();compareSuspiciousReceipts('${p.contractId}',${p.period})" style="background:#e65100;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700;cursor:pointer" title="${tl('点击查看凭证照片核对','Click to compare receipt photos','ចុច​ដើម្បី​ផ្ទៀងផ្ទាត់')}">⚠️ ${tl('疑似重复','Possible duplicate','ប្រហែលដដែល')} 🔍</span>` : ''}
@@ -4969,6 +4997,13 @@ window.editPayment = function(id) {
         <input id="epPenalty" type="number" step="0.01" value="${pay.penalty||0}"
           style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
       </div>
+      <div class="form-group">
+        <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('转到临时柜(linshikui)账户？','Routed to Temp Account?','')}</label>
+        <select id="epToTemp" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+          <option value="0" ${!pay.toTempAccount?'selected':''}>${tl('否','No','ទេ')}</option>
+          <option value="1" ${pay.toTempAccount?'selected':''}>${tl('是','Yes','បាទ/ចាស')}</option>
+        </select>
+      </div>
       <div class="form-group" style="grid-column:1/-1">
         <label style="font-size:12px;font-weight:600;color:#546e7a">${t('remarks')}</label>
         <input id="epNote" type="text" value="${pay.note||''}" placeholder="${tl('可选','Optional','ស្រេច​ចិត្ត')}"
@@ -5062,6 +5097,7 @@ window.saveEditPayment = async function(id) {
   const newInterest      = Math.max(0, totalReceived - newPrincipal);
   const newPenalty       = parseFloat(document.getElementById('epPenalty')?.value||0);
   const newNote          = document.getElementById('epNote')?.value || '';
+  const newToTemp        = document.getElementById('epToTemp')?.value === '1';
   const msgEl            = document.getElementById('epMsg');
 
   if (!newDate) { if(msgEl){msgEl.textContent='❌ '+tl('请填写收款日期','Please enter payment date','សូម​បញ្ចូល​ថ្ងៃ');msgEl.style.color='red';} return; }
@@ -5089,7 +5125,7 @@ window.saveEditPayment = async function(id) {
 
   // Update payment record
   pays[idx] = { ...pay, date: newDate, principal: newPrincipal, interest: newInterest, penalty: newPenalty, note: newNote, receiptUrls: finalReceipts,
-    isPartial: !isFullPaid, shortfall: isFullPaid ? 0 : parseFloat(shortfall.toFixed(2)) };
+    isPartial: !isFullPaid, shortfall: isFullPaid ? 0 : parseFloat(shortfall.toFixed(2)), toTempAccount: newToTemp };
   DB_set('payments', pays);
 
   // Update the schedule paid amounts —— 用整期累计值判断/写入，不能只看这一笔编辑后的金额
@@ -5447,6 +5483,15 @@ window.submitPayment = async function() {
 
   if (!contractId) { showMsg('payMsg', t('msgFillContract'), 'red'); return; }
 
+  // 🆕 2026-09：催收员必须先点"是/否"选好这笔钱有没有转进临时柜(linshikui)账户，不选不让保存；
+  // 其他角色（老板/主管/录入员等）不强制，留空当"否"处理。
+  const toTempRaw = document.getElementById('pToTemp')?.value ?? '';
+  if (isCollector && toTempRaw === '') {
+    showMsg('payMsg', tl('请先选择这笔钱是否转到临时柜(linshikui)账户，再保存','Please select whether this was routed to the temp account before saving',''), 'red');
+    return;
+  }
+  const toTempAccount = toTempRaw === '1';
+
   // 🔒 提交前先把本地还没存上的改动存完，再向服务器重新核实最新数据，不信任本地可能过期的缓存
   showMsg('payMsg', tl('正在核对最新数据...','Checking latest data...','កំពុង​ត្រួតពិនិត្យ'), 'blue');
   await flushPendingSave(); // 避免刚做的其他操作（比如上一笔收款登记）还没存上就被这里的最新数据覆盖掉
@@ -5643,10 +5688,11 @@ window.submitPayment = async function() {
     advanceDays: advanceDays > 0 ? advanceDays : 0,
     recordedBy: _payUser?.displayName || _payUser?.username || '',
     recordedByRole: _payUser?.role || '',
-    receiptUrls: _payReceiptUrls
+    receiptUrls: _payReceiptUrls,
+    toTempAccount // 🆕 这笔钱有没有转进临时柜(linshikui)账户
   });
   DB_set('payments', pays);
-  logActivity('还款登记', `#${contractId} ${s.customer} 第${periodNo}期`, `本金$${principal.toFixed(2)} 利息$${interest.toFixed(2)}${penalty?` 滞纳金$${penalty}`:''}${waiveAmt?` 减免$${waiveAmt.toFixed(2)}`:''}`);
+  logActivity('还款登记', `#${contractId} ${s.customer} 第${periodNo}期`, `本金$${principal.toFixed(2)} 利息$${interest.toFixed(2)}${penalty?` 滞纳金$${penalty}`:''}${waiveAmt?` 减免$${waiveAmt.toFixed(2)}`:''}${toTempAccount?' [转临时柜]':''}`);
 
   // 重置表单
   ['pPenalty','pNote','pTotalReceived','pWaive'].forEach(id => {
@@ -5657,6 +5703,13 @@ window.submitPayment = async function() {
   if (totEl) totEl.value = '';
   const expEl = document.getElementById('pExpected');
   if (expEl) expEl.value = '';
+  // 🆕 重置"转临时柜"按钮回未选状态，避免下一笔不小心沿用上一笔的选择
+  const toTempHidden = document.getElementById('pToTemp');
+  if (toTempHidden) toTempHidden.value = '';
+  const yesBtn = document.getElementById('pToTempYesBtn');
+  const noBtn = document.getElementById('pToTempNoBtn');
+  if (yesBtn) { yesBtn.style.background = '#fff'; yesBtn.style.color = '#546e7a'; }
+  if (noBtn)  { noBtn.style.background  = '#fff'; noBtn.style.color  = '#546e7a'; }
 
   loadContractPeriods();
   updateBadges();
@@ -7864,10 +7917,19 @@ function renderFinanceReport() {
   const sel = rows.find(r => r.m === selectedM) || rows[0] || {};
   const isCurrentM = sel.m === td.slice(0,7);
 
+  const _financeRole = getCurrentUser()?.role === 'finance';
   return `
-  <div class="page-header">
-    <div class="page-title">📈 ${t("financeTitle")}</div>
-    <div class="page-sub">${t("financeSub")}</div>
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+    <div>
+      <div class="page-title">📈 ${t("financeTitle")}</div>
+      <div class="page-sub">${t("financeSub")}</div>
+    </div>
+    ${_financeRole ? `
+    <!-- 🆕 2026-09：财务角色专属——只读看数据不够用，财务自己还要拿原始数据去做账/核对，
+         所以单独给财务开一个导出Excel的口子，别的角色（业务员/催收员/录入员等）看不到这个按钮。
+         老板/主管本来就能在"公司设置"页导出（含更多管理功能），这里不影响他们。 -->
+    <button class="btn btn-primary" onclick="exportExcel()" style="background:#1e7e34;flex-shrink:0">📊 ${tl('导出Excel报表','Export to Excel','នាំចេញ Excel')}</button>
+    ` : ''}
   </div>
 
   <!-- 月份选择器 -->
