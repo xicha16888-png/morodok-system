@@ -1054,13 +1054,14 @@ function buildSidebar() {
       ${navItem('audit','📋','合同审核')}
       ${navItem('staff-stats','🏆','员工绩效 🔐')}
     </div>`:''}
-    ${(show('stats-collection')||show('stats-profit')||show('finance-report')||show('expenses')||show('store-stats')||show('fund-stats'))?`
+    ${(show('stats-collection')||show('stats-profit')||show('finance-report')||show('finance-recon')||show('expenses')||show('store-stats')||show('fund-stats'))?`
     <div class="nav-divider"></div>
     <div style="padding:4px 0">
       <div class="sb-label">${t('reports')}</div>
       ${navItem('stats-collection','📊',t('statsCollection'),' 🔐')}
       ${navItem('stats-profit','💰',t('statsProfit'),' 🔐')}
       ${navItem('finance-report','📈',t('financeReport'),' 🔐')}
+      ${navItem('finance-recon','💼','财务对账',' 🔐')}
       ${navItem('expenses','🧾',t('expenses'),' 🔐')}
       ${navItem('store-stats','🏪',t('storeStats'),' 🔐')}
       ${navItem('fund-stats','🏦','资金统计 🔐')}
@@ -1120,6 +1121,7 @@ const MOB_MORE_ITEMS = [
   {page:'stats-collection', icon:'📊', label:'statsCollection', lock:true},
   {page:'stats-profit',     icon:'💰', label:'statsProfit',     lock:true},
   {page:'finance-report',   icon:'📈', label:'financeReport',   lock:true},
+  {page:'finance-recon',    icon:'💼', label:'财务对账',         lock:true},
   {page:'expenses',         icon:'🧾', label:'expenses',        lock:true},
   {divider:true},
   {page:'phones',       icon:'📱', label:'phones'},
@@ -1593,7 +1595,7 @@ window.closeModal = () => document.getElementById('modalBg').classList.remove('o
 // ══════════════════════════════════════════════════════
 // 🔐 密码保护
 // ══════════════════════════════════════════════════════
-const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','expenses','store-stats','staff-stats','fund-stats'];
+const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','finance-recon','expenses','store-stats','staff-stats','fund-stats'];
 const REPORT_PWD = 'morodok888';
 const DELETE_PWD = 'cao';
 const AUDITOR_DELETE_PWD = '0000'; // 内审员专用的删除密码(所有内审员通用)，跟老板/主管的删除密码(DELETE_PWD)完全分开，互不影响
@@ -1664,7 +1666,7 @@ window.checkPwd = function(page) {
 const PAGES = {
   'home': renderHome, 'sale-add': renderSaleAdd, 'sale-list': renderSaleList,
   'payment-add': renderPaymentAdd, 'early-payment': renderEarlyPayment,
-  'stats-collection': renderStatsCollection, 'finance-report': renderFinanceReport, 'expenses': renderExpenses, 'store-stats': renderStoreStats, 'staff-stats': renderStaffStats, 'fund-stats': renderFundStats, 'fund-settings': renderFundSettings,
+  'stats-collection': renderStatsCollection, 'finance-report': renderFinanceReport, 'finance-recon': renderFinanceRecon, 'expenses': renderExpenses, 'store-stats': renderStoreStats, 'staff-stats': renderStaffStats, 'fund-stats': renderFundStats, 'fund-settings': renderFundSettings,
   'stats-profit': renderStatsProfit, 'reminder-tomorrow': renderReminderTomorrow,
   'reminder-overdue': renderReminderOverdue, 'payment-query': renderPaymentQuery,
   'phones': renderPhones, 'suppliers': renderSuppliers,
@@ -1887,6 +1889,7 @@ function renderHome() {
         ['📊',t('statsCollection')+'🔐',tl('月度汇总','Monthly summary','សង្ខេប​ប្រចាំ​ខែ'),'stats-collection'],
         ['💰',t('statsProfit')+'🔐',tl('盈利分析','Profit analysis','វិភាគ​ប្រាក់​ចំណេញ'),'stats-profit'],
         ['📈',t('financeReport')+'🔐',tl('放款/回款/利润','Loans/Collections','ផ្ដល់/ប្រមូល/ចំណេញ'),'finance-report'],
+        ['💼','财务对账🔐',tl('对账表格导出','Recon export','ការផ្ទៀងផ្ទាត់'),'finance-recon'],
         ['⚡',t('earlyPayment'),tl('协商结清','Early settlement','ទូ​ទាត់​ចរ​ចា'),'early-payment'],
         ['🔍',t('saleList'),tl('合同检索','Contract search','ស្វែង​រក​កិច្ចសន្យា'),'sale-list'],
         ['⏰',t('reminderTomorrow'),tl('明日到期','Due tomorrow','ដល់​កំណត់​ស្អែក'),'reminder-tomorrow'],
@@ -2002,7 +2005,7 @@ function buildStaffRosterOptionsHtml(roster, currentValue) {
 const ROLE_PAGES = {
   boss:      'all', // 全部页面
   manager:   ['home','sale-add','sale-list','payment-add','early-payment',
-               'stats-collection','stats-profit','finance-report','expenses',
+               'stats-collection','stats-profit','finance-report','finance-recon','expenses',
                'store-stats','audit','staff-stats','fund-stats','reminder-tomorrow','reminder-overdue',
                'payment-query','phones','suppliers','purchase-add','inventory','company','my-performance'],
   // 🔓 2026-08：加上store-stats，业务主管才能进"店家统计"页操作店家归并（拖动合并/归并管理）
@@ -2023,7 +2026,7 @@ const ROLE_PAGES = {
   // purchase-add/inventory/company/phones/suppliers这些能新建/编辑业务数据的页面。
   // 混进来的几个页面(expenses/staff-stats/fund-stats)里原本就有的编辑/合并/删除按钮，
   // 已经用isFinanceReadOnly()单独挡掉了，财务角色进去只能看，按钮不会显示。
-  finance:   ['home','sale-list','stats-collection','stats-profit','finance-report','expenses',
+  finance:   ['home','sale-list','stats-collection','stats-profit','finance-report','finance-recon','expenses',
                'store-stats','staff-stats','fund-stats','reminder-tomorrow','reminder-overdue','payment-query'],
 };
 
@@ -8185,6 +8188,250 @@ function renderFinanceReport() {
     </div>`}
   </div>`;
 }
+
+// ══════════════════════════════════════════════════════
+// 💼 FINANCE RECON 财务对账（按财务部对账表格格式）
+// ══════════════════════════════════════════════════════
+// 🆕 2026-09：财务部要求系统里加一块专属对账模块，字段口径完全按他们自己那份
+// 《放款与回款统计表.xlsx》来（放款统计表 / 回款统计表两张表，列名、列顺序都对齐），
+// 数据全部从系统自己的合同(sales)和还款记录(payments，含提前结清earlyPayments)自动
+// 汇总，不需要财务再手工抄一遍去对账。
+window._financeReconState = { tab: 'loan', start: '', end: '', q: '' };
+
+function renderFinanceRecon() {
+  const td = today();
+  if (!window._financeReconInited) {
+    window._financeReconState.start = td.slice(0,7)+'-01';
+    window._financeReconState.end   = td;
+    window._financeReconInited = true;
+  }
+  const st = window._financeReconState;
+
+  return `
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+    <div>
+      <div class="page-title">💼 ${tl('财务对账','Finance Reconciliation','ការផ្ទៀងផ្ទាត់ហិរញ្ញវត្ថុ')}</div>
+      <div class="page-sub">${tl('按财务部对账表格格式自动汇总系统放款与回款数据，供财务核对流水','Auto-summarized from system loan & repayment records, matching the finance dept. reconciliation template','ស្របតាមទម្រង់តារាងរបស់ផ្នែកហិរញ្ញវត្ថុ')}</div>
+    </div>
+    <button class="btn btn-primary" onclick="exportFinanceRecon()" style="background:#1e7e34;flex-shrink:0">📊 ${tl('导出Excel对账表','Export Reconciliation Excel','នាំចេញ Excel')}</button>
+  </div>
+
+  <!-- 筛选栏 -->
+  <div class="card" style="padding:16px 20px;margin-bottom:14px">
+    <div class="search-row" style="align-items:center;flex-wrap:wrap">
+      <div style="font-size:13px;font-weight:600;color:var(--navy);white-space:nowrap">📅 ${tl('日期范围','Date Range','កាលបរិច្ឆេទ')}：</div>
+      <input type="date" id="reconStart" value="${st.start}" onchange="filterFinanceRecon()" style="border:1.5px solid var(--border);border-radius:8px;padding:7px 10px">
+      <span style="color:var(--muted)">→</span>
+      <input type="date" id="reconEnd" value="${st.end}" onchange="filterFinanceRecon()" style="border:1.5px solid var(--border);border-radius:8px;padding:7px 10px">
+      <input id="reconSearch" placeholder="${tl('搜索合同号/客户/店家','Search contract/customer/store','ស្វែងរក')}" value="${esc(st.q)}" oninput="filterFinanceRecon()" style="border:1.5px solid var(--border);border-radius:8px;padding:7px 12px;min-width:180px;flex:1">
+      <button class="btn btn-outline btn-sm" onclick="resetFinanceRecon()">${tl('清除筛选','Clear','សម្អាត')}</button>
+    </div>
+  </div>
+
+  <!-- Tab切换：放款统计表 / 回款统计表 -->
+  <div style="display:flex;gap:8px;margin-bottom:14px">
+    <button onclick="switchFinanceReconTab('loan')" style="padding:8px 18px;border-radius:20px;border:1.5px solid ${st.tab==='loan'?'var(--sky)':'var(--border)'};background:${st.tab==='loan'?'var(--sky)':'#fff'};color:${st.tab==='loan'?'#fff':'var(--gray)'};font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">💸 ${tl('放款统计表','Loan Disbursement','ការផ្ដល់ប្រាក់កម្ចី')}</button>
+    <button onclick="switchFinanceReconTab('repay')" style="padding:8px 18px;border-radius:20px;border:1.5px solid ${st.tab==='repay'?'var(--sky)':'var(--border)'};background:${st.tab==='repay'?'var(--sky)':'#fff'};color:${st.tab==='repay'?'#fff':'var(--gray)'};font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">💰 ${tl('回款统计表','Collection Statistics','ការប្រមូលប្រាក់')}</button>
+  </div>
+
+  <div id="reconLoanPanel" style="display:${st.tab==='loan'?'':'none'}">${buildReconLoanTable(getReconLoanRows())}</div>
+  <div id="reconRepayPanel" style="display:${st.tab==='repay'?'':'none'}">${buildReconRepayTable(getReconRepayRows())}</div>
+  `;
+}
+
+// ── 数据源：放款统计表（来自 sales 合同表） ──
+function getReconLoanRows() {
+  const st = window._financeReconState;
+  let sales = DB_get('sales') || [];
+  if (st.start) sales = sales.filter(s => s.date.replace(/\//g,'-') >= st.start);
+  if (st.end)   sales = sales.filter(s => s.date.replace(/\//g,'-') <= st.end);
+  if (st.q) {
+    const q = st.q.toLowerCase();
+    sales = sales.filter(s => String(s.id).toLowerCase().includes(q) ||
+      (s.customer||'').toLowerCase().includes(q) || (s.shopName||'').toLowerCase().includes(q));
+  }
+  return sales.slice().sort((a,b) => b.date.localeCompare(a.date)).map(s => {
+    const actualPeriods = s.periods === 3 ? 3 : s.periods - 1;
+    const first = (s.schedule && s.schedule[0]) || {};
+    const monthlyPrincipal = first.principalDue != null ? (+first.principalDue||0) : Math.ceil((+s.installmentAmount||0)/(actualPeriods||1));
+    const monthlyInt = +first.interestDue || 0;
+    const monthlySvc = +first.serviceFeeDue || 0;
+    return {
+      id: s.id, date: s.date, customer: s.customer, shop: s.shopName||'', model: s.modelName||'',
+      salePrice: +s.salePrice||0, deposit: +s.deposit||0, principal: +s.installmentAmount||0,
+      periods: s.periods, monthlyPrincipal, monthlyInt, monthlySvc,
+      dailyLateFee: +s.dailyLateFee||0, storeRebate: +s.storeRebate||0
+    };
+  });
+}
+
+// ── 数据源：回款统计表（来自 payments 正常还款 + earlyPayments 提前结清，join sales 补齐店家/型号/总期数） ──
+function getReconRepayRows() {
+  const st = window._financeReconState;
+  const salesMap = {};
+  (DB_get('sales')||[]).forEach(s => { salesMap[s.id] = s; });
+  const pays   = (DB_get('payments')||[]).map(p => Object.assign({}, p, {_type:'installment'}));
+  const earlys = (DB_get('earlyPayments')||[]).map(r => Object.assign({}, r, {_type:'early'}));
+  let rows = pays.concat(earlys);
+  if (st.start) rows = rows.filter(r => (r.date||'').replace(/\//g,'-') >= st.start);
+  if (st.end)   rows = rows.filter(r => (r.date||'').replace(/\//g,'-') <= st.end);
+  if (st.q) {
+    const q = st.q.toLowerCase();
+    rows = rows.filter(r => String(r.contractId).toLowerCase().includes(q) ||
+      (r.customer||'').toLowerCase().includes(q) || ((salesMap[r.contractId]||{}).shopName||'').toLowerCase().includes(q));
+  }
+  return rows.slice().sort((a,b) => (b.date||'').localeCompare(a.date||'')).map(r => {
+    const s = salesMap[r.contractId] || {};
+    if (r._type === 'early') {
+      return {
+        contractId: r.contractId, date: r.date, customer: r.customer, shop: s.shopName||'', model: s.modelName||'',
+        principal: +r.remainPrincipal||0, interest: +r.origRemainInterest||0, serviceFee: +r.remainServiceFee||0, penalty: 0,
+        total: +r.negotiatedAmount||0, totalPeriods: s.periods||'',
+        period: tl('提前结清','Early Settlement','ទូទាត់មុនកាលកំណត់'), isEarly: true
+      };
+    }
+    const principal = +r.principal||0, interest = +r.interest||0, serviceFee = +r.serviceFee||0, penalty = +r.penalty||0;
+    return {
+      contractId: r.contractId, date: r.date, customer: r.customer, shop: s.shopName||'', model: s.modelName||'',
+      principal, interest, serviceFee, penalty, total: principal+interest+serviceFee+penalty,
+      totalPeriods: s.periods||'', period: r.period, isEarly: false
+    };
+  });
+}
+
+function buildReconLoanTable(rows) {
+  if (!rows.length) return `<div class="card"><div class="empty-state"><div class="ei">💸</div><p>${tl('该范围内暂无放款数据','No loan data in this range','គ្មានទិន្នន័យ')}</p></div></div>`;
+  const tot = rows.reduce((a,r) => ({
+    salePrice: a.salePrice+r.salePrice, deposit: a.deposit+r.deposit, principal: a.principal+r.principal,
+    monthlyPrincipal: a.monthlyPrincipal+r.monthlyPrincipal, monthlyInt: a.monthlyInt+r.monthlyInt,
+    monthlySvc: a.monthlySvc+r.monthlySvc, dailyLateFee: a.dailyLateFee+r.dailyLateFee, storeRebate: a.storeRebate+r.storeRebate
+  }), {salePrice:0,deposit:0,principal:0,monthlyPrincipal:0,monthlyInt:0,monthlySvc:0,dailyLateFee:0,storeRebate:0});
+  return `<div class="card">
+    <div class="card-header"><div class="card-title">${tl('放款统计表','Loan Disbursement Statistics','តារាងស្ថិតិផ្ដល់ប្រាក់កម្ចី')}（${rows.length} ${tl('笔','records','កំណត់ត្រា')}）</div></div>
+    <div class="table-wrap"><table>
+      <tr>
+        <th>${tl('合同号','Contract #','លេខកិច្ចសន្យា')}</th><th>${tl('实际放款日期','Loan Date','កាលបរិច្ឆេទផ្ដល់')}</th>
+        <th>${tl('客户','Customer','អតិថិជន')}</th><th>${tl('店家','Store','ហាង')}</th><th>${tl('型号','Model','ម៉ូដែល')}</th>
+        <th>${tl('售价','Sale Price','តម្លៃលក់')}</th><th>${tl('首付','Deposit','កម្រៃដំបូង')}</th><th>${tl('分期本金','Principal','ដើមទុន')}</th>
+        <th>${tl('期数','Periods','ចំនួនខែ')}</th><th>${tl('每期还款本金','Principal/Period','ដើមក្នុងមួយខែ')}</th>
+        <th>${tl('每期还款利息','Interest/Period','ការប្រាក់ក្នុងមួយខែ')}</th><th>${tl('每期还款手续费','Fee/Period','ថ្លៃសេវាក្នុងមួយខែ')}</th>
+        <th>${tl('每日滞纳金','Daily Late Fee','ពិន័យប្រចាំថ្ងៃ')}</th><th>${tl('店家佣金','Store Commission','កម្រៃហាង')}</th>
+      </tr>
+      ${rows.map(r => `<tr>
+        <td class="fw700 text-blue">#${r.id}</td><td>${r.date}</td><td>${esc(r.customer)}</td><td>${esc(r.shop||'—')}</td>
+        <td style="font-size:12px">${esc(r.model||'—')}</td><td>${fmt(r.salePrice)}</td><td>${fmt(r.deposit)}</td>
+        <td class="fw700">${fmt(r.principal)}</td><td>${r.periods}${t('period')}</td>
+        <td>${fmt(r.monthlyPrincipal)}</td><td>${fmt(r.monthlyInt)}</td><td>${fmt(r.monthlySvc)}</td>
+        <td>${fmt(r.dailyLateFee)}</td><td>${fmt(r.storeRebate)}</td>
+      </tr>`).join('')}
+      <tr style="background:#f0f7ff;font-weight:700;border-top:2px solid var(--border)">
+        <td colspan="5">${t('totalRow')}</td>
+        <td>${fmt(tot.salePrice)}</td><td>${fmt(tot.deposit)}</td><td class="text-blue">${fmt(tot.principal)}</td>
+        <td>—</td><td>${fmt(tot.monthlyPrincipal)}</td><td>${fmt(tot.monthlyInt)}</td><td>${fmt(tot.monthlySvc)}</td>
+        <td>${fmt(tot.dailyLateFee)}</td><td>${fmt(tot.storeRebate)}</td>
+      </tr>
+    </table></div>
+  </div>`;
+}
+
+function buildReconRepayTable(rows) {
+  if (!rows.length) return `<div class="card"><div class="empty-state"><div class="ei">💰</div><p>${tl('该范围内暂无回款数据','No collection data in this range','គ្មានទិន្នន័យ')}</p></div></div>`;
+  const tot = rows.reduce((a,r) => ({
+    principal: a.principal+r.principal, interest: a.interest+r.interest, serviceFee: a.serviceFee+r.serviceFee,
+    penalty: a.penalty+r.penalty, total: a.total+r.total
+  }), {principal:0,interest:0,serviceFee:0,penalty:0,total:0});
+  return `<div class="card">
+    <div class="card-header"><div class="card-title">${tl('回款统计表','Collection Statistics','តារាងស្ថិតិប្រមូលប្រាក់')}（${rows.length} ${tl('笔','records','កំណត់ត្រា')}，${tl('含提前结清','incl. early settlement','រួមទូទាត់មុន')}）</div></div>
+    <div class="table-wrap"><table>
+      <tr>
+        <th>${tl('合同','Contract','កិច្ចសន្យា')}</th><th>${tl('实际回款日期','Collection Date','កាលបរិច្ឆេទប្រមូល')}</th>
+        <th>${tl('客户','Customer','អតិថិជន')}</th><th>${tl('店家','Store','ហាង')}</th><th>${tl('型号','Model','ម៉ូដែល')}</th>
+        <th>${tl('本金','Principal','ដើមទុន')}</th><th>${tl('利息','Interest','ការប្រាក់')}</th><th>${tl('手续费','Fee','ថ្លៃសេវា')}</th>
+        <th>${tl('滞纳金','Penalty','ពិន័យ')}</th><th>${tl('合计','Total','សរុប')}</th>
+        <th>${tl('总期数','Total Periods','ចំនួនខែសរុប')}</th><th>${tl('对应还款期','Period','ខែទី')}</th>
+      </tr>
+      ${rows.map(r => `<tr${r.isEarly?' style="background:#fff8e1"':''}>
+        <td class="fw700 text-blue">#${r.contractId}</td><td>${r.date}</td><td>${esc(r.customer)}</td><td>${esc(r.shop||'—')}</td>
+        <td style="font-size:12px">${esc(r.model||'—')}</td><td>${fmt(r.principal)}</td><td>${fmt(r.interest)}</td>
+        <td>${fmt(r.serviceFee)}</td><td>${fmt(r.penalty)}</td><td class="fw700">${fmt(r.total)}</td>
+        <td>${r.totalPeriods?r.totalPeriods+t('period'):'—'}</td>
+        <td>${r.isEarly?`<span class="badge badge-amber">${r.period}</span>`:(r.period+t('period'))}</td>
+      </tr>`).join('')}
+      <tr style="background:#f0f7ff;font-weight:700;border-top:2px solid var(--border)">
+        <td colspan="5">${t('totalRow')}</td>
+        <td>${fmt(tot.principal)}</td><td>${fmt(tot.interest)}</td><td>${fmt(tot.serviceFee)}</td>
+        <td>${fmt(tot.penalty)}</td><td class="text-blue">${fmt(tot.total)}</td><td>—</td><td>—</td>
+      </tr>
+    </table></div>
+  </div>`;
+}
+
+window.filterFinanceRecon = function() {
+  const st = window._financeReconState;
+  st.start = document.getElementById('reconStart')?.value || '';
+  st.end   = document.getElementById('reconEnd')?.value || '';
+  st.q     = document.getElementById('reconSearch')?.value || '';
+  const loanPanel  = document.getElementById('reconLoanPanel');
+  const repayPanel = document.getElementById('reconRepayPanel');
+  if (loanPanel)  loanPanel.innerHTML  = buildReconLoanTable(getReconLoanRows());
+  if (repayPanel) repayPanel.innerHTML = buildReconRepayTable(getReconRepayRows());
+};
+
+window.switchFinanceReconTab = function(tab) {
+  window._financeReconState.tab = tab;
+  nav('finance-recon');
+};
+
+window.resetFinanceRecon = function() {
+  const td = today();
+  window._financeReconState = { tab: window._financeReconState.tab, start: td.slice(0,7)+'-01', end: td, q: '' };
+  nav('finance-recon');
+};
+
+// ── 导出Excel：严格按财务部《放款与回款统计表.xlsx》的列名/列顺序输出，导出当前筛选范围内的数据 ──
+window.exportFinanceRecon = function() {
+  const td = today();
+  const loanRows  = getReconLoanRows();
+  const repayRows = getReconRepayRows();
+
+  const s1Header = ['合同号','实际放款日期','客户','店家','型号','售价','首付','分期本金','期数','每期还款本金','每期还款利息','每期还款手续费','每日滞纳金','店家佣金'];
+  const s1Rows = loanRows.map(r => [r.id, r.date, r.customer, r.shop||'', r.model||'', r.salePrice, r.deposit, r.principal, r.periods, r.monthlyPrincipal, r.monthlyInt, r.monthlySvc, r.dailyLateFee, r.storeRebate]);
+
+  const s2Header = ['合同','实际回款日期','客户','店家','型号','本金','利息','手续费','滞纳金','合计','总期数','对应还款期'];
+  const s2Rows = repayRows.map(r => [r.contractId, r.date, r.customer, r.shop||'', r.model||'', r.principal, r.interest, r.serviceFee, r.penalty, r.total, r.totalPeriods||'', r.isEarly ? '提前结清' : r.period]);
+
+  const sheets = [
+    ['放款统计表', s1Header, s1Rows],
+    ['回款统计表', s2Header, s2Rows],
+  ];
+
+  let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>`;
+  sheets.forEach(([name]) => {
+    html += `<x:ExcelWorksheet><x:Name>${name}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet>`;
+  });
+  html += `</x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body>`;
+
+  sheets.forEach(([name, header, rows]) => {
+    html += `<table><tr><td colspan="${header.length}" style="font-weight:bold;font-size:14px;background:#0f2d5c;color:white">${name}</td></tr>`;
+    html += `<tr>${header.map(h=>`<td style="background:#1565c0;color:white;font-weight:bold;border:1px solid #ccc">${h}</td>`).join('')}</tr>`;
+    rows.forEach((row,i) => {
+      const bg = i%2===0?'#ffffff':'#f5f8ff';
+      html += `<tr>${row.map(v=>`<td style="border:1px solid #ddd;background:${bg}">${v??''}</td>`).join('')}</tr>`;
+    });
+    html += `<tr><td colspan="${header.length}"></td></tr><tr><td colspan="${header.length}"></td></tr></table>`;
+  });
+  html += '</body></html>';
+
+  const blob = new Blob(['﻿'+html], {type:'application/vnd.ms-excel;charset=utf-8'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  const st = window._financeReconState;
+  a.download = `MORODOK_财务对账_${st.start||'全部'}_${st.end||td}.xls`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
 
 // ══════════════════════════════════════════════════════
 // EXPENSES 日常开支
