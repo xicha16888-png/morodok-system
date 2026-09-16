@@ -3849,7 +3849,11 @@ window.editSale = function(id) {
     : `<option value="__KEEP__" selected>${esc(s.modelName || '（未知型号，保持不变）')}</option>` +
       phones.map(p => `<option value="${p.id}">${p.brand} ${p.model} ${p.storage||''}</option>`).join('');
   const periodOpts = [3,6,9,12].map(n=>`<option value="${n}" ${n===s.periods?'selected':''}>${n}期</option>`).join('');
-  const svcPeriodOpts = [3,6,9,12].map(n=>`<option value="${n}" ${n===(s.svcPeriods||s.periods)?'selected':''}>${n}期</option>`).join('');
+  // 🔧 2026-09修复：以前这里默认选中的是s.svcPeriods（新建合同时不管客户选几期，
+  // 这个字段一律硬编码存成3），跟"分期期数"没关系，所以不管客户是3/6/9/12期，
+  // 编辑合同一打开"手续费期数"永远显示3期。操作的人没注意就直接保存，会把手续费
+  // 应收期数错误地锁死成3期。改成默认直接跟"分期期数"一致，客户是几期就显示几期。
+  const svcPeriodOpts = [3,6,9,12].map(n=>`<option value="${n}" ${n===s.periods?'selected':''}>${n}期</option>`).join('');
 
   showModal(`✏️ ${tl('编辑合同','Edit Contract','កែប្រែកិច្ចសន្យា')} #${s.id} — ${s.customer}`,
     `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:13px">
@@ -3863,10 +3867,32 @@ window.editSale = function(id) {
       <div><label style="font-size:11px;color:var(--muted)">${tl('首付金额','Deposit','ប្រាក់ដាក់ដំបូង')} ($)</label><input id="eDeposit" type="number" value="${s.deposit}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('分期期数','Periods','ដំណាក់កាល')}</label><select id="ePeriods" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${periodOpts}</select></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('首次还款日','First Due Date','ថ្ងៃដល់កំណត់ដំបូង')}</label><input id="eFirstDue" type="date" value="${s.firstDue||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">${tl("每期本金","Monthly Principal","ដើមទុនប្រចាំខែ")} ($)</label><input id="eMonthlyPrincipal" type="number" value="${s.schedule&&s.schedule.length?(s.schedule[0].principalDue||0):(s.installmentAmount&&s.periods?(+s.installmentAmount/(s.periods===3?3:s.periods-1)).toFixed(2):0)}" step="0.01" oninput="recalcEditMonthly()" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">${tl("每期利息","Monthly Interest","ការ​ប្រាក់​ប្រចាំ​ខែ")} ($)</label><input id="eMonthlyInt" type="number" value="${s.totalInterest&&s.periods?(+s.totalInterest/(s.periods===3?3:s.periods-1)).toFixed(2):0}" step="0.01" oninput="recalcEditMonthly()" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl("每期本金","Monthly Principal","ដើមទុនប្រចាំខែ")} ($)</label><input id="eMonthlyPrincipal" type="number" value="${(() => {
+        // 🔧 2026-09修复：以前这里是"总额÷期数再.toFixed(2)"现算，只要期数跟创建时用的分母对不上
+        // （比如编辑时改过期数），或者本来就除不尽，就会把小数尾巴当成"每期本金"填回来，
+        // 用户没注意就直接保存了，未还的那些期次就永久带上了小数——这正是"排期表出现小数"的根源。
+        // 改成直接读当前排期表里"第一个未还期次"本来就在用的金额（不用重新算），没有未还期次
+        // 才退回按售价-首付整除+向上取整的原始公式，保证不折腾出新的小数。
+        const firstUnpaid = (s.schedule||[]).find(p => !p.paid);
+        if (firstUnpaid) return firstUnpaid.principalDue || 0;
+        if (s.schedule && s.schedule.length) return s.schedule[s.schedule.length-1].principalDue || 0;
+        const ap = s.periods===3 ? 3 : (s.periods||1)-1;
+        return (s.installmentAmount && ap) ? Math.ceil(+s.installmentAmount/ap) : 0;
+      })()}" step="0.01" oninput="recalcEditMonthly()" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl("每期利息","Monthly Interest","ការ​ប្រាក់​ប្រចាំ​ខែ")} ($)</label><input id="eMonthlyInt" type="number" value="${(() => {
+        const firstUnpaid = (s.schedule||[]).find(p => !p.paid);
+        if (firstUnpaid) return firstUnpaid.interestDue || 0;
+        if (s.schedule && s.schedule.length) return s.schedule[s.schedule.length-1].interestDue || 0;
+        const ap = s.periods===3 ? 3 : (s.periods||1)-1;
+        return (s.totalInterest && ap) ? Math.round((+s.totalInterest/ap)*100)/100 : 0;
+      })()}" step="0.01" oninput="recalcEditMonthly()" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('手续费期数','Fee Periods','ដំណាក់កម្រៃ')}</label><select id="eSvcPeriods" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${svcPeriodOpts}</select></div>
-      <div><label style="font-size:11px;color:var(--muted)">${tl('每期手续费','Monthly Fee','កម្រៃប្រចាំខែ')} ($)</label><input id="eMonthlySvc" type="number" value="${s.totalServiceFee&&s.svcPeriods?(+s.totalServiceFee/(s.svcPeriods||s.periods)).toFixed(2):0}" step="0.01" oninput="recalcEditMonthly()" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('每期手续费','Monthly Fee','កម្រៃប្រចាំខែ')} ($)</label><input id="eMonthlySvc" type="number" value="${(() => {
+        const firstUnpaid = (s.schedule||[]).find(p => !p.paid);
+        if (firstUnpaid) return firstUnpaid.serviceFeeDue || 0;
+        if (s.schedule && s.schedule.length) return s.schedule[s.schedule.length-1].serviceFeeDue || 0;
+        return (s.totalServiceFee && s.svcPeriods) ? Math.round((+s.totalServiceFee/s.svcPeriods)*100)/100 : 0;
+      })()}" step="0.01" oninput="recalcEditMonthly()" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl("每期还款合计","Monthly Total","សរុប​ប្រចាំ​ខែ")} ($) <span style="font-weight:400;color:var(--muted)">${tl('（自动=本金+利息+手续费，不能单独改）','(auto = principal+interest+fee, not editable)','')}</span></label><input id="eMonthly" type="number" value="${s.monthlyPayment||0}" step="0.01" readonly style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:#eceff1;color:var(--text);cursor:not-allowed"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl("每日滞纳金","Daily Late Fee","ពិន័យ​ប្រចាំ​ថ្ងៃ")} ($)</label><input id="eDailyFee" type="number" value="${s.dailyLateFee||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('店家返点','Store Rebate','កម្រៃហាង')} ($)</label><input id="eRebate" type="number" value="${s.storeRebate||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
