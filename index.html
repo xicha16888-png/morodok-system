@@ -7470,6 +7470,11 @@ function renderEarlyPayment() {
 
   <div class="card">
     <div class="card-title" style="margin-bottom:16px">📋 ${t("earlyTitle")}</div>
+    ${window._editingEarlyPaymentId ? `
+    <div class="alert alert-amber" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <span>✏️ ${tl('正在修改','Editing','កំពុងកែប្រែ')}：<b>${esc(window._editingEarlyPaymentOrig?.customer||'')}</b> — #${esc(window._editingEarlyPaymentOrig?.contractId||'')} ${tl('的提前还款记录，这笔合同已临时恢复为"进行中"，改完下面的信息后点"💾 保存修改"','early settlement record. This contract is temporarily back to Active — edit the info below, then click Save.','')}</span>
+      <button onclick="cancelEditEarlyPayment()" class="btn btn-outline btn-sm" style="white-space:nowrap">${tl('取消编辑','Cancel edit','បោះបង់')}</button>
+    </div>` : ''}
     ${sales.length === 0 ? '<div class="alert alert-blue">' + t("noContract") + '</div>' : ''}
     <div class="form-grid">
       <div class="form-group span3">
@@ -7516,7 +7521,8 @@ function renderEarlyPayment() {
       </div>
     </div>
     <div class="btn-row">
-      <button class="btn btn-success" onclick="submitEarlyPayment()">${t("confirmEarly")}</button>
+      <button class="btn btn-success" onclick="submitEarlyPayment()">${window._editingEarlyPaymentId ? tl('💾 保存修改','💾 Save changes','💾 រក្សាទុក') : t("confirmEarly")}</button>
+      ${window._editingEarlyPaymentId ? `<button class="btn btn-outline" onclick="cancelEditEarlyPayment()">${tl('取消编辑','Cancel edit','បោះបង់')}</button>` : ''}
     </div>
     <div id="epMsg"></div>
   </div>
@@ -7573,11 +7579,37 @@ function buildEarlyTable(list) {
         <td style="color:var(--muted);font-size:12px">${esc(r.note||'-')}</td>
         <td>
           ${(r.receiptUrls && r.receiptUrls.length) ? `<button onclick="viewEarlyReceipts(${r.id})" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px;margin-right:4px" title="${tl('查看凭证','View receipt','មើលវិក័យប័ត្រ')}">📷${r.receiptUrls.length>1?r.receiptUrls.length:''}</button>` : ''}
+          <button onclick="editEarlyPayment(${r.id})" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px;margin-right:4px" title="${tl('修改这条记录','Edit this record','កែប្រែ')}">✏️</button>
           <button onclick="deleteEarlyPayment(${r.id})" class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 8px">🗑️</button>
         </td>
       </tr>`;
     }).join('')}
   </table></div>`;
+}
+
+// 🔧 2026-09：提前结清"应用到排期表"和"从排期表撤销"这两段逻辑，原来分别散落在
+// submitEarlyPayment（应用）和 deleteEarlyPayment（撤销）里，各写一遍。现在抽成2个共用函数，
+// 编辑功能(editEarlyPayment/取消编辑)也要用到"先撤销、要么重新应用原值、要么应用新值"这套逻辑，
+// 抽出来才不会3个地方各写一份、容易改一个漏一个。
+function applyEarlySettlementToSchedule(sale, remainP, actualProfit, date) {
+  const unpaidPeriods = sale.schedule.filter(p => !p.paid);
+  const totalUnpaidPrincipal = unpaidPeriods.reduce((a, p) => a + (+p.principalDue), 0);
+  sale.schedule = sale.schedule.map(p => {
+    if (p.paid) return p;
+    const pPrincipal = totalUnpaidPrincipal > 0 ? (+p.principalDue / totalUnpaidPrincipal) * remainP : +p.principalDue;
+    const pInterest = unpaidPeriods.length > 0 ? actualProfit / unpaidPeriods.length : 0;
+    return { ...p, paid: true, paidDate: date, paidPrincipal: +pPrincipal.toFixed(2), paidInterest: +pInterest.toFixed(2), earlySettled: true };
+  });
+  sale.status = '提前结清';
+  return sale;
+}
+function reverseEarlySettlementFromSchedule(sale) {
+  sale.schedule = sale.schedule.map(p => {
+    if (p.earlySettled) return { ...p, paid: false, paidDate: null, paidPrincipal: 0, paidInterest: 0, earlySettled: false };
+    return p;
+  });
+  sale.status = '进行中';
+  return sale;
 }
 
 window.deleteEarlyPayment = function(id) {
@@ -7589,13 +7621,7 @@ window.deleteEarlyPayment = function(id) {
     const sales = DB_get('sales')||[];
     const si = sales.findIndex(s => String(s.id) === String(r.contractId));
     if (si >= 0) {
-      sales[si].schedule = sales[si].schedule.map(p => {
-        if (p.earlySettled) {
-          return { ...p, paid: false, paidDate: null, paidPrincipal: 0, paidInterest: 0, earlySettled: false };
-        }
-        return p;
-      });
-      sales[si].status = '进行中';
+      sales[si] = reverseEarlySettlementFromSchedule(sales[si]);
       DB_set('sales', sales);
     }
     // 🗑️ 不再真的删除，改成放进回收站（打_trashed标记），60天内可以恢复
@@ -7603,6 +7629,58 @@ window.deleteEarlyPayment = function(id) {
     logActivity('删除提前还款', `#${r.contractId} ${r.customer}`, `协商金额$${r.negotiatedAmount||r.negotiated||0}（已放入回收站）`);
     nav('early-payment');
   });
+};
+
+// 🆕 2026-09：修改一条已经登记过的提前还款记录（填错了金额/日期这种情况，不用先删再重新登记）。
+// 做法：先把这条记录对排期表造成的影响撤销（合同临时变回"进行中"），让用户在上面表单里重新
+// 填正确的数据；真正保存时（submitEarlyPayment）会识别出"当前在编辑某条记录"，直接更新
+// 这条记录本身（同一个id），而不是新增一条。中途反悔可以点"取消编辑"，会原样套回原来的数据。
+window.editEarlyPayment = function(id) {
+  const list = DB_get('earlyPayments') || [];
+  const r = list.find(x => x.id === id);
+  if (!r) { alert('找不到这条记录（可能已经被删除）'); return; }
+  const sales = DB_get('sales') || [];
+  const si = sales.findIndex(s => String(s.id) === String(r.contractId));
+  if (si < 0) { alert('⚠️ 找不到这条记录对应的合同（可能合同已被删除），没法用这个方式编辑，请联系开发处理。'); return; }
+  if (!confirm(`确定要修改这条提前还款记录吗？\n\n${r.customer} — #${r.contractId}\n\n点确定后，这笔合同会先临时恢复成"进行中"状态，上面表单会自动填入原来的数据，你可以直接改错的地方，改完点"💾 保存修改"就会用新数据重新结清。\n\n中途不想改了，点表单上的"取消编辑"就会恢复原样，不会丢数据。`)) return;
+
+  sales[si] = reverseEarlySettlementFromSchedule(sales[si]);
+  DB_set('sales', sales);
+
+  window._editingEarlyPaymentId = id;
+  window._editingEarlyPaymentOrig = { ...r };
+  nav('early-payment');
+
+  // 页面重新渲染是同步的，但保险起见延后一点点再回填表单，避免个别慢设备上DOM还没插入完
+  setTimeout(() => {
+    if (typeof selectEpContract === 'function') selectEpContract(String(r.contractId));
+    const dateEl = document.getElementById('epDate'); if (dateEl) dateEl.value = r.date || today();
+    const negEl = document.getElementById('epNegotiated'); if (negEl) negEl.value = r.negotiatedAmount ?? r.negotiated ?? '';
+    const noteEl = document.getElementById('epNote'); if (noteEl) noteEl.value = r.note || '';
+    calcEarlyProfit();
+    const mpEl = document.getElementById('epManualProfit');
+    // 原来的最终利润如果跟自动算出来的不一样，说明当时手动改过利润，编辑时也要把这个手动值带回来
+    if (mpEl && Math.abs((+r.actualProfit||0) - (+r.autoProfit||0)) > 0.005) {
+      mpEl.value = r.actualProfit;
+      mpEl._manuallyEdited = true;
+    }
+  }, 50);
+};
+
+// 编辑到一半不想改了：把原来的数据原样套回排期表，退出编辑模式
+window.cancelEditEarlyPayment = function() {
+  const orig = window._editingEarlyPaymentOrig;
+  const id = window._editingEarlyPaymentId;
+  window._editingEarlyPaymentId = null;
+  window._editingEarlyPaymentOrig = null;
+  if (!orig) { nav('early-payment'); return; }
+  const sales = DB_get('sales') || [];
+  const si = sales.findIndex(s => String(s.id) === String(orig.contractId));
+  if (si >= 0) {
+    sales[si] = applyEarlySettlementToSchedule(sales[si], +orig.remainPrincipal||0, +orig.actualProfit||0, orig.date);
+    DB_set('sales', sales);
+  }
+  nav('early-payment');
 };
 
 window.calcEarlyProfit = function() {
@@ -7700,13 +7778,17 @@ window.submitEarlyPayment = async function() {
   const note = document.getElementById('epNote')?.value || '';
   const customer = opt?.dataset?.customer || '';
 
+  // 🆕 2026-09：如果当前是在"编辑"某条已有记录（见editEarlyPayment），保存时要更新原来那条
+  // 记录本身（同一个id），而不是新增一条；凭证截图路径也用原id，没有新传照片就沿用原来的。
+  const editingId = window._editingEarlyPaymentId || null;
+  const recordId = editingId || newId();
+
   // 🔧 同"收款登记"一样的修复：先等凭证截图真正上传完，再和这笔提前还款一起原子性保存，
   // 不再是"先存款项、图片后台偷偷传"，避免手机浏览器切后台时图片悄悄传丢却没有任何提示。
-  const newEarlyId = newId();
   let _earlyReceiptUrls = [];
   if (window._pendingEarlyReceipts && window._pendingEarlyReceipts.length) {
     showMsg('epMsg', tl('正在上传凭证截图，请勿离开此页面...','Uploading receipt photos, please stay on this page...','កំពុង​ផ្ទុក​រូបភាព...'), 'blue');
-    _earlyReceiptUrls = await uploadEarlyReceipt(newEarlyId);
+    _earlyReceiptUrls = await uploadEarlyReceipt(recordId);
     if (!_earlyReceiptUrls.length) {
       alert(tl('⚠️ 凭证截图上传失败（可能是网络问题）。本次提前结清已正常记录，但请稍后打开这条记录手动补传照片！','⚠️ Receipt photo upload failed (possibly a network issue). The early settlement was recorded, but please re-upload the photo later.','⚠️'));
     }
@@ -7715,35 +7797,41 @@ window.submitEarlyPayment = async function() {
   }
 
   // Mark all remaining schedule items as paid (early)
-  // Distribute negotiated amount across remaining periods proportionally
-  const unpaidPeriods = s.schedule.filter(p => !p.paid);
-  const totalUnpaidPrincipal = unpaidPeriods.reduce((a, p) => a + (+p.principalDue), 0);
-  s.schedule = s.schedule.map(p => {
-    if (p.paid) return p;
-    const pPrincipal = totalUnpaidPrincipal > 0 ? (+p.principalDue / totalUnpaidPrincipal) * remainP : +p.principalDue;
-    const pInterest = unpaidPeriods.length > 0 ? actualProfit / unpaidPeriods.length : 0;
-    return { ...p, paid: true, paidDate: date, paidPrincipal: +pPrincipal.toFixed(2), paidInterest: +pInterest.toFixed(2), earlySettled: true };
-  });
-  s.status = '提前结清';
-  sales[si] = s;
+  sales[si] = applyEarlySettlementToSchedule(s, remainP, actualProfit, date);
   DB_set('sales', sales);
 
-  // Save early payment record
+  // Save early payment record（编辑模式下更新原记录，否则新增一条）
   const earlyPayments = DB_get('earlyPayments') || [];
-  earlyPayments.push({
-    id: newEarlyId, contractId, customer, date,
+  const recordData = {
+    id: recordId, contractId, customer, date,
     remainPrincipal: remainP, origRemainInterest: remainI,
     remainServiceFee: remainSvc, storeRebate: rebate,
     negotiatedAmount: neg, actualProfit, autoProfit,
     profitDiff: actualProfit - (remainI + remainSvc), note,
     receiptUrls: _earlyReceiptUrls
-  });
+  };
+  if (editingId) {
+    const idx = earlyPayments.findIndex(x => x.id === editingId);
+    if (idx >= 0) {
+      // 没有传新照片的话，沿用原来已经上传过的凭证截图，不要清空
+      if (!recordData.receiptUrls.length) recordData.receiptUrls = earlyPayments[idx].receiptUrls || [];
+      earlyPayments[idx] = recordData;
+    } else {
+      earlyPayments.push(recordData); // 理论上不会走到这里（原记录被删了），保底新增
+    }
+  } else {
+    earlyPayments.push(recordData);
+  }
   DB_set('earlyPayments', earlyPayments);
-  logActivity('提前还款', `#${contractId} ${customer}`, `协商金额$${neg} 利润$${actualProfit}`);
+  logActivity(editingId ? '修改提前还款记录' : '提前还款', `#${contractId} ${customer}`, `协商金额$${neg} 利润$${actualProfit}`);
 
-  showMsg('epMsg', `✅ ${_lang==='km'?'ការទូទាត់មុនបានទទួលជោគជ័យ':_lang==='en'?'Early settlement done':'提前结清成功！'} ${customer} — ${fmt(neg)} → ${_lang==='km'?'ចំណេញ':_lang==='en'?'Profit':'利润'} ${fmt(actualProfit)}`, 'green');
+  showMsg('epMsg', editingId
+    ? `✅ ${tl('修改成功！','Updated!','✅')} ${customer} — ${fmt(neg)} → ${tl('利润','Profit','ចំណេញ')} ${fmt(actualProfit)}`
+    : `✅ ${_lang==='km'?'ការទូទាត់មុនបានទទួលជោគជ័យ':_lang==='en'?'Early settlement done':'提前结清成功！'} ${customer} — ${fmt(neg)} → ${_lang==='km'?'ចំណេញ':_lang==='en'?'Profit':'利润'} ${fmt(actualProfit)}`, 'green');
 
-  // Reset form
+  // Reset form + 退出编辑模式
+  window._editingEarlyPaymentId = null;
+  window._editingEarlyPaymentOrig = null;
   if (mpEl) { mpEl.value = ''; mpEl._manuallyEdited = false; }
   ['epNegotiated','epNote','epAutoProfit','epRemainP','epRemainI','epRemainSvc','epRebate'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   if (document.getElementById('epProfitTip')) document.getElementById('epProfitTip').innerHTML = '';
