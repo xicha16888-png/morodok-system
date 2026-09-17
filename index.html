@@ -4523,7 +4523,9 @@ function renderPaymentAdd() {
         <input type="number" id="pTotalReceived" placeholder="0.00" step="0.01" oninput="calcCollectorTotal()"
           style="border:2px solid var(--green);font-size:15px;font-weight:700">
       </div>
-      <div class="form-group"><label>${tl('实收滞纳金','Late Fee','ប្រាក់​ពិន័យ')} ($)</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcCollectorTotal()"></div>
+      <div class="form-group"><label>${tl('实收滞纳金','Late Fee','ប្រាក់​ពិន័យ')} ($)</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcCollectorTotal()">
+        <div style="font-size:10px;color:#90a4ae;margin-top:3px">${tl('客户这次只还滞纳金续期？实收总额填0，只填这里就行，这一期会继续留在逾期名单里','If the customer only paid the late fee this time, leave Amount Received at 0 and fill only here — this period stays on the overdue list.','')}</div>
+      </div>
       <div class="form-group"><label>${tl('实收合计','Total Received','សរុប​ទទួល​បាន')}</label><input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px"></div>
       <input type="hidden" id="pPrincipal"><input type="hidden" id="pInterest">
       ` : `
@@ -4536,7 +4538,9 @@ function renderPaymentAdd() {
         <input type="number" id="pTotalReceived" placeholder="0.00" step="0.01" oninput="calcCollectorTotal()"
           style="border:2px solid var(--green);font-size:15px;font-weight:700">
       </div>
-      <div class="form-group"><label>${tl('实收滞纳金','Late Fee','ប្រាក់​ពិន័យ')} ($)</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcCollectorTotal()"></div>
+      <div class="form-group"><label>${tl('实收滞纳金','Late Fee','ប្រាក់​ពិន័យ')} ($)</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcCollectorTotal()">
+        <div style="font-size:10px;color:#90a4ae;margin-top:3px">${tl('客户这次只还滞纳金续期？实收总额填0，只填这里就行，这一期会继续留在逾期名单里','If the customer only paid the late fee this time, leave Amount Received at 0 and fill only here — this period stays on the overdue list.','')}</div>
+      </div>
       <div class="form-group"><label>${tl('实收合计','Total Received','សរុប​ទទួល​បាន')}</label><input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px"></div>
       <input type="hidden" id="pPrincipal"><input type="hidden" id="pInterest">
       `}
@@ -5593,7 +5597,11 @@ window.submitPayment = async function() {
   // 所有角色统一填实收总额，系统自动拆分本金/利息
   actualReceived = +(document.getElementById('pTotalReceived')?.value||0);
   const waiveAmt = Math.max(0, +(document.getElementById('pWaive')?.value||0)); // 🔖 跟客户协商好不收的部分（比如免最后一期利息），不算真实现金，但算已结清
-  if (!actualReceived && !waiveAmt) { showMsg('payMsg', '请输入实收金额', 'red'); return; }
+  // 🆕 2026-09：客户这个月逾期了还没还本金/利息，但先单独把滞纳金还上（续期），这种情况允许
+  // "实收总额"填0，只要滞纳金>0就能提交——之前这里卡死必须实收总额或减免有一个不为0，
+  // 导致催收员遇到"客户只还滞纳金"的情况，系统直接报错，不知道怎么登记。
+  const isPenaltyOnly = !actualReceived && !waiveAmt && penalty > 0;
+  if (!actualReceived && !waiveAmt && !penalty) { showMsg('payMsg', '请输入实收金额', 'red'); return; }
 
   // 按应还比例拆分：本金优先，剩余算利息（只算真实收到的现金）——按"这一期还剩多少"拆，不是按整期
   // 原始应还拆，这样分期多次付款才能把每一笔正确地记到没结清的部分上
@@ -5675,9 +5683,10 @@ window.submitPayment = async function() {
       waivedInterest: parseFloat(cumWaivedInterest.toFixed(2)),
       shortfall: parseFloat(shortfall.toFixed(2))
     };
-    showMsg('payMsg',
-      `⚠️ ${s.customer} 第${periodNo}期 — 本次实收 ${fmt(total)}${waiveAmt?`，减免${fmt(waiveAmt)}`:''}${hasPriorPayment?`（累计已收${fmt(effectiveTotal)}）`:''}，还差 <b style="color:red">${fmt(shortfall)}</b>，期次保留在逾期列表`,
-      'amber');
+    showMsg('payMsg', isPenaltyOnly
+      ? `✅ ${s.customer} 第${periodNo}期 — 本次只收到滞纳金 <b style="color:var(--red)">${fmt(penalty)}</b>，本金/利息这期还没收，继续保留在逾期名单里，正常计息${hasPriorPayment?`（之前已收${fmt(priorReceived)}）`:''}`
+      : `⚠️ ${s.customer} 第${periodNo}期 — 本次实收 ${fmt(total)}${waiveAmt?`，减免${fmt(waiveAmt)}`:''}${hasPriorPayment?`（累计已收${fmt(effectiveTotal)}）`:''}，还差 <b style="color:red">${fmt(shortfall)}</b>，期次保留在逾期列表`,
+      isPenaltyOnly ? 'blue' : 'amber');
   }
 
   DB_set('sales', sales);
