@@ -3814,7 +3814,8 @@ window.viewSchedule = function(id) {
         <td>${p.paid ? fmt((+p.paidInterest||0)+(+p.paidServiceFee||0)) : fmt((+p.interestDue||0)+(+p.serviceFeeDue||0))}</td>
         <td class="fw700">${p.paid
           ? fmt((+p.paidPrincipal||0)+(+p.paidInterest||0)+(+p.paidServiceFee||0)+(+p.penalty||0))
-          : fmt((+p.principalDue)+(+p.interestDue||0)+(+p.serviceFeeDue||0))}</td>
+          : fmt((+p.principalDue)+(+p.interestDue||0)+(+p.serviceFeeDue||0))}
+          ${(p.paid && (+p.penalty||0)>0) ? `<div style="font-size:10px;font-weight:400;color:var(--red)">${tl('含滞纳金','Incl. late fee','រួម​ពិន័យ')} ${fmt(p.penalty)}</div>` : ''}</td>
         <td>
           ${p.paid
             ? (p.earlySettled
