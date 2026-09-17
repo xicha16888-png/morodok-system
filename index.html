@@ -976,7 +976,7 @@ function buildSidebar() {
   // 判断某页面是否可见
   function show(page) {
     if (role === 'boss') return true;
-    const allowed = ROLE_PAGES[role] || [];
+    const allowed = getAllowedPages(u) || [];
     return Array.isArray(allowed) && allowed.includes(page);
   }
   function navItem(page, icon, label, extra='') {
@@ -1143,7 +1143,7 @@ function buildMobileNav(activePage) {
   if (!inner) return;
   const u = getCurrentUser();
   const role = u?.role || 'boss';
-  const allowed = role === 'boss' ? null : (ROLE_PAGES[role] || []);
+  const allowed = getAllowedPages(u);
   const canSee = page => page === '__more' || allowed === null || allowed.includes(page) || (page === 'sale-list' && canViewSaleListSpecial());
   const items = MOB_MAIN.filter(item => canSee(item.page));
   const isMore = !items.find(m => m.page === activePage && m.page !== '__more');
@@ -1163,7 +1163,7 @@ function buildMobileMore(activePage) {
   if (!menu) return;
   const u = getCurrentUser();
   const role = u?.role || 'boss';
-  const allowed = role === 'boss' ? null : (ROLE_PAGES[role] || []);
+  const allowed = getAllowedPages(u);
   const canSee = page => allowed === null || allowed.includes(page) || (page === 'my-performance' && role === 'auditor' && canViewMyPerformanceSpecial());
   menu.innerHTML = '<div style="width:40px;height:4px;background:#e0e0e0;border-radius:2px;margin:8px auto 12px"></div>' +
     MOB_MORE_ITEMS.filter(item => item.divider || canSee(item.page)).map(item => {
@@ -1881,7 +1881,7 @@ function renderHome() {
     ${(() => {
       const u = getCurrentUser();
       const role = u?.role || 'boss';
-      const allowed = role === 'boss' ? null : (ROLE_PAGES[role] || []);
+      const allowed = getAllowedPages(u);
       const canSee = page => allowed === null || allowed.includes(page);
       return [
         ['➕',t('saleAdd'),t('newContractSub').slice(0,10),'sale-add'],
@@ -1902,7 +1902,7 @@ function renderHome() {
   ${(() => {
     const u = getCurrentUser();
     const role = u?.role || 'boss';
-    const allowed = role === 'boss' ? null : (ROLE_PAGES[role] || []);
+    const allowed = getAllowedPages(u);
     const canSee = page => allowed === null || allowed.includes(page);
     const items = [[`⚙️ ${t('company')}`,'company'],[`🏢 ${t('suppliers')}`,'suppliers'],[`📱 ${t('phones')}`,'phones'],[`🛒 ${t('purchaseAdd')}`,'purchase-add'],[`📦 ${t('inventory')}`,'inventory'],[`🧾 ${t('expenses')}`,'expenses']]
       .filter(([,p]) => canSee(p));
@@ -2063,6 +2063,29 @@ function getCurrentUser() {
   } catch(e) { return null; }
 }
 
+// 🆕 2026-09：个别员工在"角色原有权限"之外，额外单独开通的页面权限——比如某个业务主管
+// 本人也要兼着收款/催收，但业务主管这个角色整体不应该都有这权限，只想给这一个人开。
+// 存法：不改动 morodok_users 表结构（那是独立的Supabase认证表，前端没有权限改表结构），
+// 而是借用系统本来就有的通用数据仓库(_db，跟sales/payments这些字段是同一套存取方式)，
+// 单开一个key叫 staffExtraPages，存 {用户名: [页面key,...]} 这样一个小字典。
+// 只影响这一个账号，角色本身(ROLE_PAGES)完全不变，其他同角色的人不受任何影响。
+function getStaffExtraPages(username) {
+  if (!username) return [];
+  const map = DB_get('staffExtraPages') || {};
+  const arr = map[String(username).trim().toLowerCase()];
+  return Array.isArray(arr) ? arr : [];
+}
+
+// 统一的"这个用户能看到哪些页面"计算——角色权限 + 个人额外权限（如果有）合并去重。
+// boss 返回 null 表示不限制（跟原来各处 role==='boss'?null:... 的写法保持一致）。
+function getAllowedPages(u) {
+  if (!u || u.role === 'boss') return null;
+  const base = ROLE_PAGES[u.role] || [];
+  if (!Array.isArray(base)) return base; // 理论上不会走到这里(base应该总是数组，boss除外)
+  const extra = getStaffExtraPages(u.username);
+  return extra.length ? Array.from(new Set(base.concat(extra))) : base;
+}
+
 // 检查页面访问权限
 function canAccess(page) {
   const u = getCurrentUser();
@@ -2070,7 +2093,7 @@ function canAccess(page) {
   if (u.role === 'boss') return true;
   if (page === 'sale-list' && u.role === 'auditor' && canViewSaleListSpecial()) return true;
   if (page === 'my-performance' && u.role === 'auditor' && canViewMyPerformanceSpecial()) return true;
-  const allowed = ROLE_PAGES[u.role] || [];
+  const allowed = getAllowedPages(u) || [];
   return Array.isArray(allowed) && allowed.includes(page);
 }
 
@@ -13541,6 +13564,10 @@ window.loadUserList = async function() {
           <td>${u.active?'<span style="color:var(--green)">✅ 正常</span>':'<span style="color:var(--red)">🚫 禁用</span>'}</td>
           <td style="font-size:12px;color:#90a4ae">${u.created_at?.slice(0,10)||''}</td>
           <td>
+            ${u.role === 'salesManager' ? (() => {
+              const hasExtra = getStaffExtraPages(u.username).length > 0;
+              return `<button onclick="toggleCollectorAccess('${esc(u.username)}',${hasExtra})" class="btn btn-outline btn-sm" style="font-size:11px;margin-right:4px;color:${hasExtra?'var(--green)':'#546e7a'}">${hasExtra?'✅ 已给催收权限':'🔓 开通催收权限'}</button>`;
+            })() : ''}
             <button onclick="resetUserPwd('${u.id}','${esc(u.username)}')" class="btn btn-outline btn-sm" style="font-size:11px;margin-right:4px">🔑 重置密码</button>
             <button onclick="toggleUserActive('${u.id}',${u.active})" class="btn btn-outline btn-sm" style="font-size:11px;color:${u.active?'var(--red)':'var(--green)'}">${u.active?'禁用':'启用'}</button>
             <button onclick="deleteUser('${u.id}','${esc(u.username)}')" class="btn btn-danger btn-sm" style="font-size:11px;margin-left:4px">🗑️ 删除</button>
@@ -13570,6 +13597,33 @@ window.changeUserRole = async function(userId, newRole, username) {
     alert('修改失败：'+e.message);
     loadUserList();
   }
+};
+
+// 🆕 2026-09：给单个"业务主管"账号单独开通/收回催收员的权限（收款登记+提前结清这2个页面）。
+// 只改这一个账号，不动 salesManager 这个角色本身的权限范围，其他业务主管不受影响。
+// 存在通用数据仓库里的 staffExtraPages 这个key（不是Supabase账号表的字段，见getAllowedPages）。
+window.toggleCollectorAccess = async function(username, hasExtra) {
+  if (isUserMgmtLimited()) { alert('您没有权限修改账号权限'); return; }
+  const key = String(username).trim().toLowerCase();
+  const confirmMsg = hasExtra
+    ? `确定要收回 ${username} 的催收员权限吗？收回后这个账号就只剩业务主管本来的权限，不能再"录入收款/提前结清"了。`
+    : `确定要给 ${username} 单独开通催收员权限吗？\n\n开通后，这一个账号除了业务主管原有的权限，还能进"录入收款""提前结清"这两个页面登记还款——跟催收员一样。\n\n只有这一个账号会有这个权限，业务主管这个角色本身、其他业务主管账号完全不受影响。`;
+  if (!confirm(confirmMsg)) return;
+  if (!_dbReady) { alert('数据未就绪，稍后再试一次'); return; }
+  const map = DB_get('staffExtraPages') || {};
+  if (hasExtra) { delete map[key]; }
+  else { map[key] = ['payment-add', 'early-payment']; }
+  DB_set('staffExtraPages', map);
+  logActivity && logActivity(hasExtra ? '收回催收权限' : '开通催收权限', username,
+    hasExtra ? '' : '额外开通payment-add/early-payment页面权限');
+  await flushPendingSave();
+  if (_dirty) {
+    alert('⚠️ 保存似乎没有成功（可能网络不稳定），请检查页面顶部同步状态后重试。');
+    loadUserList();
+    return;
+  }
+  alert(`✅ 已保存。${username} ${hasExtra ? '的催收员权限已收回' : '现在拥有催收员权限了（可以登记收款/提前结清）'}。\n\n如果这个账号当前正登录着，需要重新登录一次才会生效。`);
+  loadUserList();
 };
 
 window.resetUserPwd = async function(userId, username) {
