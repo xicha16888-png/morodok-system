@@ -2495,7 +2495,7 @@ window.compareSuspiciousReceipts = function(contractId, period) {
       </div>` : `<div style="font-size:12px;color:var(--muted)">${tl('这笔没有上传凭证截图','No receipt uploaded','គ្មាន​វិក័យប័ត្រ')}</div>`}
     </div>`;
   }).join('');
-  showModal(`🔍 ${tl('核对是否重复收款','Verify Possible Duplicate','ផ្ទៀងផ្ទាត់')} — ${esc(pays[0].customer||'')} #${contractId} ${tl('第','#','')}${period}${tl('期','','')}`, `
+  showModal(`🔍 ${tl('核对是否重复收款','Verify Possible Duplicate','ផ្ទៀងផ្ទាត់')} — ${esc(pays[0].customer||'')} ${tl('第','#','')}${period}${tl('期','','')}`, `
     <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${tl('把这一期所有收款记录的凭证截图放一起，看看截图上的转账日期/金额/编号是不是同一笔——如果确实是重复登记，删掉多余的那一笔；如果金额、编号不一样，说明是客户分批还款，不用管','Compare receipts to check the transaction date/amount/reference shown in each photo — if they match, it\'s the same transfer registered twice; if not, this is a legitimate installment payment','ប្រៀបធៀប​វិក័យប័ត្រ')}</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap">${cardsHtml}</div>
   `);
@@ -3249,7 +3249,7 @@ document.addEventListener('click', (e) => {
   }
 });
 
-window.submitSale = function() {
+window.submitSale = async function() {
   const isOld = window._loanMethod === 'old';
   const cust        = document.getElementById('sCust')?.value?.trim();
   const custPhone   = document.getElementById('sCustPhone')?.value?.trim() || '';
@@ -3359,6 +3359,26 @@ window.submitSale = function() {
     });
   }
 
+  // 🔒 2026-09-22：提交前强制核实最新合同编号，跟"收款登记"submitPayment()是同一套修复。
+  // 根因：业务员整天停留在"销售登记"页面时，页面自动刷新会跳过这个页面(不打断正在填的表单)，
+  // 本地缓存的合同列表就会越来越旧；newContractId()是拿本地这份(可能已经过期的)合同列表算
+  // "这个期数目前编到几号了、下一号是多少"，如果两个业务员前后脚都在用旧缓存算，算出同一个
+  // 编号，后保存的那一笔会把先保存的那一笔完全覆盖掉(数据库按合同编号存，同编号=同一行)——
+  // 这正是"业务员录入的单子第二天不见了"的根本原因，不是系统删除了数据，是被同编号的另一笔覆盖了。
+  showMsg('saleMsg', `⏳ ${tl('正在核对最新合同编号...','Checking latest contract number...','កំពុង​ត្រួតពិនិត្យ')}`, 'blue');
+  await flushPendingSave(); // 先把本地还没存上的改动存完，避免这里拉新数据把它们冲掉
+  let _freshSaleData;
+  try {
+    const _freshRes = await fetch('/api/data', {cache:'no-store'});
+    _freshSaleData = await _freshRes.json();
+  } catch (e) {
+    showMsg('saleMsg', `⚠️ ${tl('网络异常，无法核对最新合同编号，请重新点击保存','Network error, could not verify the latest contract number. Please try saving again.','បញ្ហា​បណ្តាញ')}`, 'red');
+    return;
+  }
+  _db = _freshSaleData; _dbReady = true;
+  _snapshotBaseline(_db.sales, _salesBaseline);
+  _snapshotBaseline(_db.payments, _paymentsBaseline);
+
   const sale = {
     id: newContractId(periods), date: sDate, customer: cust, customerPhone: custPhone,
     shopName, shopCode, shopMatched, salesperson,
@@ -3378,11 +3398,11 @@ window.submitSale = function() {
   const sales = DB_get('sales') || [];
   sales.push(sale);
   DB_set('sales', sales);
-  logActivity('新建合同', `#${sale.id} ${cust}`, `贷款金额$${principal}，${periods}期，型号${sale.modelName||''}`);
+  logActivity('新建合同', `${cust}`, `贷款金额$${principal}，${periods}期，型号${sale.modelName||''}`);
   if (shopName && !shopMatched) {
-    logActivity('店铺未匹配官方列表', `#${sale.id} ${cust}`, `业务员手打了"${shopName}"，未从店铺列表选中，请核对是否需要补充到官方店铺列表`);
+    logActivity('店铺未匹配官方列表', `${cust}`, `业务员手打了"${shopName}"，未从店铺列表选中，请核对是否需要补充到官方店铺列表`);
   }
-  showMsg('saleMsg', `✅ ${t('saved')} #${sale.id} — ${cust}，${periods}${t('period')}，${fmt(monthly)}/${t('period')}`, 'green');
+  showMsg('saleMsg', `✅ ${t('saved')} — ${cust}，${periods}${t('period')}，${fmt(monthly)}/${t('period')}`, 'green');
   ['sCust','sCustPhone','sSalePrice','sRetailPrice','sNote','oSalePrice','oDeposit','oMonthlyInt','oMonthlyFee','oDailyFee','oRebate'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const rc = document.getElementById('calcResultCard');
   if (rc) rc.style.display = 'none';
@@ -3394,7 +3414,7 @@ window.submitSale = function() {
     showMsg('saleMsg', '📷 正在上传图片...', 'green');
     uploadContractImages(sale.id).then(uploaded => {
       const count = Object.keys(uploaded).length;
-      showMsg('saleMsg', `✅ 合同 #${sale.id} 已保存，${count > 0 ? count + '张图片已上传' : ''}`, 'green');
+      showMsg('saleMsg', `✅ 合同已保存，${count > 0 ? count + '张图片已上传' : ''}`, 'green');
     });
   }
   if (isOld) { calcInstallOld(); } else { calcInstall(); }
@@ -3607,7 +3627,7 @@ function buildSaleRowsHtml(rows) {
   return rows.map(s => {
     const paid = (s.schedule||[]).filter(p => p.paid).length;
     return `<tr>
-      <td class="fw700 text-blue">#${s.id}</td><td>${s.date}</td>
+      <td>${s.date}</td>
       <td><div class="fw700">${esc(s.customer)}</div><div class="text-muted" style="font-size:11px">${esc(s.customerPhone||'')}</div></td>
       <td><span style="font-size:12px;background:#e3f2fd;color:var(--navy);padding:2px 8px;border-radius:12px;white-space:nowrap;cursor:pointer" onclick="document.getElementById('saleShopFilter').value='${esc(extractStoreKey(s.shopCode||s.shopName||''))}';filterSales()">${esc(s.shopName||'-')}</span>${s.shopName && s.shopMatched===false ? ` <span title="${tl('未从官方店铺列表选中，可能是手打的店名','Not selected from the official store list — may be a manually typed name','មិនបានជ្រើសរើសពីបញ្ជីហាងផ្លូវការទេ')}" style="color:var(--red);cursor:help">⚠️</span>` : ''}</td>
       <td>${esc(s.modelName||'-')}</td><td>${fmt(s.salePrice)}</td><td>${fmt(s.deposit)}</td>
@@ -3653,14 +3673,14 @@ function buildSalesTable(sales) {
   window._saleListGroupRows = {};
 
   let html = `<div class="table-wrap"><table>
-    <tr><th>${t("colNo")}</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>🏪 ${tl('店家','Store','ហាង')}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colDeposit")}</th><th>${t("colPrincipal")}</th><th>${t("colPeriods")}</th><th>${t("colMonthly")}</th><th>${t("colProgress")}</th><th>${t("colStatus")}</th><th>${tl('审核人','Auditor','អ្នកសវនកម្ម')}</th><th>${t("colAction")}</th></tr>`;
+    <tr><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>🏪 ${tl('店家','Store','ហាង')}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colDeposit")}</th><th>${t("colPrincipal")}</th><th>${t("colPeriods")}</th><th>${t("colMonthly")}</th><th>${t("colProgress")}</th><th>${t("colStatus")}</th><th>${tl('审核人','Auditor','អ្នកសវនកម្ម')}</th><th>${t("colAction")}</th></tr>`;
 
   uniqueDates.forEach(date => {
     const rows = groups[date];
     const groupId = 'dg_' + date.replace(/-/g,'');
     window._saleListGroupRows[groupId] = rows;
     html += `<tr style="background:var(--navy);cursor:pointer" onclick="toggleDateGroup('${groupId}')">
-      <td colspan="14" style="color:#fff;font-weight:700;padding:8px 12px;font-size:13px">
+      <td colspan="13" style="color:#fff;font-weight:700;padding:8px 12px;font-size:13px">
         📅 ${date} &nbsp;
         <span style="background:rgba(255,255,255,0.2);border-radius:12px;padding:2px 10px;font-size:12px">${rows.length} ${tl('单','orders','ដំណើរ')}</span>
         <span id="${groupId}_icon" style="float:right;font-size:16px">▼</span>
@@ -3762,7 +3782,7 @@ window.viewSchedule = function(id) {
 
   const isOverdueContract = (s.schedule||[]).some(p => !p.paid && p.dueDate && p.dueDate < today());
 
-  showModal(`📄 #${esc(String(s.id))} — ${esc(s.customer)}`,
+  showModal(`📄 ${esc(s.customer)}（${esc(s.date)}）`,
     `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
       <!-- 手机品牌/型号卡片 -->
       <div style="background:#f5f5f5;border-radius:12px;padding:14px">
@@ -3879,7 +3899,7 @@ window.editSale = function(id) {
   // 应收期数错误地锁死成3期。改成默认直接跟"分期期数"一致，客户是几期就显示几期。
   const svcPeriodOpts = [3,6,9,12].map(n=>`<option value="${n}" ${n===s.periods?'selected':''}>${n}期</option>`).join('');
 
-  showModal(`✏️ ${tl('编辑合同','Edit Contract','កែប្រែកិច្ចសន្យា')} #${s.id} — ${s.customer}`,
+  showModal(`✏️ ${tl('编辑合同','Edit Contract','កែប្រែកិច្ចសន្យា')} — ${s.customer}（${s.date}）`,
     `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:13px">
       <div><label style="font-size:11px;color:var(--muted)">${tl('合同日期','Contract Date','ថ្ងៃកិច្ចសន្យា')}</label><input id="eDate" type="date" value="${s.date}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('客户姓名','Customer Name','ឈ្មោះអតិថិជន')}</label><input id="eCust" value="${s.customer}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
@@ -4049,12 +4069,12 @@ window.saveEditSale = function(id) {
   // 🔓 2026-08：老板/主管用原来的编辑密码(cao)；内审员+业务主管统一用0000
   const _curRole = getCurrentUser()?.role || '';
   const _editConfirmFn = (_curRole === 'auditor' || _curRole === 'salesManager') ? confirmAuditorEdit : confirmEdit;
-  _editConfirmFn(`确认修改合同 #${s.id} — ${s.customer} 吗？`, function() {
+  _editConfirmFn(`确认修改合同 — ${s.customer}（${s.date}） 吗？`, function() {
     const changedFields = [];
     ['date','customer','customerPhone','shopName','salesperson','modelName','salePrice','deposit','periods','installmentAmount','monthlyPayment','storeRebate','dailyLateFee','note'].forEach(k => {
       if (String(s[k]??'') !== String(newSale[k]??'')) changedFields.push(`${k}: ${s[k]??'—'} → ${newSale[k]??'—'}`);
     });
-    logActivity('编辑合同', `#${s.id} ${s.customer}`, changedFields.join('; ') || '（未改动关键字段，可能只调整了排期）');
+    logActivity('编辑合同', `${s.customer}`, changedFields.join('; ') || '（未改动关键字段，可能只调整了排期）');
 
     sales[idx] = newSale;
     DB_set('sales', sales);
@@ -4314,7 +4334,7 @@ window.deleteSale = function(id) {
   const u0 = getCurrentUser(); const role0 = u0?.role || '';
   const isAdmin = role0 === 'boss' || role0 === 'manager';
   const confirmFn = isAdmin ? confirmDelete : confirmAuditorDelete;
-  confirmFn(`${tl("删除合同","Delete contract","លុប​កិច្ចសន្យា")} #${s.id} — ${s.customer}？${tl("（会先放进回收站，60天内可以恢复）","(Goes to Trash first, recoverable within 60 days)","")}`, async function() {
+  confirmFn(`${tl("删除合同","Delete contract","លុប​កិច្ចសន្យា")} — ${s.customer}（${s.date}）？${tl("（会先放进回收站，60天内可以恢复）","(Goes to Trash first, recoverable within 60 days)","")}`, async function() {
     // 🗑️ 2026-08：不再真的删除，改成放进回收站（打_trashed标记），60天内可以恢复
     trashItem('sales', id);
     // 一并把关联的提前还款记录也放进回收站
@@ -4322,7 +4342,7 @@ window.deleteSale = function(id) {
     if (relatedEp && relatedEp.id) {
       trashItem('earlyPayments', relatedEp.id);
     }
-    logActivity('删除合同', `#${s.id} ${s.customer}`, `贷款金额$${s.installmentAmount||0}（已放入回收站）`);
+    logActivity('删除合同', `${s.customer}（${s.date}）`, `贷款金额$${s.installmentAmount||0}（已放入回收站）`);
     // 内审页面删的话，删完刷新审核列表；其它页面还是回销售查询页
     if (document.getElementById('auditDetailModal')?.style.display === 'block') {
       document.getElementById('auditDetailModal').style.display = 'none';
@@ -4345,7 +4365,7 @@ window.cancelSale = function(id) {
   if (!s) return;
   if (s.status === '已取消') { alert(tl('这笔订单已经是"已取消"状态了','This order is already cancelled','')); return; }
   const paidCount = (s.schedule||[]).filter(p=>p.paid).length;
-  showModal(`🚫 ${tl('取消订单','Cancel Order','បោះបង់ការបញ្ជាទិញ')} #${s.id} — ${esc(s.customer)}`, `
+  showModal(`🚫 ${tl('取消订单','Cancel Order','បោះបង់ការបញ្ជាទិញ')} — ${esc(s.customer)}（${esc(s.date)}）`, `
     ${paidCount > 0 ? `<p style="margin-bottom:12px;color:var(--red)">⚠️ ${tl('这笔合同已经有','This contract already has','')} ${paidCount} ${tl('期收到过还款，取消前请确认清楚，还款记录不会被清除。','period(s) paid. Please confirm before cancelling — payment records will not be removed.','')}</p>` : ''}
     <div class="form-group">
       <label>${tl('取消日期','Cancel Date','កាលបរិច្ឆេទបោះបង់')}</label>
@@ -4385,7 +4405,7 @@ window.submitCancelSale = function(id) {
     s.storeRebate = 0;
     s.note = (s.note ? s.note + '；' : '') + `客户取消订单，收取违约金$${cancelFee}` + (noteExtra ? '；' + noteExtra : '');
     DB_set('sales', sales);
-    logActivity('订单取消', `#${s.id} ${s.customer}`, `取消订单，收违约金$${cancelFee}；状态${before.status}→已取消，合同净利润$${before.contractNetProfit||0}→$${cancelFee}，店铺返点$${before.storeRebate||0}→$0；排期表原样保留仅作历史记录`);
+    logActivity('订单取消', `${s.customer}（${s.date}）`, `取消订单，收违约金$${cancelFee}；状态${before.status}→已取消，合同净利润$${before.contractNetProfit||0}→$${cancelFee}，店铺返点$${before.storeRebate||0}→$0；排期表原样保留仅作历史记录`);
     alert(`✅ ${tl('已按取消订单处理','Cancelled','')}`);
     if (document.getElementById('auditDetailModal')?.style.display === 'block') {
       document.getElementById('auditDetailModal').style.display = 'none';
@@ -4399,7 +4419,7 @@ window.submitCancelSale = function(id) {
 function renderPaymentAdd() {
   const sales = (DB_get('sales')||[]).filter(s => s.status === '进行中');
   const pendingText = window._pendingPayText || '';
-  const opts = sales.map(s => `<option value="#${s.id} — ${s.customer} (${s.periods}期 每期${fmt(s.monthlyPayment)})" data-id="${s.id}"></option>`).join('');
+  const opts = sales.map(s => `<option value="${s.customer} · ${s.date} (${s.periods}期 每期${fmt(s.monthlyPayment)})" data-id="${s.id}"></option>`).join('');
   const pays = (DB_get('payments')||[]).slice().reverse();
   const u = getCurrentUser();
   const isCollector = u?.role === 'collector';
@@ -4650,7 +4670,7 @@ function buildPayTableByContract(pays, isCollector) {
     return `
     <div style="margin-bottom:8px">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--navy);color:#fff;border-radius:8px 8px 0 0;font-size:12px">
-        <span style="font-weight:700">${esc(s?.customer || cid)} <span style="opacity:.7;font-size:11px">#${cid}</span></span>
+        <span style="font-weight:700">${esc(s?.customer || cid)}${s?.date ? ` <span style="opacity:.7;font-size:11px">${esc(s.date)}</span>` : ''}</span>
         <span>${cPays.length}${tl('期','Periods','ខែ')} · <b style="color:#81d4fa">${fmt(total)}</b></span>
       </div>
       <div style="border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
@@ -4710,7 +4730,7 @@ function buildPayTableEarly(pays, isCollector) {
             <span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 7px;border-radius:8px;margin-left:5px;font-weight:700">${tl("⚡提前结清","⚡Early Settled","⚡សង​មុន")}</span>
           </div>
           <div style="font-size:11px;color:#546e7a;margin-top:2px">
-            #${s.id} · ${tl('签约','Signed','ចុះ​ថ្ងៃ')} ${s.date} · ${s.modelName||'-'} · ${tl('已还','Paid','បាន​បង')} ${paidPeriods}/${totalPeriods} ${tl('期','periods','ខែ')}
+            ${tl('签约','Signed','ចុះ​ថ្ងៃ')} ${s.date} · ${s.modelName||'-'} · ${tl('已还','Paid','បាន​បង')} ${paidPeriods}/${totalPeriods} ${tl('期','periods','ខែ')}
           </div>
           <div style="font-size:11px;color:#90a4ae">${esc(s.customerPhone||'')}</div>
         </div>
@@ -4880,7 +4900,7 @@ function buildPayTableGrouped(pays, isCollector) {
                 ${(+p.advanceDays||0)>30 ? `<span style="background:#ffebee;color:#c62828;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700" title="${tl('提前','Advance','មុន')}${p.advanceDays}${tl('天，超过1个月，建议核对','days, over 1 month, please verify','ថ្ងៃ')}">🔔${tl('提前','Advance','មុន')}${p.advanceDays}${tl('天','d','ថ្ងៃ')}</span>` : ''}
                 ${suspicious ? `<span onclick="event.stopPropagation();compareSuspiciousReceipts('${p.contractId}',${p.period})" style="background:#e65100;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700;cursor:pointer" title="${tl('点击查看凭证照片核对','Click to compare receipt photos','ចុច​ដើម្បី​ផ្ទៀងផ្ទាត់')}">⚠️ ${tl('疑似重复','Possible duplicate','ប្រហែលដដែល')} 🔍</span>` : ''}
               </div>
-              <div style="font-size:11px;color:#90a4ae">#${p.contractId} · ${tl('第','Period ','ខែ')}${p.period}${tl('期','','')}${p.shortfall>0?` · ${tl('差额','Shortfall','ខ្វះ')} <b style="color:var(--red)">${fmt(p.shortfall)}</b>`:''}</div>
+              <div style="font-size:11px;color:#90a4ae">${tl('第','Period ','ខែ')}${p.period}${tl('期','','')}${p.shortfall>0?` · ${tl('差额','Shortfall','ខ្វះ')} <b style="color:var(--red)">${fmt(p.shortfall)}</b>`:''}</div>
             </div>
             ${isCollector ? `
             <div style="text-align:right">
@@ -4916,7 +4936,7 @@ window.deletePayment = function(id) {
 
   // Remove payment record (本地状态同步，用于界面即时刷新——DB_get会自动把刚打标记的这条过滤掉)
   const newPays = pays.filter(p => p.id !== id);
-  logActivity('删除流水', `#${pay.contractId} ${pay.customer} 第${pay.period}期`, `本金$${pay.principal} 利息$${pay.interest}（已放入回收站）`);
+  logActivity('删除流水', `${pay.customer} 第${pay.period}期`, `本金$${pay.principal} 利息$${pay.interest}（已放入回收站）`);
 
   // 🔖 重新根据"删掉这笔之后剩下的收款记录"算这一期的真实状态——如果这一期本来有好几笔
   // （客户分次还），删掉其中一笔不能把整期直接清零，要按剩下那几笔重新累计判断
@@ -5039,7 +5059,7 @@ window.editPayment = function(id) {
       </div>
     </div>
     <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px 12px;margin:12px 0;font-size:12px;color:#5d4037">
-      📌 ${tl('合同','Contract','កិច្ចសន្យា')}：<b>#${pay.contractId}</b> · ${tl('客户','Customer','អ្នក​ប្រើ')}：<b>${pay.customer}</b> · ${tl('第','#','ខែ')} <b>${pay.period}</b> ${tl('期','','')}</div>
+      📌 ${tl('客户','Customer','អ្នក​ប្រើ')}：<b>${pay.customer}</b> · ${tl('第','#','ខែ')} <b>${pay.period}</b> ${tl('期','','')}</div>
     <div id="epMsg" style="margin-bottom:8px;font-size:12px"></div>
     <div style="display:flex;gap:10px">
       <button onclick="saveEditPayment(${id})" class="btn btn-primary">💾 ${tl('保存修改','Save','រក្សា​ទុក')}</button>
@@ -5708,7 +5728,7 @@ window.submitPayment = async function() {
     receiptUrls: _payReceiptUrls
   });
   DB_set('payments', pays);
-  logActivity('还款登记', `#${contractId} ${s.customer} 第${periodNo}期`, `本金$${principal.toFixed(2)} 利息$${interest.toFixed(2)}${penalty?` 滞纳金$${penalty}`:''}${waiveAmt?` 减免$${waiveAmt.toFixed(2)}`:''}`);
+  logActivity('还款登记', `${s.customer} 第${periodNo}期`, `本金$${principal.toFixed(2)} 利息$${interest.toFixed(2)}${penalty?` 滞纳金$${penalty}`:''}${waiveAmt?` 减免$${waiveAmt.toFixed(2)}`:''}`);
 
   // 重置表单
   ['pPenalty','pNote','pTotalReceived','pWaive'].forEach(id => {
@@ -5936,7 +5956,7 @@ function reconImportRenderPreview(result) {
     return list.slice(0, maxShow).map(r => {
       const e = r.entry;
       return `<div style="display:flex;gap:8px;padding:6px 10px;border-bottom:1px solid #f0f0f0;font-size:12px;flex-wrap:wrap">
-        <div style="flex:1;min-width:120px"><b>${esc(e.customer)}</b> <span style="color:#90a4ae">#${esc(e.contractId)}</span></div>
+        <div style="flex:1;min-width:120px"><b>${esc(e.customer)}</b></div>
         <div style="min-width:90px;color:#546e7a">${esc(e.dueDate||'-')}</div>
         <div style="min-width:70px;text-align:right;color:var(--green);font-weight:700">${r.usdAmount ? fmt(r.usdAmount) : (e.amount||'-')}</div>
         <div style="min-width:90px;color:#90a4ae">${esc(e.date||'-')}</div>
@@ -6073,7 +6093,7 @@ window.reconImportConfirm = async function() {
         receiptUrls, note: noteText, reconImported: true, reconImportNote: noteText
       });
 
-      logActivity('批量导入还款(核对)', `#${r.contractId} ${r.sale.customer} 第${r.sched.period}期`,
+      logActivity('批量导入还款(核对)', `${r.sale.customer} 第${r.sched.period}期`,
         `${tl('本金','P','')}$${r.principal.toFixed(2)} ${tl('利息','I','')}$${r.interest.toFixed(2)}（${entry.amountCurrency==='KHR'?`${entry.amount} KHR → `:''}$${r.usdAmount.toFixed(2)}）`);
       okCount++;
     }
@@ -6237,7 +6257,7 @@ window.docxResolveContract = function(i) {
     const q = (nameInput ? nameInput.value : pair.name) || '';
     const candidates = sales.filter(s => matchesSearchQuery(s.customer, q) || matchesSearchQuery(q, s.customer));
     sale = candidates[0] || null;
-    if (sale && contractInput) contractInput.value = `${sale.customer} (#${sale.id})`;
+    if (sale && contractInput) contractInput.value = `${sale.customer} (${sale.date})`;
   }
 
   pair.resolvedContractId = sale ? sale.id : null;
@@ -6274,7 +6294,7 @@ window.docxFillSuggestedAmount = function(i) {
 function renderDocxReviewUI() {
   const pairs = window._docxImport.pairs;
   const sales = (DB_get('sales') || []).filter(s => s.status === '进行中');
-  const contractOpts = sales.map(s => `<option value="${esc(s.customer)} (#${s.id})" data-id="${s.id}"></option>`).join('');
+  const contractOpts = sales.map(s => `<option value="${esc(s.customer)} (${esc(s.date)})" data-id="${s.id}"></option>`).join('');
 
   showModal(`📎 ${tl('核对每一笔（','Review each ('  )}${pairs.length}${tl('张截图）','screenshots)','')}`, `
     <datalist id="docxContractList">${contractOpts}</datalist>
@@ -6684,9 +6704,9 @@ function renderStatsProfit() {
       <div class="card-title">⚡ ${t("earlyRepayTitle")}</div>
     </div>
     <div class="table-wrap"><table>
-      <tr><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>#</th><th>${t("negotiatedAmount").replace(" *","")}</th><th>${t("origRemainInterest")}</th><th>${t("netProfit")}</th></tr>
+      <tr><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>${t("negotiatedAmount").replace(" *","")}</th><th>${t("origRemainInterest")}</th><th>${t("netProfit")}</th></tr>
       ${earlyPays.map(r=>{return`<tr>
-        <td>${r.date}</td><td class="fw700">${esc(r.customer)}</td><td class="text-blue">#${r.contractId}</td>
+        <td>${r.date}</td><td class="fw700">${esc(r.customer)}</td>
         <td class="text-amber fw700">${fmt(+r.negotiated||+r.negotiatedAmount||0)}</td><td>${fmt(r.origRemainInterest||0)}</td>
         <td class="text-green fw700">${fmt(r.actualProfit)}</td>
       </tr>`;}).join('')}
@@ -6740,7 +6760,6 @@ function buildProfitTable(filteredSales, earlyPays, groupByMonth) {
     const { interestVal, svcVal, rebateVal, net } = calcRow(s);
     const statusBadge = s.status==='已结清'?'badge-green':s.status==='提前结清'?'badge-amber':'badge-blue';
     return `<tr>
-      <td class="fw700 text-blue">#${s.id}</td>
       <td style="font-size:11px;color:var(--muted)">${s.date}</td>
       <td class="fw700">${esc(s.customer)}</td>
       <td>${esc(s.modelName||'-')}</td>
@@ -6752,7 +6771,7 @@ function buildProfitTable(filteredSales, earlyPays, groupByMonth) {
     </tr>`;
   }
 
-  const thead = `<tr><th>#</th><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colInterest")}</th><th>${t("colRebateCol")}</th><th>${t("colNetProfit")}</th><th>${t("colStatus")}</th></tr>`;
+  const thead = `<tr><th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>${t("colModel")}</th><th>${t("colSalePrice")}</th><th>${t("colInterest")}</th><th>${t("colRebateCol")}</th><th>${t("colNetProfit")}</th><th>${t("colStatus")}</th></tr>`;
 
   // 按月分组显示
   const sorted = filteredSales.slice().reverse();
@@ -6771,7 +6790,7 @@ function buildProfitTable(filteredSales, earlyPays, groupByMonth) {
   });
 
   const grandTotal = `<tr style="background:#e8f5e9;font-weight:700;border-top:2px solid var(--green)">
-    <td colspan="4" style="text-align:right;color:var(--muted);font-size:12px">📊 ${tl('总计（'+filteredSales.length+'笔）','Total ('+filteredSales.length+')','សរុប ('+filteredSales.length+')')}</td>
+    <td colspan="3" style="text-align:right;color:var(--muted);font-size:12px">📊 ${tl('总计（'+filteredSales.length+'笔）','Total ('+filteredSales.length+')','សរុប ('+filteredSales.length+')')}</td>
     <td class="text-green">${fmt(grandInt)}</td>
     <td class="text-red">−${fmt(grandRebate)}</td>
     <td style="color:var(--green);font-size:15px">${fmt(grandNet)}</td>
@@ -6787,7 +6806,7 @@ function buildProfitTable(filteredSales, earlyPays, groupByMonth) {
       mInt+=r.interestVal; mRebate+=r.rebateVal; mNet+=r.net;
     });
     const mSubTotal = `<tr style="background:#f0f7ff;font-weight:700;border-top:1px solid var(--border)">
-      <td colspan="4" style="text-align:right;color:var(--muted);font-size:12px">${m} ${tl('小计（'+mSales.length+'笔）','Subtotal ('+mSales.length+')','សរុបផ្នែក ('+mSales.length+')')}</td>
+      <td colspan="3" style="text-align:right;color:var(--muted);font-size:12px">${m} ${tl('小计（'+mSales.length+'笔）','Subtotal ('+mSales.length+')','សរុបផ្នែក ('+mSales.length+')')}</td>
       <td class="text-green">${fmt(mInt)}</td>
       <td class="text-red">−${fmt(mRebate)}</td>
       <td style="color:var(--navy)">${fmt(mNet)}</td>
@@ -6796,7 +6815,7 @@ function buildProfitTable(filteredSales, earlyPays, groupByMonth) {
     return `
       <!-- 月份标题行 -->
       <tr style="background:var(--navy)">
-        <td colspan="9" style="color:#fff;font-weight:700;font-size:13px;padding:8px 12px">
+        <td colspan="8" style="color:#fff;font-weight:700;font-size:13px;padding:8px 12px">
           📅 ${m} &nbsp;
           <span style="font-size:11px;font-weight:400;opacity:.8">${mSales.length}笔 · 毛利润 ${fmt(mNet)}</span>
         </td>
@@ -6861,7 +6880,7 @@ function renderReminderTomorrow() {
   <div class="card">${items.map(({s,p})=>`
     <div class="reminder-item info">
       <div><div class="fw700">${esc(s.customer)} <span class="text-muted" style="font-weight:400;font-size:12px">${esc(s.customerPhone||'')}</span></div>
-        <div style="font-size:12px;color:var(--muted)">#${s.id} · ${p.period}/${s.periods} ${t("period")}</div></div>
+        <div style="font-size:12px;color:var(--muted)">${p.period}/${s.periods} ${t("period")}</div></div>
       <div style="text-align:right"><div class="fw700 text-blue" style="font-size:15px">${fmt((+p.principalDue)+(+p.interestDue))}</div>
         <button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="navToPayment('${s.id}',${p.period})">${t('registerPayment')}</button></div>
     </div>`).join('')||`<div class="empty-state"><div class="ei">😌</div><p>无到期账单</p></div>`}
@@ -7011,7 +7030,7 @@ function renderReminderOverdue() {
         ${partialItems.slice().sort((a,b)=>b.days-a.days).map(({s,p,days}) => `
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#fff;border-radius:8px;padding:8px 12px;border:1px solid #ffe082">
           <div style="font-size:12px;min-width:0">
-            <b>${esc(s.customer)}</b> <span style="color:#90a4ae">#${s.id}</span> · ${t('period')} ${p.period} ${tl('期','','')}
+            <b>${esc(s.customer)}</b> · ${t('period')} ${p.period} ${tl('期','','')}
             <span style="font-size:11px;color:#90a4ae;margin-left:6px">${tl('已收','Received','បានទទួល')} ${fmt(odReceivedSoFar(s,p))}</span>
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
@@ -7035,8 +7054,8 @@ function renderReminderOverdue() {
       ${dataFixItems.map(({s,p}) => `
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#fff;border-radius:8px;padding:8px 12px;border:1px solid #bbdefb">
         <div style="font-size:12px;min-width:0">
-          <b>${esc(s.customer)}</b> <span style="color:#90a4ae">#${s.id}</span> · ${t('period')} ${p.period} ${tl('期','','')}
-          ${p.dataFixNote ? `<div style="font-size:11px;color:#78909c;margin-top:2px">${esc(p.dataFixNote)}</div>` : ''}
+          <b>${esc(s.customer)}</b> · ${t('period')} ${p.period} ${tl('期','','')}
+          ${p.dataFixNote ?`<div style="font-size:11px;color:#78909c;margin-top:2px">${esc(p.dataFixNote)}</div>` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
           <span style="font-weight:700;color:#1565c0">${tl('还差','Owes','នៅសល់')} ${fmt(p.shortfall||0)}</span>
@@ -7078,7 +7097,7 @@ function renderReminderOverdue() {
               <span style="font-weight:400;font-size:12px;color:#90a4ae;margin-left:6px">${esc(s.customerPhone||'')}</span>
             </div>
             <div style="font-size:12px;color:var(--muted);margin-top:2px">
-              #${s.id} · ${s.modelName||'-'} · <b style="color:${color}">${periods.length}</b> ${t('overdueCount')}
+              ${s.modelName||'-'} · <b style="color:${color}">${periods.length}</b> ${t('overdueCount')}
               · ${t('loanDateLabel')} ${s.date||'-'}
               · ${t('periodLabel')}${[...periods].sort((a,b)=>a.p.period-b.p.period).map(({p})=>p.period).join(',')}${t('period')}
             </div>
@@ -7185,7 +7204,7 @@ function renderPaymentQuery() {
         <div class="fw700" style="font-size:14px">${esc(s.customer)}
           <span style="font-weight:400;font-size:12px;color:#90a4ae;margin-left:6px">${esc(s.customerPhone||'')}</span>
         </div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">#${s.id} · ${t("period")} ${p.period}/${s.periods} · ${s.modelName||'-'}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">${t("period")} ${p.period}/${s.periods} · ${s.modelName||'-'}</div>
         <div style="font-size:12px;color:var(--muted)">${tl('到期','Due','ផុត​កំណត់')}：<b style="color:${urgent?'var(--red)':'var(--amber)'}">${p.dueDate}</b></div>
       </div>
       <div style="text-align:right;flex-shrink:0">
@@ -7468,7 +7487,7 @@ function renderEarlyPayment() {
       data-remain-i="${remainI.toFixed(2)}"
       data-remain-svc="${remainSvc.toFixed(2)}"
       data-rebate="${rebate.toFixed(2)}"
-      data-customer="${esc(s.customer)}">#${s.id} — ${esc(s.customer)} (${t("remainPrincipal")} ${fmt(remainP)})</option>`;
+      data-customer="${esc(s.customer)}">${esc(s.customer)} · ${esc(s.date)} (${t("remainPrincipal")} ${fmt(remainP)})</option>`;
   }).join('');
   window._epAllOptionsHtml = opts; // 供搜索框过滤合同列表使用
   return `
@@ -7481,7 +7500,7 @@ function renderEarlyPayment() {
     <div class="card-title" style="margin-bottom:16px">📋 ${t("earlyTitle")}</div>
     ${window._editingEarlyPaymentId ? `
     <div class="alert alert-amber" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-      <span>✏️ ${tl('正在修改','Editing','កំពុងកែប្រែ')}：<b>${esc(window._editingEarlyPaymentOrig?.customer||'')}</b> — #${esc(window._editingEarlyPaymentOrig?.contractId||'')} ${tl('的提前还款记录，这笔合同已临时恢复为"进行中"，改完下面的信息后点"💾 保存修改"','early settlement record. This contract is temporarily back to Active — edit the info below, then click Save.','')}</span>
+      <span>✏️ ${tl('正在修改','Editing','កំពុងកែប្រែ')}：<b>${esc(window._editingEarlyPaymentOrig?.customer||'')}</b> ${tl('的提前还款记录，这笔合同已临时恢复为"进行中"，改完下面的信息后点"💾 保存修改"','early settlement record. This contract is temporarily back to Active — edit the info below, then click Save.','')}</span>
       <button onclick="cancelEditEarlyPayment()" class="btn btn-outline btn-sm" style="white-space:nowrap">${tl('取消编辑','Cancel edit','បោះបង់')}</button>
     </div>` : ''}
     ${sales.length === 0 ? '<div class="alert alert-blue">' + t("noContract") + '</div>' : ''}
@@ -7559,7 +7578,7 @@ function buildEarlyTable(list) {
   if (!list.length) return `<div class="empty-state"><div class="ei">⚡</div><p>${t("noRecord")}</p></div>`;
   return `<div class="table-wrap"><table>
     <tr>
-      <th>${t("colDate")}</th><th>${t("colCustomer")}</th><th>#</th>
+      <th>${t("colDate")}</th><th>${t("colCustomer")}</th>
       <th>${t("remainPrincipal")}</th><th>${t("origRemainInterest")}</th>
       <th>${_lang==='km'?'កាំចំណែក':_lang==='en'?'Rebate':'返点'}</th>
       <th>${t("negotiatedAmount").replace(" *","")}</th>
@@ -7569,7 +7588,6 @@ function buildEarlyTable(list) {
       return `<tr>
         <td>${r.date}</td>
         <td class="fw700">${esc(r.customer)}</td>
-        <td class="text-blue">#${r.contractId}</td>
         <td>${(() => {
           const sale = (DB_get('sales')||[]).find(s=>String(s.id)===String(r.contractId));
           if (!sale) return fmt(r.remainPrincipal||0);
@@ -7625,7 +7643,7 @@ window.deleteEarlyPayment = function(id) {
   const list = DB_get('earlyPayments')||[];
   const r = list.find(x => x.id === id);
   if (!r) return;
-  confirmDelete(`${tl('删除提前还款记录：','Delete early settlement: ','លុប​ការ​ទូ​ទាត់​មុន​កំណត់:')} ${r.customer} — #${r.contractId}（${tl('会先放进回收站，60天内可以恢复','Goes to Trash first, recoverable within 60 days','')}）`, async function() {
+  confirmDelete(`${tl('删除提前还款记录：','Delete early settlement: ','លុប​ការ​ទូ​ទាត់​មុន​កំណត់:')} ${r.customer} — ${r.date||''}（${tl('会先放进回收站，60天内可以恢复','Goes to Trash first, recoverable within 60 days','')}）`, async function() {
     // 恢复合同排期表为未还，恢复状态为进行中
     const sales = DB_get('sales')||[];
     const si = sales.findIndex(s => String(s.id) === String(r.contractId));
@@ -7635,7 +7653,7 @@ window.deleteEarlyPayment = function(id) {
     }
     // 🗑️ 不再真的删除，改成放进回收站（打_trashed标记），60天内可以恢复
     trashItem('earlyPayments', id);
-    logActivity('删除提前还款', `#${r.contractId} ${r.customer}`, `协商金额$${r.negotiatedAmount||r.negotiated||0}（已放入回收站）`);
+    logActivity('删除提前还款', `${r.customer}`, `协商金额$${r.negotiatedAmount||r.negotiated||0}（已放入回收站）`);
     nav('early-payment');
   });
 };
@@ -7651,7 +7669,7 @@ window.editEarlyPayment = function(id) {
   const sales = DB_get('sales') || [];
   const si = sales.findIndex(s => String(s.id) === String(r.contractId));
   if (si < 0) { alert('⚠️ 找不到这条记录对应的合同（可能合同已被删除），没法用这个方式编辑，请联系开发处理。'); return; }
-  if (!confirm(`确定要修改这条提前还款记录吗？\n\n${r.customer} — #${r.contractId}\n\n点确定后，这笔合同会先临时恢复成"进行中"状态，上面表单会自动填入原来的数据，你可以直接改错的地方，改完点"💾 保存修改"就会用新数据重新结清。\n\n中途不想改了，点表单上的"取消编辑"就会恢复原样，不会丢数据。`)) return;
+  if (!confirm(`确定要修改这条提前还款记录吗？\n\n${r.customer} — ${r.date||''}\n\n点确定后，这笔合同会先临时恢复成"进行中"状态，上面表单会自动填入原来的数据，你可以直接改错的地方，改完点"💾 保存修改"就会用新数据重新结清。\n\n中途不想改了，点表单上的"取消编辑"就会恢复原样，不会丢数据。`)) return;
 
   sales[si] = reverseEarlySettlementFromSchedule(sales[si]);
   DB_set('sales', sales);
@@ -7769,6 +7787,23 @@ window.submitEarlyPayment = async function() {
   const rebate    = +(opt?.dataset?.rebate    || 0);
   const mpEl = document.getElementById('epManualProfit');
 
+  // 🔒 2026-09-22：跟"销售登记"submitSale()、"收款登记"submitPayment()同一套修复——
+  // "提前还款"页面也在自动刷新的跳过名单(FORM_PAGES)里，催收员/业务主管长时间停留在这个页面时，
+  // 本地缓存的合同/记录列表会变旧，用旧缓存算出来的新记录编号(newId())可能跟同事撞上，
+  // 后保存的会把先保存的覆盖掉。提交前先核实一次最新数据，避免这个隐患。
+  showMsg('epMsg', `⏳ ${tl('正在核对最新数据...','Checking latest data...','កំពុង​ត្រួតពិនិត្យ')}`, 'blue');
+  await flushPendingSave();
+  try {
+    const _freshRes = await fetch('/api/data', {cache:'no-store'});
+    const _freshData = await _freshRes.json();
+    _db = _freshData; _dbReady = true;
+    _snapshotBaseline(_db.sales, _salesBaseline);
+    _snapshotBaseline(_db.payments, _paymentsBaseline);
+  } catch (e) {
+    showMsg('epMsg', `⚠️ ${tl('网络异常，无法核对最新数据，请重新点击保存','Network error, could not verify latest data. Please try saving again.','បញ្ហា​បណ្តាញ')}`, 'red');
+    return;
+  }
+
   // 先取出合同记录，再用它计算，避免"变量提前使用"报错
   const sales = DB_get('sales') || [];
   const si = sales.findIndex(s => String(s.id) === String(contractId));
@@ -7832,7 +7867,7 @@ window.submitEarlyPayment = async function() {
     earlyPayments.push(recordData);
   }
   DB_set('earlyPayments', earlyPayments);
-  logActivity(editingId ? '修改提前还款记录' : '提前还款', `#${contractId} ${customer}`, `协商金额$${neg} 利润$${actualProfit}`);
+  logActivity(editingId ? '修改提前还款记录' : '提前还款', `${customer}`, `协商金额$${neg} 利润$${actualProfit}`);
 
   showMsg('epMsg', editingId
     ? `✅ ${tl('修改成功！','Updated!','✅')} ${customer} — ${fmt(neg)} → ${tl('利润','Profit','ចំណេញ')} ${fmt(actualProfit)}`
@@ -8220,7 +8255,6 @@ function renderFinanceReport() {
         if (!list.length) return `<div style="text-align:center;color:var(--green);padding:16px;font-size:13px">✅ ${tl('暂无逾期单','No overdue orders','គ្មាន​ការ​ហួស​កំណត់')}</div>`;
         return `<div class="table-wrap" style="margin-top:8px"><table>
           <tr>
-            <th>#</th>
             <th>${tl('客户','Customer','អ្នក​ប្រើ')}</th>
             <th>${tl('手机号','Phone','ទូរ​សព្ទ')}</th>
             <th>${tl('型号','Model','ម៉ូ​ដែល')}</th>
@@ -8232,7 +8266,6 @@ function renderFinanceReport() {
             const unpaid = sale.schedule.filter(p => !p.paid);
             const unpaidAmt = unpaid.reduce((a,p) => a + (+p.principalDue||0) + (+p.interestDue||0), 0);
             return `<tr>
-              <td class="fw700 text-blue">#${sale.id}</td>
               <td><div class="fw700">${esc(sale.customer)}</div></td>
               <td>${esc(sale.customerPhone||'')}</td>
               <td style="font-size:12px">${esc(sale.modelName||'-')}</td>
@@ -8720,7 +8753,7 @@ window.filterExpenses = function() {
   if (catWrap) catWrap.innerHTML = buildCatSummary(list);
 };
 
-window.submitExpense = function() {
+window.submitExpense = async function() {
   const date   = document.getElementById('exDate')?.value||today();
   const cat    = document.getElementById('exCat')?.value||'其他';
   const amount = +(document.getElementById('exAmount')?.value||0);
@@ -8728,6 +8761,24 @@ window.submitExpense = function() {
   const person = document.getElementById('exPerson')?.value||'';
   const payDate= document.getElementById('exPayDate')?.value||'';
   if (!amount || amount <= 0) { showMsg('exMsg',t('msgFillAmount'),'red'); return; }
+
+  // 🔒 2026-09-22：跟"销售登记"/"收款登记"/"提前还款"同一套修复——而且"开支记录"这里风险更大：
+  // 开支不是像合同/收款那样一条一条单独存的，是整个数组当一整块存的，如果本地缓存是旧的
+  // (比如一直停留在"日常开支"页面，自动刷新被跳过)，保存时会把"本地这份旧数组"整个原样传回去，
+  // 刚好把"别人这段时间新增的开支记录"直接覆盖消失，不需要编号撞上就会丢。提交前先核实最新数据。
+  showMsg('exMsg', `⏳ ${tl('正在核对最新数据...','Checking latest data...','កំពុង​ត្រួតពិនិត្យ')}`, 'blue');
+  await flushPendingSave();
+  try {
+    const _freshRes = await fetch('/api/data', {cache:'no-store'});
+    const _freshData = await _freshRes.json();
+    _db = _freshData; _dbReady = true;
+    _snapshotBaseline(_db.sales, _salesBaseline);
+    _snapshotBaseline(_db.payments, _paymentsBaseline);
+  } catch (e) {
+    showMsg('exMsg', `⚠️ ${tl('网络异常，无法核对最新数据，请重新点击保存','Network error, could not verify latest data. Please try saving again.','បញ្ហា​បណ្តាញ')}`, 'red');
+    return;
+  }
+
   const expenses = DB_get('expenses')||[];
   expenses.push({ id: newId(), date, cat, amount, note, person, payDate });
   DB_set('expenses', expenses);
@@ -9074,12 +9125,11 @@ function renderStoreStats() {
                 <div id="contracts-${i}" style="display:none;margin-top:10px;max-height:320px;overflow-y:auto">
                   ${d.storeSales.length ? `<table style="width:100%;font-size:12px">
                     <tr style="position:sticky;top:0;background:#f8fbff">
-                      <th>#</th><th>${tl('客户','Customer','អ្នក​ប្រើ')}</th><th>${tl('型号','Model','ម៉ូ​ដែល')}</th>
+                      <th>${tl('客户','Customer','អ្នក​ប្រើ')}</th><th>${tl('型号','Model','ម៉ូ​ដែល')}</th>
                       <th>${tl('状态','Status','ស្ថានភាព')}</th><th>${tl('日期','Date','កាល​បរិច្ឆេទ')}</th>
                     </tr>
                     ${[...d.storeSales].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(s=>`
                     <tr style="cursor:pointer" onclick="viewSchedule('${s.id}')">
-                      <td class="fw700 text-blue">#${s.id}</td>
                       <td>${esc(s.customer)}</td>
                       <td style="font-size:11px">${esc(s.modelName||'-')}</td>
                       <td><span class="badge ${s.status==='已结清'||s.status==='提前结清'?'badge-green':'badge-blue'}" style="font-size:10px">${esc(s.status||'-')}</span></td>
@@ -9273,7 +9323,7 @@ window.showStaffOrderDetail = function(name, period) {
       <tr style="position:sticky;top:0;background:#fff">
         <th>${tl('日期','Date','')}</th><th>${tl('客户','Customer','')}</th><th>${tl('电话','Phone','')}</th>
         <th>${tl('店家','Store','')}</th><th style="text-align:right">${tl('放款额','Loan','')}</th>
-        <th style="text-align:right">${tl('每期还款','Monthly','')}</th><th>${tl('合同号','Contract #','')}</th>
+        <th style="text-align:right">${tl('每期还款','Monthly','')}</th>
       </tr>
       ${list.map(s => `<tr style="cursor:pointer" onclick="closeModal();viewSchedule('${s.id}')">
         <td>${s.date||''}</td>
@@ -9282,7 +9332,6 @@ window.showStaffOrderDetail = function(name, period) {
         <td>${esc(s.shopName||'-')}</td>
         <td style="text-align:right">$${fmt(s.installmentAmount)}</td>
         <td style="text-align:right">$${fmt(s.monthlyPayment)}</td>
-        <td class="text-blue">#${esc(String(s.id))}</td>
       </tr>`).join('')}
     </table></div>` : `<div style="color:var(--muted);font-size:12px;padding:10px">${tl('这段时间没有出单','No orders in this period','')}</div>`}
   `;
@@ -9930,10 +9979,10 @@ function buildSalespersonStats() {
             <td colspan="7" style="padding:16px">
               <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px">📄 ${tl('合同列表','Contracts','បញ្ជី')} (${d.total})</div>
               <table style="width:100%;font-size:12px">
-                <tr style="position:sticky;top:0;background:#f8fbff"><th>#</th><th>${tl('客户','Customer','អ្នក​ប្រើ')}</th><th>${tl('型号','Model','ម៉ូ​ដែល')}</th><th>${tl('状态','Status','ស្ថានភាព')}</th><th>${tl('日期','Date','កាល​បរិច្ឆេទ')}</th></tr>
+                <tr style="position:sticky;top:0;background:#f8fbff"><th>${tl('客户','Customer','អ្នក​ប្រើ')}</th><th>${tl('型号','Model','ម៉ូ​ដែល')}</th><th>${tl('状态','Status','ស្ថានភាព')}</th><th>${tl('日期','Date','កាល​បរិច្ឆេទ')}</th></tr>
                 ${[...d.list].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(s=>`
                 <tr style="cursor:pointer" onclick="event.stopPropagation();viewSchedule('${s.id}')">
-                  <td class="fw700 text-blue">#${s.id}</td><td>${esc(s.customer)}</td>
+                  <td>${esc(s.customer)}</td>
                   <td style="font-size:11px">${esc(s.modelName||'-')}</td>
                   <td><span class="badge ${s.status==='已结清'||s.status==='提前结清'?'badge-green':'badge-blue'}" style="font-size:10px">${esc(s.status||'-')}</span></td>
                   <td style="color:var(--muted)">${esc(s.date||'-')}</td>
@@ -10204,12 +10253,11 @@ window.renderAuditorTabTable = function() {
               <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px">📄 ${tl('审核合同列表','Audited Contracts','បញ្ជី​កិច្ចសន្យា')} (${d.total})</div>
               ${d.contractSales.length ? `<table style="width:100%;font-size:12px">
                 <tr style="position:sticky;top:0;background:#f8fbff">
-                  <th>#</th><th>${tl('客户','Customer','អ្នក​ប្រើ')}</th><th>${tl('型号','Model','ម៉ូ​ដែល')}</th>
+                  <th>${tl('客户','Customer','អ្នក​ប្រើ')}</th><th>${tl('型号','Model','ម៉ូ​ដែល')}</th>
                   <th>${tl('状态','Status','ស្ថានភាព')}</th><th>${tl('日期','Date','កាល​បរិច្ឆេទ')}</th>
                 </tr>
                 ${[...d.contractSales].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(s=>`
                 <tr style="cursor:pointer" onclick="event.stopPropagation();viewSchedule('${s.id}')">
-                  <td class="fw700 text-blue">#${s.id}</td>
                   <td>${esc(s.customer)}</td>
                   <td style="font-size:11px">${esc(s.modelName||'-')}</td>
                   <td><span class="badge ${s.status==='已结清'||s.status==='提前结清'?'badge-green':'badge-blue'}" style="font-size:10px">${esc(s.status||'-')}</span></td>
@@ -10783,11 +10831,10 @@ function renderFundOverdueTable(groupId) {
   wrap.innerHTML = recoveredBlock + `
   <div class="alert alert-red" style="margin-bottom:10px">⚠️ ${rows.length} ${tl('位客户逾期，逾期欠款合计','customers overdue, total owed','នាក់ហួសកំណត់, សរុបជំពាក់')} <b>${fmt(totalOwed)}</b></div>
   <div class="table-wrap"><table>
-    <tr><th>${t('colCustomer')}</th><th>${tl('电话','Phone','ទូរស័ព្ទ')}</th><th>#</th><th>${tl('逾期期数','Overdue Periods','ដំណាក់ហួសកំណត់')}</th><th>${tl('最长逾期天数','Max Days Overdue','ថ្ងៃហួសកំណត់អតិបរមា')}</th><th>${tl('逾期欠款','Amount Owed','ជំពាក់')}</th></tr>
+    <tr><th>${t('colCustomer')}</th><th>${tl('电话','Phone','ទូរស័ព្ទ')}</th><th>${tl('逾期期数','Overdue Periods','ដំណាក់ហួសកំណត់')}</th><th>${tl('最长逾期天数','Max Days Overdue','ថ្ងៃហួសកំណត់អតិបរមា')}</th><th>${tl('逾期欠款','Amount Owed','ជំពាក់')}</th></tr>
     ${rows.map(r => `<tr>
       <td class="fw700">${esc(r.customer||'')}</td>
       <td>${esc(r.phone||'-')}</td>
-      <td class="text-blue">#${esc(String(r.contractId||''))}</td>
       <td>${r.overdueCount}</td>
       <td style="color:${r.maxDays>=30?'var(--red)':'var(--amber)'};font-weight:700">${r.maxDays}${tl('天','d','ថ្ងៃ')}</td>
       <td class="fw700 text-red">${fmt(r.owed)}</td>
@@ -10885,7 +10932,7 @@ window.runFundDateQuery = function(groupId) {
       return;
     }
     tableWrap.innerHTML = `<div class="table-wrap" style="max-height:450px;overflow-y:auto"><table>
-      <tr><th>${tl('到期日','Due Date','ថ្ងៃដល់កំណត់')}</th><th>${t('colCustomer')}</th><th>#</th><th>${tl('期数','Period','ដំណាក់')}</th>
+      <tr><th>${tl('到期日','Due Date','ថ្ងៃដល់កំណត់')}</th><th>${t('colCustomer')}</th><th>${tl('期数','Period','ដំណាក់')}</th>
         <th>${tl('应收本金','Due Principal','ដើមទុនត្រូវ')}</th><th>${tl('应收利息','Due Interest','ការប្រាក់ត្រូវ')}</th>
         <th>${tl('实收本金','Recv Principal','ដើមទុនបាន')}</th><th>${tl('实收利息','Recv Interest','ការប្រាក់បាន')}</th>
         <th>${tl('差额','Gap','ខ្វះ')}</th><th>${tl('状态','Status','ស្ថានភាព')}</th></tr>
@@ -10895,7 +10942,6 @@ window.runFundDateQuery = function(groupId) {
         return `<tr>
           <td>${r.dueDate}</td>
           <td class="fw700">${esc(r.customer||'')}</td>
-          <td class="text-blue">#${esc(String(r.contractId||''))}</td>
           <td>${r.period}</td>
           <td>${fmt(r.duePrincipal)}</td>
           <td>${fmt(r.dueInterest)}</td>
@@ -11053,11 +11099,10 @@ window.toggleFundMonthRow = function(groupId, month) {
         </div>
         <div style="font-weight:700;font-size:12px;color:#2e7d32;margin-bottom:6px">💰 ${tl('当期正常已收（逐笔）','Collected on time','ប្រមូលបានទាន់ពេល')}（${onTimeRows.length}${tl('笔','','')}）</div>
         ${onTimeRows.length ? `<table style="width:100%;margin-bottom:16px">
-          <tr><th>${tl('日期','Date','ថ្ងៃ')}</th><th>${t('colCustomer')}</th><th>#</th><th>${t('period')}</th><th>${tl('金额','Amount','ចំនួន')}</th></tr>
+          <tr><th>${tl('日期','Date','ថ្ងៃ')}</th><th>${t('colCustomer')}</th><th>${t('period')}</th><th>${tl('金额','Amount','ចំនួន')}</th></tr>
           ${onTimeRows.map(p => `<tr>
             <td style="font-size:12px">${p.date}</td>
             <td class="fw700">${esc(p.customer||'')}${p.isEarlySettlement?` <span style="background:#f3e5f5;color:#9c27b0;font-size:10px;padding:1px 6px;border-radius:8px">⚡${tl('提前结清','early','មុន')}</span>`:''}</td>
-            <td class="text-blue">#${esc(String(p.contractId||''))}</td>
             <td>${p.period||'-'}</td>
             <td class="fw700 text-green">${fmt(p.total)}</td>
           </tr>`).join('')}
@@ -11065,11 +11110,10 @@ window.toggleFundMonthRow = function(groupId, month) {
 
         <div style="font-weight:700;font-size:12px;color:#e65100;margin-bottom:6px">🔄 ${tl('补收以前月份逾期','Late catch-up (from earlier months)','ប្រមូល​បាន​ក្រោយ')}（${catchupRows.length}${tl('笔','','')} · ${fmt(catchupTotal)}）</div>
         ${catchupRows.length ? `<table style="width:100%;margin-bottom:16px">
-          <tr><th>${tl('收款日期','Paid Date','ថ្ងៃ​ទូទាត់')}</th><th>${t('colCustomer')}</th><th>#</th><th>${t('period')}</th><th>${tl('原到期月份','Originally Due','ខែ​ត្រូវ​ដល់​កំណត់​ដើម')}</th><th>${tl('逾期天数','Days Late','ថ្ងៃ​ហួស')}</th><th>${tl('金额','Amount','ចំនួន')}</th></tr>
+          <tr><th>${tl('收款日期','Paid Date','ថ្ងៃ​ទូទាត់')}</th><th>${t('colCustomer')}</th><th>${t('period')}</th><th>${tl('原到期月份','Originally Due','ខែ​ត្រូវ​ដល់​កំណត់​ដើម')}</th><th>${tl('逾期天数','Days Late','ថ្ងៃ​ហួស')}</th><th>${tl('金额','Amount','ចំនួន')}</th></tr>
           ${catchupRows.map(p => `<tr style="background:#fff8e1">
             <td style="font-size:12px">${p.date}</td>
             <td class="fw700">${esc(p.customer||'')}</td>
-            <td class="text-blue">#${esc(String(p.contractId||''))}</td>
             <td>${p.period||'-'}</td>
             <td style="font-weight:700;color:#e65100">${p.dueMonth}</td>
             <td style="color:var(--red)">${p.daysLate||0} ${tl('天','d','ថ្ងៃ')}</td>
@@ -11079,11 +11123,10 @@ window.toggleFundMonthRow = function(groupId, month) {
 
         <div style="font-weight:700;font-size:12px;color:#1565c0;margin-bottom:6px">⏩ ${tl('提前还款（还的是以后月份的）','Early payments (for future periods)','ទូទាត់​មុន')}（${earlyRows.length}${tl('笔','','')} · ${fmt(earlyTotal)}）</div>
         ${earlyRows.length ? `<table style="width:100%;margin-bottom:16px">
-          <tr><th>${tl('收款日期','Paid Date','ថ្ងៃ​ទូទាត់')}</th><th>${t('colCustomer')}</th><th>#</th><th>${t('period')}</th><th>${tl('原到期月份','Actually Due','ខែ​ត្រូវ​ដល់​កំណត់')}</th><th>${tl('提前天数','Days Early','ថ្ងៃ​មុន')}</th><th>${tl('金额','Amount','ចំនួន')}</th></tr>
+          <tr><th>${tl('收款日期','Paid Date','ថ្ងៃ​ទូទាត់')}</th><th>${t('colCustomer')}</th><th>${t('period')}</th><th>${tl('原到期月份','Actually Due','ខែ​ត្រូវ​ដល់​កំណត់')}</th><th>${tl('提前天数','Days Early','ថ្ងៃ​មុន')}</th><th>${tl('金额','Amount','ចំនួន')}</th></tr>
           ${earlyRows.map(p => `<tr style="background:#e3f2fd">
             <td style="font-size:12px">${p.date}</td>
             <td class="fw700">${esc(p.customer||'')}</td>
-            <td class="text-blue">#${esc(String(p.contractId||''))}</td>
             <td>${p.period||'-'}</td>
             <td style="font-weight:700;color:#1565c0">${p.dueMonth}</td>
             <td style="color:#1565c0">${Math.abs(p.daysLate||0)} ${tl('天','d','ថ្ងៃ')}</td>
@@ -11093,10 +11136,9 @@ window.toggleFundMonthRow = function(groupId, month) {
 
         <div style="font-weight:700;font-size:12px;color:var(--red);margin-bottom:6px">⚠️ ${tl('仍然逾期未还（按今天最新状态）','Still overdue (as of today)','ជំពាក់​ហួស​កំណត់')}（${overdueRows.length}${tl('笔','','')} · ${fmt(overdueTotal)}）</div>
         ${overdueRows.length ? `<table style="width:100%">
-          <tr><th>${t('colCustomer')}</th><th>#</th><th>${t('period')}</th><th>${tl('到期日','Due Date','ថ្ងៃ​ដល់​កំណត់')}</th><th>${tl('逾期天数','Days Late','ថ្ងៃ​ហួស')}</th><th>${tl('欠款','Owed','ជំពាក់')}</th></tr>
+          <tr><th>${t('colCustomer')}</th><th>${t('period')}</th><th>${tl('到期日','Due Date','ថ្ងៃ​ដល់​កំណត់')}</th><th>${tl('逾期天数','Days Late','ថ្ងៃ​ហួស')}</th><th>${tl('欠款','Owed','ជំពាក់')}</th></tr>
           ${overdueRows.map(r => `<tr>
             <td class="fw700">${esc(r.customer||'')}</td>
-            <td class="text-blue">#${esc(String(r.contractId||''))}</td>
             <td>${r.period}</td>
             <td style="font-size:12px">${r.dueDate}</td>
             <td style="color:var(--red)">${r.days} ${tl('天','d','ថ្ងៃ')}</td>
@@ -11476,12 +11518,11 @@ function renderFundDetailTable(groupId, keyword) {
   const problemIds = new Set(getProblemContractIds());
   const grandTotal = rows.reduce((a,r) => a + r.total, 0);
   wrap.innerHTML = `<div class="table-wrap" style="max-height:400px;overflow-y:auto"><table>
-    <tr><th>${t('colCustomer')}</th><th>#</th><th>${tl('还款次数','Payments','ចំនួនដង')}</th><th>${tl('最近还款日','Last Payment','ថ្ងៃចុងក្រោយ')}</th><th>${tl('总金额','Total','សរុប')}</th><th></th></tr>
+    <tr><th>${t('colCustomer')}</th><th>${tl('还款次数','Payments','ចំនួនដង')}</th><th>${tl('最近还款日','Last Payment','ថ្ងៃចុងក្រោយ')}</th><th>${tl('总金额','Total','សរុប')}</th><th></th></tr>
     ${rows.map(r => {
       const isProblem = problemIds.has(String(r.contractId));
       return `<tr style="${isProblem?'background:#fff3f3':''}">
         <td class="fw700">${esc(r.customer||'')}${r.hasEarly?` <span style="background:#f3e5f5;color:#9c27b0;font-size:10px;padding:1px 6px;border-radius:8px">⚡${tl('含提前结清','early','មុន')}</span>`:''}${isProblem?` <span style="background:#ffebee;color:#c62828;font-size:10px;padding:1px 6px;border-radius:8px">🚩${tl('问题客户','flagged','បញ្ហា')}</span>`:''}</td>
-        <td class="text-blue">#${esc(String(r.contractId||''))}</td>
         <td>${r.count}</td>
         <td>${r.lastDate}</td>
         <td class="fw700 text-green">${fmt(r.total)}</td>
@@ -12863,7 +12904,7 @@ window.renderAuditList = async function() {
 
   wrap.innerHTML = `<div class="table-wrap"><table>
     <tr>
-      <th>${tl('合同号','Contract No.','លេខកិច្ចសន្យា')}</th><th>${tl('客户','Customer','អតិថិជន')}</th><th>${tl('电话','Phone','ទូរស័ព្ទ')}</th><th>${tl('身份证号','ID Number','លេខអត្តសញ្ញាណប័ណ្ណ')}</th><th>${tl('型号','Model','ម៉ូដែល')}</th>
+      <th>${tl('客户','Customer','អតិថិជន')}</th><th>${tl('电话','Phone','ទូរស័ព្ទ')}</th><th>${tl('身份证号','ID Number','លេខអត្តសញ្ញាណប័ណ្ណ')}</th><th>${tl('型号','Model','ម៉ូដែល')}</th>
       <th>${tl('签约日期','Sign Date','ថ្ងៃចុះកិច្ចសន្យា')}</th><th>${tl('期数','Periods','ចំនួនខែ')}</th><th>${tl('审核状态','Review Status','ស្ថានភាពត្រួតពិនិត្យ')}</th><th>${tl('审核人','Reviewer','អ្នកត្រួតពិនិត្យ')}</th><th>${tl('操作','Action','សកម្មភាព')}</th>
     </tr>
     ${groupOrder.map(d => {
@@ -12872,7 +12913,7 @@ window.renderAuditList = async function() {
       const dayTotal = rows.reduce((sum, s) => sum + (+s.installmentAmount || 0), 0);
       const dupIds = computeAuditDupIds(rows);
       return `<tr style="background:var(--navy);cursor:pointer" onclick="toggleDateGroup('${groupId}')">
-        <td colspan="10" style="color:#fff;font-weight:700;padding:8px 12px;font-size:13px">
+        <td colspan="9" style="color:#fff;font-weight:700;padding:8px 12px;font-size:13px">
           📅 ${d} &nbsp;
           <span style="background:rgba(255,255,255,0.2);border-radius:12px;padding:2px 10px;font-size:12px">${tl(rows.length+' 单', rows.length+' contracts', rows.length+' កិច្ចសន្យា')}</span>
           <span style="background:rgba(255,255,255,0.2);border-radius:12px;padding:2px 10px;font-size:12px;margin-left:6px">${tl('合计 $'+fmt(dayTotal)+'/期','Total $'+fmt(dayTotal)+'/period','សរុប $'+fmt(dayTotal)+'/ខែ')}</span>
@@ -12887,8 +12928,7 @@ window.renderAuditList = async function() {
         const sty = statusStyle[status] || '';
         const isDup = dupIds.has(s.id);
         return `<tr${isDup ? ' style="background:#fff5f5"' : ''}>
-          <td class="fw700 text-blue">#${s.id}</td>
-          <td class="fw700">${esc(s.customer||'')}${isDup ? ` <span title="${tl('同一天有电话/姓名/身份证号相同的记录，请核对是否重复','Same phone/name/ID number appears elsewhere this day — check for duplicates','មានលេខទូរស័ព្ទ/ឈ្មោះ/អត្តសញ្ញាណប័ណ្ណដូចគ្នានៅថ្ងៃដដែល')}" style="color:#c62828">⚠️</span>` : ''}</td>
+          <td class="fw700">${esc(s.customer||'')}${isDup ?` <span title="${tl('同一天有电话/姓名/身份证号相同的记录，请核对是否重复','Same phone/name/ID number appears elsewhere this day — check for duplicates','មានលេខទូរស័ព្ទ/ឈ្មោះ/អត្តសញ្ញាណប័ណ្ណដូចគ្នានៅថ្ងៃដដែល')}" style="color:#c62828">⚠️</span>` : ''}</td>
           <td>${esc(s.customerPhone||'')}</td>
           <td style="font-size:12px">${esc(s.idNumber||'—')}</td>
           <td style="font-size:12px">${esc(s.modelName||'-')}</td>
@@ -12947,7 +12987,7 @@ window.openAuditDetail = async function(contractId) {
   const statusStyle = {'待审核':'#e65100','已通过':'#2e7d32','有问题':'#c62828','待补充':'#1565c0'};
 
   content.innerHTML = `
-    <h3 style="margin:0 0 8px;color:#0d2137">${tl('合同审核','Contract Audit','ត្រួតពិនិត្យកិច្ចសន្យា')} — #${s.id}</h3>
+    <h3 style="margin:0 0 8px;color:#0d2137">${tl('合同审核','Contract Audit','ត្រួតពិនិត្យកិច្ចសន្យា')} — ${esc(s.customer)}（${esc(s.date)}）</h3>
     ${audit?.auditor_name ? `
     <div style="display:inline-flex;align-items:center;gap:6px;background:#e3f2fd;color:#1565c0;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:16px">
       🕵️ ${tl('当前审核人：','Current Reviewer: ','អ្នកត្រួតពិនិត្យបច្ចុប្បន្ន៖ ')}${esc(audit.auditor_name)}${audit.updated_at ? `（${new Date(audit.updated_at).toLocaleString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})} ${tl('更新','updated','បានធ្វើបច្ចុប្បន្នភាព')}）` : ''}
@@ -13148,7 +13188,7 @@ window.saveAuditBasicEdit = async function(contractId) {
 
   logActivity(
     tl('内审修改基础信息','Auditor Edited Basic Info','សវនករបានកែប្រែព័ត៌មានមូលដ្ឋាន'),
-    `#${s.id} ${s.customer}`,
+    `${s.customer}`,
     changed.join('; ')
   );
 
@@ -13372,10 +13412,10 @@ function daysLeftInTrash(trashedAt) {
 }
 
 function trashItemSummary(key, item) {
-  if (key === 'sales') return `#${item.id} ${item.customer||''} · 贷款金额$${item.installmentAmount||0} · ${item.periods||0}期`;
-  if (key === 'payments') return `#${item.contractId} ${item.customer||''} · 第${item.period}期 · 本金$${item.principal||0}+利息$${item.interest||0}`;
+  if (key === 'sales') return `${item.customer||''} · ${item.date||''} · 贷款金额$${item.installmentAmount||0} · ${item.periods||0}期`;
+  if (key === 'payments') return `${item.customer||''} · 第${item.period}期 · 本金$${item.principal||0}+利息$${item.interest||0}`;
   if (key === 'expenses') return `${item.date||''} · ${item.cat||''} · $${item.amount||0} · ${item.note||''}`;
-  if (key === 'earlyPayments') return `#${item.contractId} ${item.customer||''} · 协商金额$${item.negotiatedAmount||item.negotiated||0}`;
+  if (key === 'earlyPayments') return `${item.customer||''} · 协商金额$${item.negotiatedAmount||item.negotiated||0}`;
   return item.id;
 }
 
@@ -13438,7 +13478,7 @@ window.restoreTrashUI = function(key, id) {
   if (!confirm(`确定要恢复这条${TRASH_TYPE_LABELS[key]}吗？恢复后会重新出现在正常列表里。`)) return;
   const ok = restoreTrashItem(key, id);
   if (!ok) { alert('❌ 没找到这条记录，可能已经被恢复或彻底删除了'); return; }
-  logActivity('恢复回收站记录', `${TRASH_TYPE_LABELS[key]} #${id}`, '');
+  logActivity('恢复回收站记录', `${TRASH_TYPE_LABELS[key]}`, '');
   alert('✅ 已恢复');
   renderTrashTable();
 };
@@ -13446,7 +13486,7 @@ window.restoreTrashUI = function(key, id) {
 window.purgeTrashUI = function(key, id) {
   confirmDelete(`彻底删除这条${TRASH_TYPE_LABELS[key]}记录？此操作不可撤销，删完就真的没有了！`, function() {
     purgeTrashItem(key, id);
-    logActivity('彻底清除回收站记录', `${TRASH_TYPE_LABELS[key]} #${id}`, '');
+    logActivity('彻底清除回收站记录', `${TRASH_TYPE_LABELS[key]}`, '');
     renderTrashTable();
   });
 };
