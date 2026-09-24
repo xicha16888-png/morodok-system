@@ -3835,7 +3835,8 @@ window.viewSchedule = function(id) {
         <td class="fw700">${p.paid
           ? fmt((+p.paidPrincipal||0)+(+p.paidInterest||0)+(+p.paidServiceFee||0)+(+p.penalty||0))
           : fmt((+p.principalDue)+(+p.interestDue||0)+(+p.serviceFeeDue||0))}
-          ${(p.paid && (+p.penalty||0)>0) ? `<div style="font-size:10px;font-weight:400;color:var(--red)">${tl('含滞纳金','Incl. late fee','រួម​ពិន័យ')} ${fmt(p.penalty)}</div>` : ''}</td>
+          ${(p.paid && (+p.penalty||0)>0) ? `<div style="font-size:10px;font-weight:400;color:var(--red)">${tl('含滞纳金','Incl. late fee','រួម​ពិន័យ')} ${fmt(p.penalty)}</div>` : ''}
+          ${(p.paid && (+p.overpaid||0)>0) ? `<div style="font-size:10px;font-weight:400;color:#6a1b9a" title="${tl('详细退还状态见"收款记录"','See payment records for refund status','')}">${tl('另有多收','Plus overpaid','')} ${fmt(p.overpaid)}</div>` : ''}</td>
         <td>
           ${p.paid
             ? (p.earlySettled
@@ -4456,8 +4457,37 @@ function renderPaymentAdd() {
   const ydStats = dueDayStats(yd);
   const tmrStats = dueDayStats(tmr);
 
+  // 🆕 2026-09："多收待退还"提醒——客户多转的钱，登记时单独记在overpaid字段，不算滞纳金也不算
+  // 这期还款，但容易被忘记退还，这里做一个汇总提醒，点开能看到每一笔，标记已退还就会从这里消失
+  const pendingRefunds = pays.filter(p => (+p.overpaid||0) > 0 && !p.overpaidRefunded);
+  const pendingRefundTotal = pendingRefunds.reduce((a,p)=>a+(+p.overpaid||0),0);
+  const pendingRefundHtml = pendingRefunds.length ? `
+  <div class="card" style="border-left:4px solid #6a1b9a;background:#f9f4fb;margin-bottom:10px;padding:14px 16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer"
+      onclick="const d=document.getElementById('pendingRefundSection');const arr=this.querySelector('.pr-arr');const open=d.style.display==='none';d.style.display=open?'block':'none';arr.style.transform=open?'rotate(180deg)':'';">
+      <div style="font-weight:700;color:#6a1b9a;font-size:13px">💜 ${tl('多收待退还','Overpaid, to refund','')}（${pendingRefunds.length}${tl('笔','','')} · ${fmt(pendingRefundTotal)}）</div>
+      <div class="pr-arr" style="color:#6a1b9a;font-size:14px;transition:transform .2s">▾</div>
+    </div>
+    <div id="pendingRefundSection" style="display:none;margin-top:10px">
+      <div style="font-size:12px;color:#455a64;margin-bottom:10px">${tl('这些是客户多转的钱，不是滞纳金，需要另外退还给客户——退了之后点"标记已退还"，就会从这个列表消失','These are extra amounts customers sent by mistake, not late fees — they need to be refunded separately. Click "Mark refunded" once done and it will disappear from this list.','')}</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${pendingRefunds.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(p => `
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#fff;border-radius:8px;padding:8px 12px;border:1px solid #e1bee7">
+          <div style="font-size:12px;min-width:0">
+            <b>${esc(p.customer)}</b> · ${tl('第','Period ','ខែ')}${p.period}${tl('期','','')} · ${p.date}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+            <span style="font-weight:700;color:#6a1b9a">${fmt(p.overpaid)}</span>
+            <button onclick="markOverpaidRefunded(${p.id})" class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 10px;background:#6a1b9a">↩️ ${tl('标记已退还','Mark refunded','')}</button>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>` : '';
+
   return `
   <div class="page-header"><div class="page-title">💳 ${t('paymentTitle')}</div></div>
+  ${pendingRefundHtml}
 
   <!-- 🆕 近3天应收/已收对比 -->
   <div class="card" style="padding:16px 18px;margin-bottom:10px">
@@ -4546,6 +4576,9 @@ function renderPaymentAdd() {
       <div class="form-group"><label>${tl('实收滞纳金','Late Fee','ប្រាក់​ពិន័យ')} ($)</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcCollectorTotal()">
         <div style="font-size:10px;color:#90a4ae;margin-top:3px">${tl('客户这次只还滞纳金续期？实收总额填0，只填这里就行，这一期会继续留在逾期名单里','If the customer only paid the late fee this time, leave Amount Received at 0 and fill only here — this period stays on the overdue list.','')}</div>
       </div>
+      <div class="form-group"><label style="color:#6a1b9a;font-weight:700">${tl('多收（需退还客户）','Overpaid (to refund)','ប្រាក់​លើស')} ($)</label><input type="number" id="pOverpaid" value="0" step="0.01" oninput="calcCollectorTotal()" style="border:1.5px solid #6a1b9a">
+        <div style="font-size:10px;color:#90a4ae;margin-top:3px">${tl('客户多转的钱，不是滞纳金也不算这期还款，要另外退还给客户，填这里（不要填进滞纳金）','Extra money the customer sent by mistake — not a late fee, not counted toward this period. Needs to be refunded separately. Do not put this in the late fee field.','')}</div>
+      </div>
       <div class="form-group"><label>${tl('实收合计','Total Received','សរុប​ទទួល​បាន')}</label><input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px"></div>
       <input type="hidden" id="pPrincipal"><input type="hidden" id="pInterest">
       ` : `
@@ -4560,6 +4593,9 @@ function renderPaymentAdd() {
       </div>
       <div class="form-group"><label>${tl('实收滞纳金','Late Fee','ប្រាក់​ពិន័យ')} ($)</label><input type="number" id="pPenalty" value="0" step="0.01" oninput="calcCollectorTotal()">
         <div style="font-size:10px;color:#90a4ae;margin-top:3px">${tl('客户这次只还滞纳金续期？实收总额填0，只填这里就行，这一期会继续留在逾期名单里','If the customer only paid the late fee this time, leave Amount Received at 0 and fill only here — this period stays on the overdue list.','')}</div>
+      </div>
+      <div class="form-group"><label style="color:#6a1b9a;font-weight:700">${tl('多收（需退还客户）','Overpaid (to refund)','ប្រាក់​លើស')} ($)</label><input type="number" id="pOverpaid" value="0" step="0.01" oninput="calcCollectorTotal()" style="border:1.5px solid #6a1b9a">
+        <div style="font-size:10px;color:#90a4ae;margin-top:3px">${tl('客户多转的钱，不是滞纳金也不算这期还款，要另外退还给客户，填这里（不要填进滞纳金）','Extra money the customer sent by mistake — not a late fee, not counted toward this period. Needs to be refunded separately. Do not put this in the late fee field.','')}</div>
       </div>
       <div class="form-group"><label>${tl('实收合计','Total Received','សរុប​ទទួល​បាន')}</label><input id="pTotal" readonly style="background:#e8f5e9;font-weight:700;color:var(--green);font-size:15px"></div>
       <input type="hidden" id="pPrincipal"><input type="hidden" id="pInterest">
@@ -4749,8 +4785,9 @@ function buildPayTableEarly(pays, isCollector) {
 window.calcCollectorTotal = function() {
   const received = +(document.getElementById('pTotalReceived')?.value||0);
   const penalty  = +(document.getElementById('pPenalty')?.value||0);
+  const overpaid = +(document.getElementById('pOverpaid')?.value||0);
   const tot = document.getElementById('pTotal');
-  if (tot) tot.value = fmt(received + penalty);
+  if (tot) tot.value = fmt(received + penalty + overpaid);
 
   // 自动按应还比例拆分本金/利息到隐藏字段
   const id = window._resolvedContractId||'';
@@ -4899,6 +4936,9 @@ function buildPayTableGrouped(pays, isCollector) {
                 ${isEarly ? `<span style="background:#c8e6c9;color:#2e7d32;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">${tl("⚡提前还款","⚡Early","⚡សង​មុន")}</span>` : ''}
                 ${(+p.advanceDays||0)>30 ? `<span style="background:#ffebee;color:#c62828;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700" title="${tl('提前','Advance','មុន')}${p.advanceDays}${tl('天，超过1个月，建议核对','days, over 1 month, please verify','ថ្ងៃ')}">🔔${tl('提前','Advance','មុន')}${p.advanceDays}${tl('天','d','ថ្ងៃ')}</span>` : ''}
                 ${suspicious ? `<span onclick="event.stopPropagation();compareSuspiciousReceipts('${p.contractId}',${p.period})" style="background:#e65100;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700;cursor:pointer" title="${tl('点击查看凭证照片核对','Click to compare receipt photos','ចុច​ដើម្បី​ផ្ទៀងផ្ទាត់')}">⚠️ ${tl('疑似重复','Possible duplicate','ប្រហែលដដែល')} 🔍</span>` : ''}
+                ${(+p.overpaid||0)>0 ? (p.overpaidRefunded
+                  ? `<span style="background:#ede7f6;color:#6a1b9a;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">↩️ ${tl('多收已退还','Overpaid refunded','')} ${fmt(p.overpaid)}</span>`
+                  : `<span style="background:#f3e5f5;color:#6a1b9a;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">💜 ${tl('多收待退还','Overpaid, to refund','')} ${fmt(p.overpaid)}</span>`) : ''}
               </div>
               <div style="font-size:11px;color:#90a4ae">${tl('第','Period ','ខែ')}${p.period}${tl('期','','')}${p.shortfall>0?` · ${tl('差额','Shortfall','ខ្វះ')} <b style="color:var(--red)">${fmt(p.shortfall)}</b>`:''}</div>
             </div>
@@ -4914,6 +4954,7 @@ function buildPayTableGrouped(pays, isCollector) {
             </div>`}
             <div style="display:flex;gap:4px;flex-shrink:0">
               ${(p.receiptUrls && p.receiptUrls.length) || p.receiptUrl ? `<button onclick="viewPayReceipts(${p.id})" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px" title="${tl('查看收款凭证','View receipt','មើលវិក័យប័ត្រ')}">📷${(p.receiptUrls&&p.receiptUrls.length>1)?p.receiptUrls.length:''}</button>` : ''}
+              ${(+p.overpaid||0)>0 && !p.overpaidRefunded ? `<button onclick="markOverpaidRefunded(${p.id})" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px;color:#6a1b9a;border-color:#6a1b9a" title="${tl('标记这笔多收的钱已经退还给客户','Mark this overpaid amount as refunded','')}">↩️ ${tl('标记已退还','Mark refunded','')}</button>` : ''}
               <button onclick="editPayment(${p.id})" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px">✏️</button>
               <button onclick="deletePayment(${p.id})" class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 8px">🗑️</button>
             </div>
@@ -4924,6 +4965,19 @@ function buildPayTableGrouped(pays, isCollector) {
   }).join('');
 }
 
+
+// 🆕 2026-09：把某一笔"多收待退还"的钱标记成已经退还给客户了（不改金额，只改状态）
+window.markOverpaidRefunded = function(id) {
+  const pays = DB_get('payments')||[];
+  const idx = pays.findIndex(p => p.id === id);
+  if (idx < 0) return;
+  const pay = pays[idx];
+  if (!confirm(tl(`确认已经把多收的 $${fmt(pay.overpaid||0)} 退还给 ${pay.customer} 了吗？`,`Confirm the overpaid $${fmt(pay.overpaid||0)} has been refunded to ${pay.customer}?`,''))) return;
+  pays[idx] = { ...pay, overpaidRefunded: true, overpaidRefundDate: today() };
+  DB_set('payments', pays);
+  logActivity('标记多收已退还', `${pay.customer} 第${pay.period}期`, `退还$${fmt(pay.overpaid||0)}`);
+  refreshPayTable();
+};
 
 window.deletePayment = function(id) {
   const pays = DB_get('payments')||[];
@@ -5046,6 +5100,19 @@ window.editPayment = function(id) {
         <input id="epPenalty" type="number" step="0.01" value="${pay.penalty||0}"
           style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
       </div>
+      <div class="form-group">
+        <label style="font-size:12px;font-weight:600;color:#6a1b9a">${tl('多收（需退还客户）','Overpaid (to refund)','ប្រាក់​លើស')} ($)</label>
+        <input id="epOverpaid" type="number" step="0.01" value="${pay.overpaid||0}"
+          style="width:100%;padding:9px 12px;border:1.5px solid #6a1b9a;border-radius:8px;font-size:13px;font-family:inherit">
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">${tl('把之前错填到"滞纳金"里的客户多给的钱挪到这里','Move any amount previously mis-entered as a late fee here','')}</div>
+      </div>
+      ${(+pay.overpaid||0)>0 ? `
+      <div class="form-group" style="grid-column:1/-1">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#546e7a;cursor:pointer">
+          <input type="checkbox" id="epOverpaidRefunded" ${pay.overpaidRefunded?'checked':''} style="width:16px;height:16px">
+          ${tl('这笔多收的钱已经退还给客户了','This overpaid amount has already been refunded','')}
+        </label>
+      </div>` : ''}
       <div class="form-group" style="grid-column:1/-1">
         <label style="font-size:12px;font-weight:600;color:#546e7a">${t('remarks')}</label>
         <input id="epNote" type="text" value="${pay.note||''}" placeholder="${tl('可选','Optional','ស្រេច​ចិត្ត')}"
@@ -5128,6 +5195,7 @@ window.saveEditPayment = async function(id) {
   const otherWaivedPrincipal = otherPaysSamePeriod.reduce((a,x)=>a+(+x.waivedPrincipal||0),0);
   const otherWaivedInterest  = otherPaysSamePeriod.reduce((a,x)=>a+(+x.waivedInterest||0),0);
   const otherPenalty         = otherPaysSamePeriod.reduce((a,x)=>a+(+x.penalty||0),0);
+  const otherOverpaid        = otherPaysSamePeriod.reduce((a,x)=>a+(+x.overpaid||0),0);
 
   // 这一笔本身的拆分，按"扣掉其他笔之后还剩多少"来拆，而不是按整期原始应还拆
   const remainingPrincipalDue = Math.max(0, duePrincipal - otherPrincipal - otherWaivedPrincipal);
@@ -5138,6 +5206,8 @@ window.saveEditPayment = async function(id) {
   const newPrincipal     = Math.min(totalReceived, remainingPrincipalDue);
   const newInterest      = Math.max(0, totalReceived - newPrincipal);
   const newPenalty       = parseFloat(document.getElementById('epPenalty')?.value||0);
+  const newOverpaid      = parseFloat(document.getElementById('epOverpaid')?.value||0);
+  const newOverpaidRefunded = document.getElementById('epOverpaidRefunded')?.checked || false;
   const newNote          = document.getElementById('epNote')?.value || '';
   const msgEl            = document.getElementById('epMsg');
 
@@ -5159,6 +5229,7 @@ window.saveEditPayment = async function(id) {
   const cumWaivedPrincipal = otherWaivedPrincipal + (+pay.waivedPrincipal||0); // 编辑弹窗不改减免，沿用原值
   const cumWaivedInterest  = otherWaivedInterest + (+pay.waivedInterest||0);
   const cumPenalty         = otherPenalty + newPenalty;
+  const cumOverpaid        = otherOverpaid + newOverpaid;
   const TOLERANCE = 2.00;
   const effectiveTotal = cumPrincipal + cumInterest + cumWaivedPrincipal + cumWaivedInterest;
   const isFullPaid = sched ? (effectiveTotal >= dueTotalAmt - TOLERANCE) : true; // 找不到排期就不动paid状态，保底按已还处理
@@ -5166,6 +5237,8 @@ window.saveEditPayment = async function(id) {
 
   // Update payment record
   pays[idx] = { ...pay, date: newDate, principal: newPrincipal, interest: newInterest, penalty: newPenalty, note: newNote, receiptUrls: finalReceipts,
+    overpaid: newOverpaid, overpaidRefunded: newOverpaid > 0 ? newOverpaidRefunded : false,
+    overpaidRefundDate: (newOverpaid > 0 && newOverpaidRefunded) ? (pay.overpaidRefundDate || today()) : null,
     isPartial: !isFullPaid, shortfall: isFullPaid ? 0 : parseFloat(shortfall.toFixed(2)) };
   DB_set('payments', pays);
 
@@ -5185,6 +5258,7 @@ window.saveEditPayment = async function(id) {
           waivedPrincipal: parseFloat(cumWaivedPrincipal.toFixed(2)),
           waivedInterest: parseFloat(cumWaivedInterest.toFixed(2)),
           penalty: parseFloat(cumPenalty.toFixed(2)),
+          overpaid: parseFloat(cumOverpaid.toFixed(2)),
           shortfall: 0
         };
         if (sales[si].schedule.every(p => p.paid)) sales[si].status = '已结清';
@@ -5197,6 +5271,7 @@ window.saveEditPayment = async function(id) {
           partialPrincipal: parseFloat(cumPrincipal.toFixed(2)),
           partialInterest: parseFloat(cumInterest.toFixed(2)),
           partialPenalty: parseFloat(cumPenalty.toFixed(2)),
+          overpaid: parseFloat(cumOverpaid.toFixed(2)),
           waivedPrincipal: parseFloat(cumWaivedPrincipal.toFixed(2)),
           waivedInterest: parseFloat(cumWaivedInterest.toFixed(2)),
           shortfall: parseFloat(shortfall.toFixed(2))
@@ -5508,8 +5583,9 @@ window.calcPayTotal = function() {
   const p = +(document.getElementById('pPrincipal')?.value||0);
   const i = +(document.getElementById('pInterest')?.value||0);
   const pe= +(document.getElementById('pPenalty')?.value||0);
+  const ov= +(document.getElementById('pOverpaid')?.value||0);
   const tot = document.getElementById('pTotal');
-  if (tot) tot.value = fmt(p + i + pe);
+  if (tot) tot.value = fmt(p + i + pe + ov);
 };
 window.submitPayment = async function() {
   if (window._submittingPayment) return; // 防止重复点击导致提交两次
@@ -5519,6 +5595,7 @@ window.submitPayment = async function() {
   const periodNo   = +(document.getElementById('pPeriod')?.value||0);
   const pDate      = document.getElementById('pDate')?.value || today();
   const penalty    = +(document.getElementById('pPenalty')?.value||0);
+  const overpaid   = +(document.getElementById('pOverpaid')?.value||0);
   const u          = getCurrentUser();
   const isCollector = u?.role === 'collector';
 
@@ -5564,6 +5641,7 @@ window.submitPayment = async function() {
   const priorWaivedPrincipal = priorPaysForPeriod.reduce((a,x)=>a+(+x.waivedPrincipal||0),0);
   const priorWaivedInterest  = priorPaysForPeriod.reduce((a,x)=>a+(+x.waivedInterest||0),0);
   const priorPenalty         = priorPaysForPeriod.reduce((a,x)=>a+(+x.penalty||0),0);
+  const priorOverpaid        = priorPaysForPeriod.reduce((a,x)=>a+(+x.overpaid||0),0);
   const priorReceived        = priorPrincipal + priorInterest; // 之前已经实收的现金（不含减免）
 
   // 这一期还剩多少本金/利息没结清——给这一笔新收款做本金优先拆分用的是"剩余"，不是整期原始应还，
@@ -5589,6 +5667,23 @@ window.submitPayment = async function() {
       )
     );
     if (!ok) { return; }
+  }
+
+  // 🆕 2026-09：滞纳金金额合理性提示——防止把"客户多给的钱"误填成滞纳金（应该填到"多收"那一栏）。
+  // 只有这笔合同设置了每日滞纳金、能算出一个参考值的时候才提示，没设置的合同不打扰。
+  if (penalty > 0 && sched.dueDate && (+s.dailyLateFee||0) > 0) {
+    const overdueDays = Math.max(0, Math.floor((new Date(pDate) - new Date(sched.dueDate)) / 86400000));
+    const refPenalty = (+s.dailyLateFee||0) * overdueDays;
+    if (penalty > refPenalty + Math.max(1, refPenalty * 0.5)) {
+      const okPenalty = confirm(
+        tl(
+          `⚠️ 这期逾期${overdueDays}天，按每日滞纳金$${fmt(s.dailyLateFee)}算，参考滞纳金大约是$${fmt(refPenalty)}，但你填的滞纳金是$${fmt(penalty)}，明显更高。\n\n确定这些全部都是滞纳金吗？\n\n如果其中有一部分是客户多转的钱（不是滞纳金），请点"取消"，把多出来的部分改填到"多收（需退还客户）"那一栏。`,
+          `⚠️ This period is ${overdueDays} days overdue. At $${fmt(s.dailyLateFee)}/day, the reference late fee is about $${fmt(refPenalty)}, but you entered $${fmt(penalty)} — noticeably higher.\n\nConfirm this is all a late fee?\n\nIf part of it is extra money the customer sent (not a late fee), click Cancel and move that part to "Overpaid (to refund)" instead.`,
+          `⚠️ ដំណាក់កាលនេះហួសកំណត់ ${overdueDays} ថ្ងៃ គិតត្រឹម $${fmt(s.dailyLateFee)}/ថ្ងៃ ប្រាក់ពិន័យយោងប្រហែល $${fmt(refPenalty)} ប៉ុន្តែអ្នកបានបញ្ចូល $${fmt(penalty)}។ តើនេះជាប្រាក់ពិន័យទាំងអស់មែនទេ?`
+        )
+      );
+      if (!okPenalty) { showMsg('payMsg', tl('已取消，请检查滞纳金金额','Cancelled, please check the late fee amount','បានលុបចោល'), 'amber'); return; }
+    }
   }
 
   // 🔔 防重复登记提醒：检查这个合同本月是否已经有其他还款记录（可能是另一个催收员刚登记过）
@@ -5621,7 +5716,7 @@ window.submitPayment = async function() {
   // "实收总额"填0，只要滞纳金>0就能提交——之前这里卡死必须实收总额或减免有一个不为0，
   // 导致催收员遇到"客户只还滞纳金"的情况，系统直接报错，不知道怎么登记。
   const isPenaltyOnly = !actualReceived && !waiveAmt && penalty > 0;
-  if (!actualReceived && !waiveAmt && !penalty) { showMsg('payMsg', '请输入实收金额', 'red'); return; }
+  if (!actualReceived && !waiveAmt && !penalty && !overpaid) { showMsg('payMsg', '请输入实收金额', 'red'); return; }
 
   // 按应还比例拆分：本金优先，剩余算利息（只算真实收到的现金）——按"这一期还剩多少"拆，不是按整期
   // 原始应还拆，这样分期多次付款才能把每一笔正确地记到没结清的部分上
@@ -5651,6 +5746,7 @@ window.submitPayment = async function() {
   const cumWaivedPrincipal = priorWaivedPrincipal + waivedPrincipal;
   const cumWaivedInterest  = priorWaivedInterest + waivedInterest;
   const cumPenalty         = priorPenalty + penalty;
+  const cumOverpaid        = priorOverpaid + overpaid;
 
   // 🔧 修复"催收员传的凭证截图系统看不到"的bug：
   // 以前是先存收款记录，图片在背后"偷偷"异步上传，上传完了才补一次单独的保存。
@@ -5681,6 +5777,7 @@ window.submitPayment = async function() {
       waivedPrincipal: parseFloat(cumWaivedPrincipal.toFixed(2)),
       waivedInterest: parseFloat(cumWaivedInterest.toFixed(2)),
       penalty: parseFloat(cumPenalty.toFixed(2)),
+      overpaid: parseFloat(cumOverpaid.toFixed(2)),
       paidStatus: 'paid',
       shortfall: 0,
       advanceDays: advanceDays > 0 ? advanceDays : 0
@@ -5699,6 +5796,7 @@ window.submitPayment = async function() {
       partialPrincipal: parseFloat(cumPrincipal.toFixed(2)),
       partialInterest: parseFloat(cumInterest.toFixed(2)),
       partialPenalty: parseFloat(cumPenalty.toFixed(2)),
+      overpaid: parseFloat(cumOverpaid.toFixed(2)),
       waivedPrincipal: parseFloat(cumWaivedPrincipal.toFixed(2)),
       waivedInterest: parseFloat(cumWaivedInterest.toFixed(2)),
       shortfall: parseFloat(shortfall.toFixed(2))
@@ -5718,6 +5816,7 @@ window.submitPayment = async function() {
     id: newPayId, contractId, customer: s.customer, period: periodNo,
     date: pDate, principal: parseFloat(principal.toFixed(2)),
     interest: parseFloat(interest.toFixed(2)), serviceFee, penalty,
+    overpaid: parseFloat(overpaid.toFixed(2)), overpaidRefunded: false,
     waivedPrincipal: parseFloat(waivedPrincipal.toFixed(2)),
     waivedInterest: parseFloat(waivedInterest.toFixed(2)),
     isPartial: !isFullPaid,
@@ -5728,12 +5827,16 @@ window.submitPayment = async function() {
     receiptUrls: _payReceiptUrls
   });
   DB_set('payments', pays);
-  logActivity('还款登记', `${s.customer} 第${periodNo}期`, `本金$${principal.toFixed(2)} 利息$${interest.toFixed(2)}${penalty?` 滞纳金$${penalty}`:''}${waiveAmt?` 减免$${waiveAmt.toFixed(2)}`:''}`);
+  logActivity('还款登记', `${s.customer} 第${periodNo}期`, `本金$${principal.toFixed(2)} 利息$${interest.toFixed(2)}${penalty?` 滞纳金$${penalty}`:''}${overpaid?` 多收$${overpaid.toFixed(2)}(待退还)`:''}${waiveAmt?` 减免$${waiveAmt.toFixed(2)}`:''}`);
+  if (overpaid > 0) {
+    alert(tl(`⚠️ 提醒：这笔多收了 $${overpaid.toFixed(2)}，记得退还给客户。可以在"收款记录"里把这一笔标记为"已退还"。`,
+      `⚠️ Reminder: $${overpaid.toFixed(2)} was overpaid and needs to be refunded to the customer. Mark it as refunded in the payment record once done.`, ''));
+  }
 
   // 重置表单
-  ['pPenalty','pNote','pTotalReceived','pWaive'].forEach(id => {
+  ['pPenalty','pOverpaid','pNote','pTotalReceived','pWaive'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.value = (id === 'pPenalty' || id === 'pWaive') ? '0' : '';
+    if (el) el.value = (id === 'pPenalty' || id === 'pOverpaid' || id === 'pWaive') ? '0' : '';
   });
   const totEl = document.getElementById('pTotal');
   if (totEl) totEl.value = '';
