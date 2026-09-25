@@ -7435,6 +7435,26 @@ document.addEventListener('drop', e => {
 window.addPhone = function() {
   const brand = document.getElementById('phBrand')?.value?.trim(), model = document.getElementById('phModel')?.value?.trim();
   if (!brand||!model) { showMsg('phoneMsg',t('msgFillName'),'red'); return; }
+
+  // 🔒 2026-09-25：品牌/型号强制互斥校验——根治"销售查询里型号显示成OPPO iPhone 12ProMax"这种问题。
+  // 根因：这里"品牌"和"型号名称"是两个完全独立的自由文字框，以前谁填的都不检查，
+  // 出现过品牌打"OPPO"、型号名称却打成"iPhone 12ProMax"（大概率是复制别的型号时改串了）——
+  // 这条脏数据存进型号库后，业务员开合同选OPPO品牌，下拉框里就真的会冒出这个"iPhone"型号可选。
+  // 新建合同那边的品牌筛选逻辑本身没问题，问题是源头型号库能存进不匹配的组合。
+  // 现在直接在这里拦死：品牌是OPPO就不准型号名称里出现iPhone/Apple字样，反过来也一样，
+  // 不是弹窗提醒确认，是直接不让保存，从源头保证"选OPPO＝OPPO型号，选iPhone＝iPhone型号"。
+  const brandLc = brand.toLowerCase(), modelLc = model.toLowerCase();
+  const brandIsOppo = brandLc.includes('oppo');
+  const brandIsApple = brandLc.includes('iphone') || brandLc.includes('apple');
+  const modelMentionsOppo = modelLc.includes('oppo');
+  const modelMentionsApple = modelLc.includes('iphone') || modelLc.includes('apple');
+  if (brandIsOppo && modelMentionsApple) {
+    showMsg('phoneMsg', tl('⛔ 品牌填的是OPPO，但型号名称里出现了"iPhone/Apple"字样，两个对不上，无法保存。请检查型号名称是不是打错了（比如复制别的型号时没改完）。','⛔ Brand is OPPO but the model name contains "iPhone/Apple" — cannot save. Please check the model name.','⛔ ម៉ាក OPPO ប៉ុន្តែឈ្មោះម៉ូដែលមាន "iPhone/Apple"'), 'red'); return;
+  }
+  if (brandIsApple && modelMentionsOppo) {
+    showMsg('phoneMsg', tl('⛔ 品牌填的是iPhone/Apple，但型号名称里出现了"OPPO"字样，两个对不上，无法保存。请检查型号名称是不是打错了。','⛔ Brand is iPhone/Apple but the model name contains "OPPO" — cannot save. Please check the model name.','⛔ ម៉ាក iPhone/Apple ប៉ុន្តែឈ្មោះម៉ូដែលមាន "OPPO"'), 'red'); return;
+  }
+
   const storage = document.getElementById('phStorage')?.value||'128G';
   const phones = DB_get('phones')||[];
   phones.push({id:newId(),brand,model,storage,cost:0,price:+(document.getElementById('phPrice')?.value||0),stock:+(document.getElementById('phStock')?.value||0)});
