@@ -7055,11 +7055,14 @@ function renderReminderOverdue() {
   // 🔖 2026-09-27：按品牌(iPhone/OPPO)分两大块，块内再按"最早逾期还款日期"分组——
   // 方便催收员一批批联系同一天到期、同一个品牌的客户，而不是在一条长列表里逐个找
   function odBrandKey(s) {
-    if (s.brand === 'Apple') return 'iphone';
-    if (s.brand === 'OPPO') return 'oppo';
-    const mn = String(s.modelName||'');
-    if (/^iphone\b/i.test(mn)) return 'iphone';
-    if (/^oppo\b/i.test(mn)) return 'oppo';
+    // 🔧 2026-09-27（用户明确要求）：品牌判断一律不管大小写、不管有没有空格，统一
+    // "转小写+去空格"后再比较——老合同型号栏常见"Apple 16Promax"(不是"iPhone"开头)、
+    // "OPPOA6Pro"(不带空格)这种写法，用normBrandWords()统一归一化，不用再一个个补正则
+    if (normBrandWords(s.brand) === 'apple') return 'iphone';
+    if (normBrandWords(s.brand) === 'oppo') return 'oppo';
+    const mn = normBrandWords(s.modelName);
+    if (mn.indexOf('iphone') === 0 || mn.indexOf('apple') === 0) return 'iphone';
+    if (mn.indexOf('oppo') === 0) return 'oppo';
     return 'other';
   }
   const BRAND_GROUPS = [
@@ -7553,17 +7556,24 @@ window.savePhoneInfo = function(id) {
 //    "品牌按钮点错了"还是"型号名字打错了"——这两种改法结果完全不同，瞎猜自动改等于拿真实的
 //    合同/型号数据赌一把，猜错了比不改还麻烦。所以这类只精准列出来，不自动改，需要人工看一眼
 //    （多半要对照当时的单据/聊天记录确认卖的到底是哪款手机）后点"去确认"手动改。
+// 2026-09-27（用户明确要求）：以后所有"品牌/型号文字里到底提到哪个品牌"的判断，一律不管
+// 大小写、不管有没有空格，统一"转小写+去掉所有空格"之后再比较——这类老数据/手填数据经常有
+// "OPPOA6Pro"(不带空格)、"apple"(小写)这种写法，之前好几个漏判/误判的bug根源都是没做
+// 这层归一化，只用了区分大小写或者要求单词边界(\b)的正则
+function normBrandWords(text) {
+  return String(text||'').toLowerCase().replace(/\s+/g,'');
+}
 function findRepeatedLeadingWord(text) {
   const m = String(text||'').match(/^(\S+)\s+\1\b/i);
   if (!m) return null;
   return String(text).replace(/^(\S+)\s+\1\b\s*/i, m[1] + ' ').trim();
 }
 function hasBrandConflictText(text) {
-  const lc = String(text||'').toLowerCase();
-  return /\boppo\b/.test(lc) && (/\biphone\b/.test(lc) || /\bapple\b/.test(lc));
+  const n = normBrandWords(text);
+  return n.indexOf('oppo') >= 0 && (n.indexOf('iphone') >= 0 || n.indexOf('apple') >= 0);
 }
 function phoneModelRedundantPrefix(p) {
-  const prefix = (p.brand === 'OPPO') ? 'OPPO' : 'iPhone';
+  const prefix = (normBrandWords(p.brand) === 'oppo') ? 'OPPO' : 'iPhone';
   const re = new RegExp('^'+prefix+'\\s+', 'i');
   const modelTrim = String(p.model||'').trim();
   return re.test(modelTrim) ? modelTrim.replace(re,'').trim() : null;
@@ -7582,9 +7592,9 @@ function stripLeadingToken(text) {
 }
 function resolveBrandConflictFix(fullText) {
   const rest = stripLeadingToken(fullText);
-  const lc = rest.toLowerCase();
-  const mentionsApple = /\biphone\b/.test(lc) || /\bapple\b/.test(lc);
-  const mentionsOppo = /\boppo\b/.test(lc);
+  const n = normBrandWords(rest);
+  const mentionsApple = n.indexOf('iphone') >= 0 || n.indexOf('apple') >= 0;
+  const mentionsOppo = n.indexOf('oppo') >= 0;
   if (mentionsApple && !mentionsOppo) return 'Apple';
   if (mentionsOppo && !mentionsApple) return 'OPPO';
   return null;
