@@ -6977,19 +6977,63 @@ window.filterProfitTable = function() {
 };
 
 function renderReminderTomorrow() {
-  const tomorrow = addDays(today(), 1), sales = DB_get('sales')||[], items = [];
-  sales.forEach(s => { if (s.status==='提前结清' || s.status==='已取消') return; s.schedule.forEach(p => { if (!p.paid && p.dueDate && p.dueDate.replace(/\//g,'-') === tomorrow) items.push({s,p}); }); });
-  const total = items.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
+  // 🔖 2026-09-27（用户要求）：加上"今日到期"——催收员需要主动打电话提醒今天到期、
+  // 还没逾期的客户，跟"明日到期"（提前给客户一个心理准备）放在同一个页面，一眼就能
+  // 看到两批名单，不用再切页面找。今天到期的排最前面、最紧急，明天的排后面。
+  const td = today(), tomorrow = addDays(td, 1), sales = DB_get('sales')||[];
+  const todayItems = [], tomorrowItems = [];
+  sales.forEach(s => {
+    if (s.status==='提前结清' || s.status==='已取消') return;
+    s.schedule.forEach(p => {
+      if (p.paid || !p.dueDate) return;
+      const dd = p.dueDate.replace(/\//g,'-');
+      if (dd === td) todayItems.push({s,p});
+      else if (dd === tomorrow) tomorrowItems.push({s,p});
+    });
+  });
+  const todayTotal = todayItems.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
+  const tomorrowTotal = tomorrowItems.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
+
+  // 单条卡片——电话号码做成可以直接点击拨打的链接，方便催收员在手机上直接打电话，
+  // 不用再手动复制号码
+  function reminderCard({s,p}, cls) {
+    return `
+    <div class="reminder-item ${cls}">
+      <div style="flex:1;min-width:0">
+        <div class="fw700">${esc(s.customer)}
+          ${s.customerPhone ? `<a href="tel:${esc(s.customerPhone)}" style="font-weight:400;font-size:12px;color:#1565c0;margin-left:6px;text-decoration:none">${esc(s.customerPhone)}</a>` : ''}
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(s.modelName||'-')} · ${p.period}/${s.periods} ${t("period")}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div class="fw700" style="font-size:15px;color:${cls==='warn'?'var(--amber)':'#1565c0'}">${fmt((+p.principalDue||0)+(+p.interestDue||0))}</div>
+        <div style="display:flex;gap:6px;margin-top:6px;justify-content:flex-end;flex-wrap:wrap">
+          ${s.customerPhone ? `<a href="tel:${esc(s.customerPhone)}" class="btn btn-outline btn-sm" style="text-decoration:none">📞 ${tl('打电话','Call','ទូរស័ព្ទ')}</a>` : ''}
+          <button class="btn btn-primary btn-sm" onclick="navToPayment('${s.id}',${p.period})">${t('registerPayment')}</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
   return `
-  <div class="page-header"><div class="page-title">⏰ ${t('tomorrowTitle')}</div><div class="page-sub">${tomorrow} · ${t('tomorrowDue')}</div></div>
-  ${items.length?`<div class="alert alert-blue">📅 ${items.length} ${t("tomorrowDue")} — ${fmt(total)}</div>`:`<div class="alert alert-green">🎉 明日无到期账单</div>`}
-  <div class="card">${items.map(({s,p})=>`
-    <div class="reminder-item info">
-      <div><div class="fw700">${esc(s.customer)} <span class="text-muted" style="font-weight:400;font-size:12px">${esc(s.customerPhone||'')}</span></div>
-        <div style="font-size:12px;color:var(--muted)">${p.period}/${s.periods} ${t("period")}</div></div>
-      <div style="text-align:right"><div class="fw700 text-blue" style="font-size:15px">${fmt((+p.principalDue)+(+p.interestDue))}</div>
-        <button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="navToPayment('${s.id}',${p.period})">${t('registerPayment')}</button></div>
-    </div>`).join('')||`<div class="empty-state"><div class="ei">😌</div><p>无到期账单</p></div>`}
+  <div class="page-header"><div class="page-title">⏰ ${tl('今日/明日还款提醒','Due Today / Tomorrow Reminder','ការរំលឹកបង់ប្រាក់ថ្ងៃនេះ/ស្អែក')}</div></div>
+
+  <div class="card" style="border-left:4px solid var(--amber);margin-bottom:14px">
+    <div style="padding:14px 16px 0">
+      <div style="font-weight:700;color:var(--amber);font-size:14px">🔥 ${tl('今日到期','Due Today','ដល់កំណត់ថ្ងៃនេះ')}（${td}）</div>
+      <div style="font-size:12px;color:#78909c;margin-top:2px">${tl('还没逾期，催收今天要主动打电话提醒还款，点客户旁边的号码或"打电话"按钮就能直接拨打','Not overdue yet — collectors should call these customers today. Tap the phone number or the Call button to dial directly.','')}</div>
+    </div>
+    ${todayItems.length ? `<div class="alert alert-amber" style="margin:12px 16px 0">📞 <b>${todayItems.length}</b> ${tl('位客户','clients','')} · ${fmt(todayTotal)}</div>` : ''}
+    <div style="padding:8px 12px 4px">${todayItems.map(x=>reminderCard(x,'warn')).join('') || `<div class="empty-state"><div class="ei">😌</div><p>${tl('今天没有到期账单','No bills due today','')}</p></div>`}</div>
+  </div>
+
+  <div class="card">
+    <div style="padding:14px 16px 0">
+      <div style="font-weight:700;color:#1565c0;font-size:14px">⏰ ${tl('明日到期','Due Tomorrow','ដល់កំណត់ស្អែក')}（${tomorrow}）</div>
+      <div style="font-size:12px;color:#78909c;margin-top:2px">${tl('提前给客户一个心理准备','Advance heads-up for customers','')}</div>
+    </div>
+    ${tomorrowItems.length ? `<div class="alert alert-blue" style="margin:12px 16px 0">📅 <b>${tomorrowItems.length}</b> ${tl('位客户','clients','')} · ${fmt(tomorrowTotal)}</div>` : ''}
+    <div style="padding:8px 12px 4px">${tomorrowItems.map(x=>reminderCard(x,'info')).join('') || `<div class="empty-state"><div class="ei">😌</div><p>${tl('明天没有到期账单','No bills due tomorrow','')}</p></div>`}</div>
   </div>`;
 }
 
@@ -7072,14 +7116,17 @@ function renderReminderOverdue() {
   ];
   const brandSections = BRAND_GROUPS.map(b => {
     const contracts = allContracts.filter(c => odBrandKey(c.s) === b.key);
-    // 按还款日期分组（同一天到期的排在一起），组内维持原来"逾期天数少到多"的排序
+    // 按还款日期分组（同一天到期的排在一起），组内维持原来"逾期天数少到多"的排序；
+    // 🔧 2026-09-27（用户要求）：日期组本身按"离今天最近的排最前面"排序（离今天越近=
+    // 还款日期越晚/逾期天数越少），越往下日期越早、逾期越久——今天要是刚好没有客户
+    // 逾期也正常（还款日当天还不算逾期，得等到第二天才算），不代表少了数据
     const dayMap = {};
     contracts.forEach(c => {
       const dk = c.earliestDueDate || tl('日期不详','Unknown date','');
       if (!dayMap[dk]) dayMap[dk] = [];
       dayMap[dk].push(c);
     });
-    const dayGroups = Object.keys(dayMap).sort((a,b)=>a.localeCompare(b)).map(dk => {
+    const dayGroups = Object.keys(dayMap).sort((a,b)=>b.localeCompare(a)).map(dk => {
       const list = dayMap[dk];
       const amount = list.reduce((sum,c)=>sum + c.periods.reduce((a,{p})=>a+odRemainDue(c.s,p),0), 0);
       return { date: dk, list, count: list.length, amount };
