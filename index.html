@@ -7043,12 +7043,48 @@ function renderReminderOverdue() {
   // 按合同聚合
   const contractMap = {};
   items.forEach(({s,p,days}) => {
-    if (!contractMap[s.id]) contractMap[s.id] = {s, periods:[], maxDays:0};
+    if (!contractMap[s.id]) contractMap[s.id] = {s, periods:[], maxDays:0, earliestDueDate:''};
     contractMap[s.id].periods.push({p,days});
-    contractMap[s.id].maxDays = Math.max(contractMap[s.id].maxDays, days);
+    // 🔖 记下"最长逾期天数"那一期的还款日期——同一份合同可能有好几期都逾期了，
+    // 取天数最大（也就是最早到期）那一期的日期，作为这份合同"从哪天开始逾期"的分组依据
+    if (days >= contractMap[s.id].maxDays) { contractMap[s.id].maxDays = days; contractMap[s.id].earliestDueDate = p.dueDate||''; }
   });
   // 少到多排序
   const allContracts = Object.values(contractMap).sort((a,b)=>a.maxDays-b.maxDays);
+
+  // 🔖 2026-09-27：按品牌(iPhone/OPPO)分两大块，块内再按"最早逾期还款日期"分组——
+  // 方便催收员一批批联系同一天到期、同一个品牌的客户，而不是在一条长列表里逐个找
+  function odBrandKey(s) {
+    if (s.brand === 'Apple') return 'iphone';
+    if (s.brand === 'OPPO') return 'oppo';
+    const mn = String(s.modelName||'');
+    if (/^iphone\b/i.test(mn)) return 'iphone';
+    if (/^oppo\b/i.test(mn)) return 'oppo';
+    return 'other';
+  }
+  const BRAND_GROUPS = [
+    { key:'iphone', icon:'🍎', color:'#424242', bg:'#f5f5f5', label: () => 'iPhone' },
+    { key:'oppo',   icon:'🤖', color:'#2e7d32', bg:'#e8f5e9', label: () => 'OPPO' },
+    { key:'other',  icon:'📱', color:'#546e7a', bg:'#eceff1', label: () => tl('其他','Other','ផ្សេងទៀត') },
+  ];
+  const brandSections = BRAND_GROUPS.map(b => {
+    const contracts = allContracts.filter(c => odBrandKey(c.s) === b.key);
+    // 按还款日期分组（同一天到期的排在一起），组内维持原来"逾期天数少到多"的排序
+    const dayMap = {};
+    contracts.forEach(c => {
+      const dk = c.earliestDueDate || tl('日期不详','Unknown date','');
+      if (!dayMap[dk]) dayMap[dk] = [];
+      dayMap[dk].push(c);
+    });
+    const dayGroups = Object.keys(dayMap).sort((a,b)=>a.localeCompare(b)).map(dk => {
+      const list = dayMap[dk];
+      const amount = list.reduce((sum,c)=>sum + c.periods.reduce((a,{p})=>a+odRemainDue(c.s,p),0), 0);
+      return { date: dk, list, count: list.length, amount };
+    });
+    const count = contracts.length;
+    const amount = dayGroups.reduce((a,g)=>a+g.amount,0);
+    return { ...b, contracts, dayGroups, count, amount };
+  }).filter(b => b.count > 0);
   const totalOwedAll = items.reduce((a,{s,p})=>a+odRemainDue(s,p),0);
   // 总欠款(含未到期)：这些逾期客户名下，所有还没还完的期数(不管到没到期)全部加起来（部分还款的按还差多少算）
   // 🔖 催收员给客户7天缓冲期还款，所以最长逾期天数在7天以内的客户，暂不计入"总欠款"，
@@ -7186,16 +7222,16 @@ function renderReminderOverdue() {
     </select>
   </div>
 
-  <div class="card" style="padding:0;overflow:hidden" id="overdueListCard">
-    ${allContracts.map(({s, periods, maxDays}) => {
+  ${(() => {
+    // 单个客户/合同的卡片——跟改版前完全一样，只是抽成一个函数，方便嵌套进"品牌→日期"分组里
+    function odContractCard({s, periods, maxDays}) {
       const totalOwed = periods.reduce((a,{p})=>a+odRemainDue(s,p),0);
       const color = maxDays>=30?'var(--red)':maxDays>=15?'var(--amber)':'#f57f17';
       const bg = maxDays>=30?'#ffebee':maxDays>=15?'#fff8e1':'#fffde7';
       const uid = 'od_'+s.id;
-      // periods也从少到多
       const sortedPeriods = [...periods].sort((a,b)=>a.days-b.days);
       return `
-      <div class="od-item" data-name="${(s.customer||'').toLowerCase()}" data-phone="${s.customerPhone||''}" data-id="${s.id}" data-days="${maxDays}" style="border-bottom:1px solid var(--border)">
+      <div class="od-item" data-name="${(s.customer||'').toLowerCase()}" data-phone="${s.customerPhone||''}" data-id="${s.id}" data-days="${maxDays}" data-owed="${totalOwed}" style="border-bottom:1px solid var(--border)">
         <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;background:#fff"
           onclick="const d=document.getElementById('${uid}');const arr=this.querySelector('.od-arr');d.style.display=d.style.display==='none'?'block':'none';arr.style.transform=d.style.display==='none'?'':'rotate(180deg)'">
           <div style="flex:1;min-width:0">
@@ -7238,8 +7274,42 @@ function renderReminderOverdue() {
           </div>
         </div>
       </div>`;
-    }).join('')||`<div class="empty-state" style="padding:40px"><div class="ei">🏅</div><p>${t('noOverdue')}</p></div>`}
-  </div>`;
+    }
+
+    if (!allContracts.length) {
+      return `<div class="card" style="padding:0;overflow:hidden"><div class="empty-state" style="padding:40px"><div class="ei">🏅</div><p>${t('noOverdue')}</p></div></div>`;
+    }
+
+    return brandSections.map(b => {
+      const bid = 'odbg_' + b.key;
+      return `
+      <div class="od-brandgroup" style="margin-bottom:14px">
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;background:${b.bg}"
+            onclick="const d=document.getElementById('${bid}');const arr=this.querySelector('.od-brand-arr');const open=d.style.display==='none';d.style.display=open?'block':'none';arr.style.transform=open?'rotate(180deg)':'';">
+            <div style="font-weight:700;font-size:14px;color:${b.color}">${b.icon} ${b.label()} ${tl('逾期','Overdue','')} <span class="od-brand-count">${b.count}</span> ${tl('人','clients','នាក់')} · <span class="od-brand-amt">${fmt(b.amount)}</span></div>
+            <div class="od-brand-arr" style="color:${b.color};font-size:14px;transition:transform .2s">▾</div>
+          </div>
+          <div id="${bid}" style="display:none">
+            ${b.dayGroups.map(dg => {
+              const did = 'oddg_' + b.key + '_' + dg.date.replace(/[^\w]/g,'');
+              return `
+              <div class="od-daygroup" style="border-top:1px solid var(--border)">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px 11px 32px;cursor:pointer;background:#fafafa"
+                  onclick="const d=document.getElementById('${did}');const arr=this.querySelector('.od-day-arr');const open=d.style.display==='none';d.style.display=open?'block':'none';arr.style.transform=open?'rotate(180deg)':'';">
+                  <div style="font-size:13px;font-weight:600;color:#546e7a">📅 ${dg.date} <span class="od-day-count">（${dg.count}${tl('人','clients','នាក់')} · ${fmt(dg.amount)}）</span></div>
+                  <div class="od-day-arr" style="color:#bbb;font-size:13px;transition:transform .2s">▾</div>
+                </div>
+                <div id="${did}" style="display:none">
+                  ${dg.list.map(odContractCard).join('')}
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  })()}`;
 }
 
 // 逾期列表搜索 + 筛选
@@ -7258,6 +7328,25 @@ window.filterOverdue = function() {
     else if (dayFilter==='d30') matchD = days > 15 && days <= 30;
     else if (dayFilter==='d31') matchD = days > 30;
     el.style.display = (matchQ && matchD) ? '' : 'none';
+  });
+
+  // 🔧 2026-09-27：筛选/搜索后，联动更新每个"日期组"/"品牌组"标题上的人数+金额，
+  // 筛完一个不剩的组直接隐藏掉，不会出现展开了却是空的
+  document.querySelectorAll('.od-daygroup').forEach(dg => {
+    const visible = Array.from(dg.querySelectorAll('.od-item')).filter(el => el.style.display !== 'none');
+    const amt = visible.reduce((a,el) => a + (parseFloat(el.dataset.owed)||0), 0);
+    const countEl = dg.querySelector('.od-day-count');
+    if (countEl) countEl.textContent = `（${visible.length}${tl('人','clients','នាក់')} · ${fmt(amt)}）`;
+    dg.style.display = visible.length ? '' : 'none';
+  });
+  document.querySelectorAll('.od-brandgroup').forEach(bg => {
+    const visible = Array.from(bg.querySelectorAll('.od-item')).filter(el => el.style.display !== 'none');
+    const amt = visible.reduce((a,el) => a + (parseFloat(el.dataset.owed)||0), 0);
+    const countEl = bg.querySelector('.od-brand-count');
+    if (countEl) countEl.textContent = visible.length;
+    const amtEl = bg.querySelector('.od-brand-amt');
+    if (amtEl) amtEl.textContent = fmt(amt);
+    bg.style.display = visible.length ? '' : 'none';
   });
 
   // 🔧 联动重算顶部汇总数字（客户数/逾期笔数/逾期欠款/总欠款），不再是打开页面时算一次就不变
