@@ -2014,7 +2014,10 @@ const ROLE_PAGES = {
   // 内部对salesManager角色做了严格限制（见下方isSalesManagerLimited()相关逻辑），
   // 业务主管在这个页面里只能看到/新增"业务员"角色的账号，看不到、也改不了老板/主管/
   // 内审员/财务等其他角色的账号，更不能把任何账号改成老板/主管权限。
-  salesManager: ['home','sale-add','sale-list','audit','store-stats','reminder-tomorrow','reminder-overdue','payment-query','my-performance','user-mgmt'],
+  // 🔓 2026-09-27：加上phones——业务主管发现业务员把手机型号录错了(比如品牌OPPO配成iPhone型号名)，
+  // 需要能自己进"手机型号管理"改正，不用每次都找老板。页面里"编辑品牌/型号"按钮另有canEditPhoneInfo()
+  // 单独把关，业务主管能看到这个页面不代表所有操作都对所有角色开放。
+  salesManager: ['home','sale-add','sale-list','audit','store-stats','reminder-tomorrow','reminder-overdue','payment-query','my-performance','user-mgmt','phones'],
   sales:     ['home','sale-add','sale-list','reminder-tomorrow','reminder-overdue','payment-query','my-performance'],
   entry:     ['home','sale-add','sale-list','payment-add','early-payment',
                'reminder-tomorrow','reminder-overdue','payment-query'],
@@ -7326,6 +7329,7 @@ function renderPaymentQuery() {
 function renderPhones() {
   const phones = DB_get('phones')||[];
   return `<div class="page-header"><div class="page-title">📱 ${t('phonesTitle')}</div></div>
+  ${buildPhoneAuditPanel()}
   <div class="card"><div class="card-title" style="margin-bottom:14px">${t("addPhone")}</div>
     <div class="form-grid">
       <div class="form-group"><label>${t("phoneBrand")}</label><input id="phBrand" placeholder="Apple"></div>
@@ -7358,11 +7362,353 @@ function buildPhonesTable(phones) {
       <td><span class="badge ${p.stock===0?'badge-red':p.stock<=2?'badge-amber':'badge-green'}">${p.stock} ${_lang==='km'?'គ្រឿង':_lang==='en'?'pcs':'台'}</span></td>
       <td>${p.maxLoanAmount ? `<span class="fw700" style="color:var(--amber)">$${fmt(p.maxLoanAmount)}</span>` : `<span style="color:var(--muted);font-size:12px">${tl('未设置','Not set','មិនទាន់កំណត់')}</span>`}</td>
       <td style="white-space:nowrap">
+        ${canEditPhoneInfo() ? `<button class="btn btn-outline btn-sm" style="margin-right:4px" onclick="editPhoneInfo(${p.id})">✏️ ${tl('编辑品牌/型号','Edit Brand/Model','កែសម្រួល')}</button>` : ''}
         <button class="btn btn-outline btn-sm" style="margin-right:4px" onclick="editPhoneLimit(${p.id})">✏️ ${tl('编辑额度','Edit Limit','កែសម្រួល')}</button>
         <button class="btn btn-danger btn-sm" onclick="deletePhone(${p.id})">${t('deleteBtn')}</button>
       </td></tr>`).join('')}
   </table></div>`;
 }
+
+// 🔒 2026-09-27："手机型号管理"能改品牌/型号名称文字的权限——只给老板/主管/业务主管，
+// 业务员/催收员/内审员等角色即使能看到别的页面，也不该能改型号库这种基础数据。
+// 跟canEditSaleFull()、canDeleteSale()是同一套角色判断，保持全系统权限口径统一。
+function canEditPhoneInfo() {
+  const u = getCurrentUser();
+  const role = u?.role || '';
+  return role === 'boss' || role === 'manager' || role === 'salesManager';
+}
+
+// 🔒 2026-09-25：品牌/型号互斥校验，抽成公共函数——新增(addPhone)和编辑(savePhoneInfo)
+// 两个入口共用同一套规则，不然改了一处漏改另一处，脏数据还是能从另一个口子混进来。
+// 品牌是OPPO就不准型号名称里出现iPhone/Apple字样，反过来也一样；不匹配返回错误文案，匹配返回null。
+function validatePhoneBrandModel(brand, model) {
+  const brandLc = (brand||'').toLowerCase(), modelLc = (model||'').toLowerCase();
+  const brandIsOppo = brandLc.includes('oppo');
+  const brandIsApple = brandLc.includes('iphone') || brandLc.includes('apple');
+  const modelMentionsOppo = modelLc.includes('oppo');
+  const modelMentionsApple = modelLc.includes('iphone') || modelLc.includes('apple');
+  if (brandIsOppo && modelMentionsApple) {
+    return tl('⛔ 品牌填的是OPPO，但型号名称里出现了"iPhone/Apple"字样，两个对不上，无法保存。请检查型号名称是不是打错了（比如复制别的型号时没改完）。','⛔ Brand is OPPO but the model name contains "iPhone/Apple" — cannot save. Please check the model name.','⛔ ម៉ាក OPPO ប៉ុន្តែឈ្មោះម៉ូដែលមាន "iPhone/Apple"');
+  }
+  if (brandIsApple && modelMentionsOppo) {
+    return tl('⛔ 品牌填的是iPhone/Apple，但型号名称里出现了"OPPO"字样，两个对不上，无法保存。请检查型号名称是不是打错了。','⛔ Brand is iPhone/Apple but the model name contains "OPPO" — cannot save. Please check the model name.','⛔ ម៉ាក iPhone/Apple ប៉ុន្តែឈ្មោះម៉ូដែលមាន "OPPO"');
+  }
+  return null;
+}
+
+// 🆕 2026-09-27：业务员开合同时把型号选错/型号库本身录错了(比如品牌OPPO配成iPhone型号名)，
+// 以前"手机型号管理"只能改放款额度、或者整条删掉重加，没法直接改品牌/型号名称文字本身。
+// 现在补上这个编辑入口，只有canEditPhoneInfo()允许的角色能看到按钮；保存时复用跟新增
+// 完全一样的品牌/型号互斥校验，改错了照样拦，不会把一条脏数据改成另一条脏数据。
+window.editPhoneInfo = function(id) {
+  if (!canEditPhoneInfo()) { alert(tl('没有权限做这个操作','No permission','គ្មានសិទ្ធិ')); return; }
+  const phones = DB_get('phones') || [];
+  const p = phones.find(x => x.id === id);
+  if (!p) return;
+  showModal(`✏️ ${tl('编辑品牌/型号','Edit Brand/Model','កែសម្រួលម៉ាក/ម៉ូដែល')} — ${esc(p.brand)} ${esc(p.model)} ${esc(p.storage||'')}`, `
+    <div class="form-group">
+      <label style="font-size:12px;font-weight:600;color:#546e7a">${t('phoneBrand')}</label>
+      <input id="epBrand" value="${esc(p.brand)}" placeholder="Apple / OPPO"
+        style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+    </div>
+    <div class="form-group" style="margin-top:10px">
+      <label style="font-size:12px;font-weight:600;color:#546e7a">${t('phoneModelName')}</label>
+      <input id="epModel" value="${esc(p.model)}" placeholder="iPhone 16 Pro"
+        style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px">${tl('品牌和型号名称不能互相冲突（比如品牌OPPO配型号名字里带iPhone），保存时系统会检查','Brand and model name cannot conflict (e.g. OPPO brand with an "iPhone" model name) — checked automatically on save','')}</div>
+    <div id="epMsg" style="margin:8px 0;font-size:12px"></div>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <button onclick="savePhoneInfo(${id})" class="btn btn-primary">💾 ${tl('保存','Save','រក្សាទុក')}</button>
+      <button onclick="closeModal()" class="btn btn-outline">${t('cancel')}</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('epBrand')?.focus(), 100);
+};
+
+window.savePhoneInfo = function(id) {
+  if (!canEditPhoneInfo()) { alert(tl('没有权限做这个操作','No permission','គ្មានសិទ្ធិ')); return; }
+  const phones = DB_get('phones') || [];
+  const idx = phones.findIndex(x => x.id === id);
+  if (idx < 0) return;
+  const newBrand = document.getElementById('epBrand')?.value?.trim();
+  const newModel = document.getElementById('epModel')?.value?.trim();
+  if (!newBrand || !newModel) { showMsg('epMsg', t('msgFillName'), 'red'); return; }
+  const err = validatePhoneBrandModel(newBrand, newModel);
+  if (err) { showMsg('epMsg', err, 'red'); return; }
+
+  const old = phones[idx];
+  // 🔐 跟"编辑合同"用同一套密码确认+操作日志机制：老板/主管用confirmEdit(密码cao)，
+  // 业务主管用confirmAuditorEdit(密码0000)，改了什么都记进操作日志，方便日后追查谁改的。
+  const _curRole = getCurrentUser()?.role || '';
+  const _editConfirmFn = (_curRole === 'salesManager') ? confirmAuditorEdit : confirmEdit;
+  _editConfirmFn(`${tl('确认把型号','Confirm changing model','បញ្ជាក់ការផ្លាស់ប្តូរម៉ូដែល')} "${esc(old.brand)} ${esc(old.model)}" ${tl('改成','to','ទៅ')} "${esc(newBrand)} ${esc(newModel)}" ${tl('吗？','?','?')}`, function() {
+    phones[idx] = { ...old, brand: newBrand, model: newModel };
+    DB_set('phones', phones);
+    logActivity('编辑型号品牌/名称', `${old.brand} ${old.model}`, `改成 ${newBrand} ${newModel}`);
+    closeModal();
+    document.getElementById('phoneTable').innerHTML = buildPhonesTable(phones);
+    showMsg('phoneMsg', '✅ ' + tl('型号信息已更新','Model info updated','បានធ្វើបច្ចុប្បន្នភាព'), 'green');
+  });
+};
+
+// ══════════════════════════════════════════════════════
+// 🩺 2026-09-27：型号品牌体检 —— 一次性找出"型号库"和"已生成合同"里所有OPPO/iPhone混淆的记录，
+// 不用再自己一条条翻表去找。用户明确要求"全盘检查、不要一个一个去改"，但这里必须说明一个
+// 边界：本工具跑在浏览器里，扫的是当前打开系统时加载到本地的实际数据(跟数据库同步)，不是
+// Claude在开发环境里能直接连数据库查到的——数字要打开这个面板才能看到真实结果。
+// 分两类处理，处理方式完全不同：
+// 1. "重复用词"（比如"iPhone iPhone 12ProMax"）：品牌和型号其实是一致的，只是型号文字里把
+//    品牌名又打了一遍，纯粹显示重复，没有歧义 —— 可以一键批量去重，不用一条条确认。
+// 2. "品牌冲突"（比如"OPPO iPhone 12ProMax"）：品牌和型号真的对不上，系统没法知道当时是
+//    "品牌按钮点错了"还是"型号名字打错了"——这两种改法结果完全不同，瞎猜自动改等于拿真实的
+//    合同/型号数据赌一把，猜错了比不改还麻烦。所以这类只精准列出来，不自动改，需要人工看一眼
+//    （多半要对照当时的单据/聊天记录确认卖的到底是哪款手机）后点"去确认"手动改。
+function findRepeatedLeadingWord(text) {
+  const m = String(text||'').match(/^(\S+)\s+\1\b/i);
+  if (!m) return null;
+  return String(text).replace(/^(\S+)\s+\1\b\s*/i, m[1] + ' ').trim();
+}
+function hasBrandConflictText(text) {
+  const lc = String(text||'').toLowerCase();
+  return /\boppo\b/.test(lc) && (/\biphone\b/.test(lc) || /\bapple\b/.test(lc));
+}
+function phoneModelRedundantPrefix(p) {
+  const prefix = (p.brand === 'OPPO') ? 'OPPO' : 'iPhone';
+  const re = new RegExp('^'+prefix+'\\s+', 'i');
+  const modelTrim = String(p.model||'').trim();
+  return re.test(modelTrim) ? modelTrim.replace(re,'').trim() : null;
+}
+// 2026-09-27：117条"品牌冲突"人工核对后确认规律——型号文字不是手打的，是从下拉框选出来的，
+// 型号文字上写的品牌几乎必然是对的（业务员确实选了那款型号），错的是"品牌"这个按钮/字段。
+// 所以补一条可采信的自动规则："型号文字里出现哪个品牌关键词，就把brand字段改成那个品牌"——
+// 但如果型号文字本身同时提到两个品牌关键词（比如型号名字被人手打成"OPPO iPhone 12ProMax"这种），
+// 说明连型号文字本身都看不出该信哪个，这种依然不自动改，保留人工"去确认"。
+// 注意：判断"型号文字里提到哪个品牌"时，只去掉文字最前面那一个词——不能拿当前（可能本来就是
+// 错的）brand字段去猜该去掉哪个词，那样一部分老合同brand字段本来就是空的（早期导入的合同没有
+// 这个字段），会导致整段文字里oppo/iphone两个关键词都留着，误判成"看不出该信哪个"而漏掉。
+function stripLeadingToken(text) {
+  const m = String(text||'').match(/^(\S+)\s+([\s\S]*)$/);
+  return m ? m[2] : String(text||'');
+}
+function resolveBrandConflictFix(fullText) {
+  const rest = stripLeadingToken(fullText);
+  const lc = rest.toLowerCase();
+  const mentionsApple = /\biphone\b/.test(lc) || /\bapple\b/.test(lc);
+  const mentionsOppo = /\boppo\b/.test(lc);
+  if (mentionsApple && !mentionsOppo) return 'Apple';
+  if (mentionsOppo && !mentionsApple) return 'OPPO';
+  return null;
+}
+function collectPhoneAudit() {
+  const phones = DB_get('phones')||[];
+  const sales = DB_get('sales')||[];
+  const phoneConflicts = phones.filter(p => validatePhoneBrandModel(p.brand, p.model))
+    .map(p => ({ p, fix: resolveBrandConflictFix(p.model) }));
+  const phoneRedundant = phones
+    .filter(p => !validatePhoneBrandModel(p.brand, p.model))
+    .map(p => ({ p, cleaned: phoneModelRedundantPrefix(p) }))
+    .filter(x => x.cleaned && x.cleaned !== x.p.model);
+  const saleConflicts = sales.filter(s => hasBrandConflictText(s.modelName))
+    .map(s => ({ s, fix: resolveBrandConflictFix(s.modelName) }));
+  const saleRedundant = sales
+    .filter(s => !hasBrandConflictText(s.modelName))
+    .map(s => ({ s, cleaned: findRepeatedLeadingWord(s.modelName) }))
+    .filter(x => x.cleaned && x.cleaned !== x.s.modelName);
+  return { phoneConflicts, phoneRedundant, saleConflicts, saleRedundant };
+}
+function refreshPhonesPage() {
+  const mc = document.getElementById('mainContent');
+  if (mc) mc.innerHTML = renderPhones();
+}
+function buildPhoneAuditPanel() {
+  if (!canEditPhoneInfo()) return '';
+  const { phoneConflicts, phoneRedundant, saleConflicts, saleRedundant } = collectPhoneAudit();
+  const total = phoneConflicts.length + phoneRedundant.length + saleConflicts.length + saleRedundant.length;
+  return `<div class="card" style="border-left:4px solid #6a1b9a;background:#f9f4fb">
+    <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="
+      const d=document.getElementById('phoneAuditBody');const arr=this.querySelector('.pa-arr');
+      const open=d.style.display==='none';d.style.display=open?'block':'none';arr.style.transform=open?'rotate(180deg)':'';
+    ">
+      <div style="font-weight:700;color:#6a1b9a;font-size:14px">🩺 ${tl('型号品牌体检','Model/Brand Health Check','')}${total?`（${tl('共','','')}${total}${tl('条问题','issues','')}）`:`（${tl('未发现问题','No issues found','')}）`}</div>
+      <div class="pa-arr" style="color:#6a1b9a;font-size:14px;transition:transform .2s">▾</div>
+    </div>
+    <div id="phoneAuditBody" style="display:none;margin-top:12px">
+      <div style="font-size:12px;color:#78909c;margin-bottom:14px;line-height:1.6">${tl('"重复用词"是型号文字里把品牌名多打了一遍，品牌和型号本身没冲突，可以一键清理，不影响任何金额/额度字段。<br>"品牌冲突"是品牌和型号真的对不上，系统不知道哪个是错的，需要您确认实际卖的是哪款手机后手动改。','"Redundant wording" means the brand got typed twice in the model text — safe to auto-clean, no amount/limit fields affected.<br>"Brand conflict" means brand and model genuinely disagree — needs your confirmation on what phone was actually sold.','')}</div>
+
+      <div style="margin-bottom:18px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">${tl('型号库','Model Catalog','')} — ${tl('重复用词','Redundant wording','')}（${phoneRedundant.length}）</div>
+        ${phoneRedundant.length ? `
+          <button class="btn btn-primary btn-sm" onclick="fixAllPhoneRedundant()">🧹 ${tl('一键清理这','Clean up these','')}${phoneRedundant.length}${tl('条','','')}</button>
+          <div style="margin-top:8px;font-size:12px;color:#78909c">${phoneRedundant.map(x=>`${esc(x.p.brand)}：<s style="color:#c62828">${esc(x.p.model)}</s> → <b>${esc(x.cleaned)}</b>`).join('<br>')}</div>
+        ` : `<div style="font-size:12px;color:#90a4ae">${tl('没有发现','None found','')}</div>`}
+      </div>
+
+      <div style="margin-bottom:18px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:#c62828">${tl('型号库','Model Catalog','')} — ${tl('品牌冲突（需要确认）','Brand conflicts (needs review)','')}（${phoneConflicts.length}）</div>
+        ${(() => { const fixable = phoneConflicts.filter(x=>x.fix); return fixable.length ? `
+          <button class="btn btn-primary btn-sm" onclick="fixAllPhoneBrandConflicts()">🛠️ ${tl('按型号文字里的品牌一键修正这','Batch-fix these','')}${fixable.length}${tl('条','','')}</button>
+          <div style="margin-top:6px;font-size:11px;color:#78909c">${tl('规则：型号文字里写的是哪个品牌，就把"品牌"字段改成哪个（型号文字本身不变）','Rule: brand field is set to match whichever brand keyword the model text contains — the model text itself is unchanged','')}</div>
+        ` : ''; })()}
+        ${phoneConflicts.length ? `<div style="margin-top:8px">${phoneConflicts.map(x=>`
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee;font-size:12px">
+            <div><span class="badge badge-red">${esc(x.p.brand)}</span> ${esc(x.p.model)} ${esc(x.p.storage||'')} ${x.fix?`<span style="color:#2e7d32">→ ${x.fix}</span>`:`<span style="color:#e65100">（${tl('型号文字里品牌信息也不明确，需人工判断','model text itself is ambiguous, needs human judgment','')}）</span>`}</div>
+            <button class="btn btn-outline btn-sm" onclick="editPhoneInfo(${x.p.id})">✏️ ${tl('去确认','Review','')}</button>
+          </div>`).join('')}</div>` : `<div style="font-size:12px;color:#90a4ae">${tl('没有发现','None found','')}</div>`}
+      </div>
+
+      <div style="margin-bottom:18px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">${tl('已生成合同','Existing contracts','')} — ${tl('重复用词','Redundant wording','')}（${saleRedundant.length}）</div>
+        ${saleRedundant.length ? `
+          <button class="btn btn-primary btn-sm" onclick="fixAllSaleRedundant()">🧹 ${tl('一键清理这','Clean up these','')}${saleRedundant.length}${tl('条','','')}</button>
+          <div style="margin-top:8px;font-size:12px;color:#78909c;max-height:200px;overflow:auto">${saleRedundant.map(x=>`${esc(x.s.customer)}（${esc(x.s.id)}）：<s style="color:#c62828">${esc(x.s.modelName)}</s> → <b>${esc(x.cleaned)}</b>`).join('<br>')}</div>
+        ` : `<div style="font-size:12px;color:#90a4ae">${tl('没有发现','None found','')}</div>`}
+      </div>
+
+      <div>
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:#c62828">${tl('已生成合同','Existing contracts','')} — ${tl('品牌冲突（需要确认）','Brand conflicts (needs review)','')}（${saleConflicts.length}）</div>
+        ${(() => { const fixable = saleConflicts.filter(x=>x.fix); return fixable.length ? `
+          <button class="btn btn-primary btn-sm" onclick="fixAllSaleBrandConflicts()">🛠️ ${tl('按型号文字里的品牌一键修正这','Batch-fix these','')}${fixable.length}${tl('份','','')}</button>
+          <div style="margin-top:6px;font-size:11px;color:#78909c">${tl('规则：型号文字里写的是哪个品牌，就把"品牌"字段改成哪个（型号文字只改最前面那个品牌前缀词，不影响金额/期数/放款额度）','Rule: brand field is set to match whichever brand keyword the model text contains — only the leading brand word in the model text changes, amounts/periods/loan limits are untouched','')}</div>
+        ` : ''; })()}
+        ${saleConflicts.length ? `<div style="max-height:260px;overflow:auto;margin-top:8px">${saleConflicts.map(x=>`
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee;font-size:12px">
+            <div>${esc(x.s.customer)}（${esc(x.s.id)}，${esc(x.s.date||'')}）：<span style="color:#c62828">${esc(x.s.modelName)}</span> ${x.fix?`<span style="color:#2e7d32">→ ${x.fix}</span>`:`<span style="color:#e65100">（${tl('需人工判断','needs human judgment','')}）</span>`}</div>
+            <button class="btn btn-outline btn-sm" onclick="fixSaleModelText('${x.s.id}')">✏️ ${tl('去确认','Review','')}</button>
+          </div>`).join('')}</div>` : `<div style="font-size:12px;color:#90a4ae">${tl('没有发现','None found','')}</div>`}
+      </div>
+    </div>
+  </div>`;
+}
+
+window.fixAllPhoneRedundant = function() {
+  if (!canEditPhoneInfo()) return;
+  const { phoneRedundant } = collectPhoneAudit();
+  if (!phoneRedundant.length) return;
+  const _curRole = getCurrentUser()?.role || '';
+  const _editConfirmFn = (_curRole === 'salesManager') ? confirmAuditorEdit : confirmEdit;
+  _editConfirmFn(`${tl('确认批量清理','Confirm batch cleanup','')} ${phoneRedundant.length} ${tl('条型号库里的重复用词吗？（只去掉型号名称里重复打的品牌词，不影响品牌/放款额度等字段）','entries of redundant wording in the model catalog? (Only removes duplicated brand words from model names — brand/loan limit fields are unaffected)','')}`, function() {
+    const phones = DB_get('phones')||[];
+    let n = 0;
+    phoneRedundant.forEach(x => {
+      const idx = phones.findIndex(p => p.id === x.p.id);
+      if (idx >= 0) { phones[idx] = { ...phones[idx], model: x.cleaned }; n++; }
+    });
+    DB_set('phones', phones);
+    logActivity('批量清理型号库重复用词', '', `共${n}条`);
+    refreshPhonesPage();
+    showMsg('phoneMsg', '✅ ' + tl(`已清理${n}条`,`Cleaned ${n} entries`,''), 'green');
+  });
+};
+
+window.fixAllSaleRedundant = function() {
+  if (!canEditPhoneInfo()) return;
+  const { saleRedundant } = collectPhoneAudit();
+  if (!saleRedundant.length) return;
+  const _curRole = getCurrentUser()?.role || '';
+  const _editConfirmFn = (_curRole === 'salesManager') ? confirmAuditorEdit : confirmEdit;
+  _editConfirmFn(`${tl('确认批量清理','Confirm batch cleanup','')} ${saleRedundant.length} ${tl('份合同里型号文字的重复用词吗？（只改"型号"这一列显示的文字，不影响金额/期数/放款额度等任何计算字段）','contracts\' redundant model wording? (Only the displayed model text changes — amounts, periods and loan limits are untouched)','')}`, function() {
+    const sales = DB_get('sales')||[];
+    let n = 0;
+    saleRedundant.forEach(x => {
+      const idx = sales.findIndex(s => String(s.id) === String(x.s.id));
+      if (idx >= 0) { sales[idx] = { ...sales[idx], modelName: x.cleaned }; n++; }
+    });
+    DB_set('sales', sales);
+    logActivity('批量清理合同型号重复用词', '', `共${n}条`);
+    refreshPhonesPage();
+    showMsg('phoneMsg', '✅ ' + tl(`已清理${n}条`,`Cleaned ${n} entries`,''), 'green');
+  });
+};
+
+window.fixSaleModelText = function(id) {
+  if (!canEditPhoneInfo()) { alert(tl('没有权限做这个操作','No permission','គ្មានសិទ្ធិ')); return; }
+  const sales = DB_get('sales')||[];
+  const s = sales.find(x => String(x.id) === String(id));
+  if (!s) return;
+  showModal(`✏️ ${tl('确认型号文字','Confirm model text','')} — ${esc(s.customer)}（${esc(s.id)}）`, `
+    <div style="font-size:12px;color:#78909c;margin-bottom:10px">${tl('当前型号文字品牌对不上，请先确认这份合同实际卖的是什么手机，再改成正确的文字。这里只改"型号"这一列显示的文字，不会影响这份合同的金额/期数/放款额度等任何计算字段。','The current model text has a brand conflict. Please confirm what phone this contract actually sold, then correct the text. Only the displayed model text changes — amounts, periods and loan limits are untouched.','')}</div>
+    <div class="form-group">
+      <label style="font-size:12px;font-weight:600;color:#546e7a">${tl('型号','Model','ម៉ូដែល')}</label>
+      <input id="fsmInput" value="${esc(s.modelName||'')}" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit">
+    </div>
+    <div id="fsmMsg" style="margin:8px 0;font-size:12px"></div>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <button onclick="saveSaleModelText('${id}')" class="btn btn-primary">💾 ${tl('保存','Save','រក្សាទុក')}</button>
+      <button onclick="closeModal()" class="btn btn-outline">${t('cancel')}</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('fsmInput')?.focus(), 100);
+};
+
+window.saveSaleModelText = function(id) {
+  if (!canEditPhoneInfo()) return;
+  const sales = DB_get('sales')||[];
+  const idx = sales.findIndex(x => String(x.id) === String(id));
+  if (idx < 0) return;
+  const newText = document.getElementById('fsmInput')?.value?.trim();
+  if (!newText) { showMsg('fsmMsg', t('msgFillName'), 'red'); return; }
+  const old = sales[idx];
+  const _curRole = getCurrentUser()?.role || '';
+  const _editConfirmFn = (_curRole === 'salesManager') ? confirmAuditorEdit : confirmEdit;
+  _editConfirmFn(`${tl('确认把型号文字','Confirm changing the model text','')} "${esc(old.modelName||'')}" ${tl('改成','to','')} "${esc(newText)}" ${tl('吗？','?','')}`, function() {
+    sales[idx] = { ...old, modelName: newText };
+    DB_set('sales', sales);
+    logActivity('修正合同型号文字', `${old.customer}（${old.id}）`, `"${old.modelName||''}" → "${newText}"`);
+    closeModal();
+    refreshPhonesPage();
+    showMsg('phoneMsg', '✅ ' + tl('已保存','Saved',''), 'green');
+  });
+};
+
+window.fixAllPhoneBrandConflicts = function() {
+  if (!canEditPhoneInfo()) return;
+  const { phoneConflicts } = collectPhoneAudit();
+  const fixable = phoneConflicts.filter(x => x.fix);
+  if (!fixable.length) return;
+  const _curRole = getCurrentUser()?.role || '';
+  const _editConfirmFn = (_curRole === 'salesManager') ? confirmAuditorEdit : confirmEdit;
+  _editConfirmFn(`${tl('确认按"型号文字里写的品牌为准"，批量修正','Confirm batch-fixing','')} ${fixable.length} ${tl('条型号库品牌冲突吗？（只改"品牌"字段，型号文字不变，改完建议抽查几条）','model catalog brand conflicts? (Only the brand field changes, model text stays the same — please spot-check a few afterward)','')}`, function() {
+    const phones = DB_get('phones')||[];
+    let n = 0;
+    fixable.forEach(x => {
+      const idx = phones.findIndex(p => p.id === x.p.id);
+      if (idx >= 0) { phones[idx] = { ...phones[idx], brand: x.fix }; n++; }
+    });
+    DB_set('phones', phones);
+    logActivity('批量修正型号库品牌冲突', '', `共${n}条，按型号文字里的品牌名改brand字段`);
+    refreshPhonesPage();
+    showMsg('phoneMsg', '✅ ' + tl(`已修正${n}条`,`Fixed ${n} entries`,''), 'green');
+  });
+};
+
+window.fixAllSaleBrandConflicts = function() {
+  if (!canEditPhoneInfo()) return;
+  const { saleConflicts } = collectPhoneAudit();
+  const fixable = saleConflicts.filter(x => x.fix);
+  if (!fixable.length) return;
+  const _curRole = getCurrentUser()?.role || '';
+  const _editConfirmFn = (_curRole === 'salesManager') ? confirmAuditorEdit : confirmEdit;
+  _editConfirmFn(`${tl('确认按"型号文字里写的品牌为准"，批量修正','Confirm batch-fixing','')} ${fixable.length} ${tl('份合同的品牌冲突吗？（型号文字只改最前面的品牌前缀词，同时改"品牌"字段，不影响金额/期数/放款额度）','contracts\' brand conflicts? (Only the leading brand word in the model text changes, along with the brand field — amounts/periods/loan limits are untouched)','')}`, function() {
+    const sales = DB_get('sales')||[];
+    let n = 0;
+    fixable.forEach(x => {
+      const idx = sales.findIndex(s => String(s.id) === String(x.s.id));
+      if (idx < 0) return;
+      const old = sales[idx];
+      const newBrand = x.fix;
+      const newPrefixWord = newBrand === 'Apple' ? 'iPhone' : newBrand;
+      const rest = stripLeadingToken(old.modelName);
+      const newModelName = `${newPrefixWord} ${rest}`.trim();
+      sales[idx] = { ...old, brand: newBrand, phoneModel: (old.phoneModel !== undefined && old.phoneModel !== null && old.phoneModel !== '') ? old.phoneModel : rest, modelName: newModelName };
+      n++;
+    });
+    DB_set('sales', sales);
+    logActivity('批量修正合同品牌冲突', '', `共${n}条，按型号文字里的品牌名改brand字段`);
+    refreshPhonesPage();
+    showMsg('phoneMsg', '✅ ' + tl(`已修正${n}条`,`Fixed ${n} entries`,''), 'green');
+  });
+};
 
 window.editPhoneLimit = function(id) {
   const phones = DB_get('phones') || [];
@@ -7441,19 +7787,10 @@ window.addPhone = function() {
   // 出现过品牌打"OPPO"、型号名称却打成"iPhone 12ProMax"（大概率是复制别的型号时改串了）——
   // 这条脏数据存进型号库后，业务员开合同选OPPO品牌，下拉框里就真的会冒出这个"iPhone"型号可选。
   // 新建合同那边的品牌筛选逻辑本身没问题，问题是源头型号库能存进不匹配的组合。
-  // 现在直接在这里拦死：品牌是OPPO就不准型号名称里出现iPhone/Apple字样，反过来也一样，
+  // 现在直接在这里拦死，规则统一放在validatePhoneBrandModel()里(编辑型号时也复用同一套)，
   // 不是弹窗提醒确认，是直接不让保存，从源头保证"选OPPO＝OPPO型号，选iPhone＝iPhone型号"。
-  const brandLc = brand.toLowerCase(), modelLc = model.toLowerCase();
-  const brandIsOppo = brandLc.includes('oppo');
-  const brandIsApple = brandLc.includes('iphone') || brandLc.includes('apple');
-  const modelMentionsOppo = modelLc.includes('oppo');
-  const modelMentionsApple = modelLc.includes('iphone') || modelLc.includes('apple');
-  if (brandIsOppo && modelMentionsApple) {
-    showMsg('phoneMsg', tl('⛔ 品牌填的是OPPO，但型号名称里出现了"iPhone/Apple"字样，两个对不上，无法保存。请检查型号名称是不是打错了（比如复制别的型号时没改完）。','⛔ Brand is OPPO but the model name contains "iPhone/Apple" — cannot save. Please check the model name.','⛔ ម៉ាក OPPO ប៉ុន្តែឈ្មោះម៉ូដែលមាន "iPhone/Apple"'), 'red'); return;
-  }
-  if (brandIsApple && modelMentionsOppo) {
-    showMsg('phoneMsg', tl('⛔ 品牌填的是iPhone/Apple，但型号名称里出现了"OPPO"字样，两个对不上，无法保存。请检查型号名称是不是打错了。','⛔ Brand is iPhone/Apple but the model name contains "OPPO" — cannot save. Please check the model name.','⛔ ម៉ាក iPhone/Apple ប៉ុន្តែឈ្មោះម៉ូដែលមាន "OPPO"'), 'red'); return;
-  }
+  const brandModelErr = validatePhoneBrandModel(brand, model);
+  if (brandModelErr) { showMsg('phoneMsg', brandModelErr, 'red'); return; }
 
   const storage = document.getElementById('phStorage')?.value||'128G';
   const phones = DB_get('phones')||[];
