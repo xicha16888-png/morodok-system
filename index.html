@@ -6994,8 +6994,8 @@ function renderReminderTomorrow() {
   const todayTotal = todayItems.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
   const tomorrowTotal = tomorrowItems.reduce((a,{p})=>a+(+p.principalDue||0)+(+p.interestDue||0),0);
 
-  // 单条卡片——电话号码做成可以直接点击拨打的链接，方便催收员在手机上直接打电话，
-  // 不用再手动复制号码
+  // 单条卡片——"联系方式"按钮点开弹窗，一次性列出客户本人电话+所有紧急联系人的
+  // 姓名/关系/电话，催收员自己挑一个打（客户本人打不通，紧急联系人往往就是突破口）
   function reminderCard({s,p}, cls) {
     return `
     <div class="reminder-item ${cls}">
@@ -7008,7 +7008,7 @@ function renderReminderTomorrow() {
       <div style="text-align:right;flex-shrink:0">
         <div class="fw700" style="font-size:15px;color:${cls==='warn'?'var(--amber)':'#1565c0'}">${fmt((+p.principalDue||0)+(+p.interestDue||0))}</div>
         <div style="display:flex;gap:6px;margin-top:6px;justify-content:flex-end;flex-wrap:wrap">
-          ${s.customerPhone ? `<a href="tel:${esc(s.customerPhone)}" class="btn btn-outline btn-sm" style="text-decoration:none">📞 ${tl('打电话','Call','ទូរស័ព្ទ')}</a>` : ''}
+          <button class="btn btn-outline btn-sm" onclick="showCustomerContacts('${s.id}')">📱 ${tl('联系方式','Contacts','ទំនាក់ទំនង')}</button>
           <button class="btn btn-primary btn-sm" onclick="navToPayment('${s.id}',${p.period})">${t('registerPayment')}</button>
         </div>
       </div>
@@ -7036,6 +7036,37 @@ function renderReminderTomorrow() {
     <div style="padding:8px 12px 4px">${tomorrowItems.map(x=>reminderCard(x,'info')).join('') || `<div class="empty-state"><div class="ei">😌</div><p>${tl('明天没有到期账单','No bills due tomorrow','')}</p></div>`}</div>
   </div>`;
 }
+
+// 🔖 2026-09-27：客户"联系方式"弹窗——列出客户本人电话 + 所有紧急联系人的姓名/关系/电话，
+// 供催收员挑一个打。系统目前只登记了这些字段(没有Telegram/Facebook等)，弹窗就照实际数据展示；
+// 客户本人/紧急联系人只要哪个有电话号码，都做成可以直接点击拨打的tel:链接
+window.showCustomerContacts = function(saleId) {
+  const sales = DB_get('sales')||[];
+  const s = sales.find(x => String(x.id) === String(saleId));
+  if (!s) return;
+  const contacts = (s.emergencyContacts||[]).filter(c => c.name || c.phone);
+  function contactBlock(label, name, phone, extra, bg, border, phoneColor) {
+    return `
+    <div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:12px 14px">
+      <div style="font-size:11px;color:#90a4ae;margin-bottom:4px">${label}${extra?`（${esc(extra)}）`:''}</div>
+      <div style="font-weight:700;font-size:14px">${esc(name||'—')}</div>
+      ${phone
+        ? `<a href="tel:${esc(phone)}" style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;color:${phoneColor};font-weight:700;font-size:14px;text-decoration:none">📞 ${esc(phone)}</a>`
+        : `<div style="font-size:12px;color:#b0bec5;margin-top:6px">${tl('未登记电话','No phone on file','')}</div>`}
+    </div>`;
+  }
+  showModal(`📱 ${tl('联系方式','Contact Methods','ទំនាក់ទំនង')} — ${esc(s.customer)}`, `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${contactBlock(tl('客户本人','Customer',''), s.customer, s.customerPhone, '', '#f0f7ff', '#bbdefb', '#1565c0')}
+      ${contacts.length
+        ? contacts.map((c,i) => contactBlock(`${tl('紧急联系人','Emergency Contact','')} ${i+1}`, c.name, c.phone, c.rel, '#fff8e1', '#ffe082', '#e65100')).join('')
+        : `<div style="font-size:12px;color:#90a4ae;text-align:center;padding:10px">${tl('没有登记紧急联系人','No emergency contacts on file','')}</div>`}
+    </div>
+    <div style="margin-top:14px;text-align:right">
+      <button onclick="closeModal()" class="btn btn-outline">${t('cancel')}</button>
+    </div>
+  `);
+};
 
 function renderReminderOverdue() {
   const td = today(), sales = DB_get('sales')||[], items = [], dataFixItems = [], partialItems = [];
