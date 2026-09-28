@@ -3946,6 +3946,25 @@ window.editSale = function(id) {
       <div><label style="font-size:11px;color:var(--muted)">${tl('店家返点','Store Rebate','កម្រៃហាង')} ($)</label><input id="eRebate" type="number" value="${s.storeRebate||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div style="grid-column:span 3"><label style="font-size:11px;color:var(--muted)">${tl('备注','Remarks','ចំណាំ')}</label><input id="eNote" value="${s.note||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
     </div>
+    <div style="margin-top:16px;padding-top:14px;border-top:1px dashed var(--border)">
+      <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:10px">${t('emergencyTitle')} <span style="font-weight:400;color:var(--muted)">${tl('（业务员登记时录入，填错了在这里改）','(entered by salesperson at sign-up — fix mistakes here)','')}</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:13px">
+        ${[1,2,3].map(n => {
+          const c = (s.emergencyContacts||[])[n-1] || {};
+          const relOpts = [1,2,3,4,5].map(i => t('emgRel'+i));
+          return `
+          <div><label style="font-size:11px;color:var(--muted)">${t('emgName')} ${n}</label><input id="eEmgName${n}" value="${esc(c.name||'')}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+          <div><label style="font-size:11px;color:var(--muted)">${t('emgPhone')} ${n}</label><input id="eEmgPhone${n}" value="${esc(c.phone||'')}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+          <div><label style="font-size:11px;color:var(--muted)">${t('emgRel')} ${n}</label>
+            <select id="eEmgRel${n}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">
+              <option value="">${t('emgRelPlaceholder')}</option>
+              ${relOpts.map(opt => `<option value="${esc(opt)}" ${c.rel===opt?'selected':''}>${esc(opt)}</option>`).join('')}
+              ${c.rel && !relOpts.includes(c.rel) ? `<option value="${esc(c.rel)}" selected>${esc(c.rel)}</option>` : ''}
+            </select>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
     <div id="editMsg" style="margin-top:10px"></div>
     <div style="margin-top:14px;display:flex;gap:10px">
       <button class="btn btn-primary" onclick="saveEditSale('${id}')" style="flex:1">💾 ${tl('保存更改','Save Changes','រក្សាទុក')}</button>
@@ -4004,6 +4023,14 @@ window.saveEditSale = function(id) {
   const svcRate     = principal > 0 ? (monthlySvc / principal) * 100 : 0;
   const contractNetProfit = (monthly * actualPeriods) - principal - rebate;
   const firstDue = document.getElementById('eFirstDue')?.value || s.firstDue;
+  // 🔧 2026-09-28：业务主管反馈，业务员登记时录入的紧急联系人经常填错，之前"编辑合同"
+  // 弹窗里没有这几个字段可以改，主管只能等出问题（比如逾期提醒页面打不通电话）才发现。
+  // 现在跟"销售登记"页用同一套 sEmgName/sEmgPhone/sEmgRel 输入结构，读法也完全一样。
+  const emergencyContacts = [1,2,3].map(n => ({
+    name:  document.getElementById('eEmgName'+n)?.value?.trim()||'',
+    phone: document.getElementById('eEmgPhone'+n)?.value?.trim()||'',
+    rel:   document.getElementById('eEmgRel'+n)?.value||'',
+  })).filter(c => c.name || c.phone);
 
   if (!firstDue) {
     showMsg('editMsg', `⚠️ ${tl('首次还款日不能为空，请先填写再保存','First due date cannot be empty','សូមបំពេញកាលបរិច្ឆេទ')}`, 'red');
@@ -4066,6 +4093,7 @@ window.saveEditSale = function(id) {
     contractNetProfit,
     dailyLateFee: +(document.getElementById('eDailyFee')?.value || 0),
     storeRebate: rebate,
+    emergencyContacts,
     schedule: newSchedule,
   };
 
@@ -4078,6 +4106,13 @@ window.saveEditSale = function(id) {
     ['date','customer','customerPhone','shopName','salesperson','modelName','salePrice','deposit','periods','installmentAmount','monthlyPayment','storeRebate','dailyLateFee','note'].forEach(k => {
       if (String(s[k]??'') !== String(newSale[k]??'')) changedFields.push(`${k}: ${s[k]??'—'} → ${newSale[k]??'—'}`);
     });
+    // 紧急联系人是数组，单独比较，日志里记名字/电话方便一眼看出改了什么
+    const oldEmgStr = JSON.stringify(s.emergencyContacts||[]);
+    const newEmgStr = JSON.stringify(emergencyContacts);
+    if (oldEmgStr !== newEmgStr) {
+      const fmtEmg = list => (list&&list.length) ? list.map(c=>`${c.name||'—'}(${c.phone||'—'})`).join('、') : '—';
+      changedFields.push(`紧急联系人: ${fmtEmg(s.emergencyContacts)} → ${fmtEmg(emergencyContacts)}`);
+    }
     logActivity('编辑合同', `${s.customer}`, changedFields.join('; ') || '（未改动关键字段，可能只调整了排期）');
 
     sales[idx] = newSale;
