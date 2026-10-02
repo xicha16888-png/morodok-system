@@ -2,3 +2,7 @@ node_modules/
 .env
 data.json
 *.log
+
+# 一次性浏览器控制台脚本（老板粘贴到 F12 Console 手动运行的数据核对/修复脚本），
+# 不是部署到 Render 的网页代码的一部分，不需要进 git 仓库——都是通过 SendUserFile 直接发给老板的
+*_console.js
