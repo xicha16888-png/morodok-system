@@ -3911,8 +3911,7 @@ window.editSale = function(id) {
       <div><label style="font-size:11px;color:var(--muted)">${tl('店铺名称','Store Name','ឈ្មោះហាង')}</label><input id="eShop" value="${s.shopName||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('业务员','Salesperson','ភ្នាក់ងារ')}</label><select id="eSalesperson" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${buildStaffRosterOptionsHtml(window._salesStaffRoster, s.salesperson||'')}</select></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('手机型号','Phone Model','ម៉ូដែលទូរស័ព្ទ')}</label><select id="eModel" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${phoneOpts}</select></div>
-      <div><label style="font-size:11px;color:var(--muted)">${tl('销售价格','Sale Price','តម្លៃលក់')} ($)</label><input id="eSalePrice" type="number" value="${s.salePrice}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
-      <div><label style="font-size:11px;color:var(--muted)">${tl('首付金额','Deposit','ប្រាក់ដាក់ដំបូង')} ($)</label><input id="eDeposit" type="number" value="${s.deposit}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <div><label style="font-size:11px;color:var(--muted)">${tl('放款金额','Loan Amount','ចំនួនកម្ចី')} ($) <span style="font-weight:400;color:var(--muted)">${tl('（实际放出去的本金，月度报表的放款额就按这个汇总）','(principal actually lent out; monthly report totals use this)','')}</span></label><input id="eLoanAmt" type="number" value="${s.installmentAmount||0}" step="0.01" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('分期期数','Periods','ដំណាក់កាល')}</label><select id="ePeriods" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">${periodOpts}</select></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl('首次还款日','First Due Date','ថ្ងៃដល់កំណត់ដំបូង')}</label><input id="eFirstDue" type="date" value="${s.firstDue||''}" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
       <div><label style="font-size:11px;color:var(--muted)">${tl("每期本金","Monthly Principal","ដើមទុនប្រចាំខែ")} ($)</label><input id="eMonthlyPrincipal" type="number" value="${(() => {
@@ -3995,8 +3994,16 @@ window.saveEditSale = function(id) {
   const s = sales[idx];
   const phones = DB_get('phones') || [];
 
-  const salePrice   = +(document.getElementById('eSalePrice')?.value || 0);
-  const deposit     = +(document.getElementById('eDeposit')?.value || 0);
+  // 🔧 2026-10：编辑合同不再提供"销售价格/首付金额"，改成直接编辑"放款金额"(installmentAmount)。
+  // 以前这里用 售价-首付 重算放款额，但新方式合同的 salePrice 只是零售价参考数字（deposit固定为0），
+  // 一保存就把真实放款额覆盖成零售价，导致月度报表的放款额对不上。salePrice/deposit 原样保留，不再改动。
+  const salePrice   = +s.salePrice || 0;
+  const deposit     = +s.deposit || 0;
+  const loanAmtInput = +(document.getElementById('eLoanAmt')?.value || 0);
+  if (!(loanAmtInput > 0)) {
+    showMsg('editMsg', `⚠️ ${tl('放款金额必须大于0','Loan amount must be greater than 0','ចំនួនកម្ចីត្រូវធំជាង 0')}`, 'red');
+    return;
+  }
   const periods     = +(document.getElementById('ePeriods')?.value || s.periods);
   const svcPeriods  = +(document.getElementById('eSvcPeriods')?.value || s.svcPeriods);
   const monthlyPrincipalManual = +(document.getElementById('eMonthlyPrincipal')?.value || 0);
@@ -4007,7 +4014,7 @@ window.saveEditSale = function(id) {
   // "__KEEP__" = 下拉框里没能匹配到原型号，用户没有主动改选，保持原来的型号文字不变
   const modelId     = _eModelVal === '__KEEP__' ? s.modelId : +(_eModelVal || s.modelId);
   const ph          = _eModelVal === '__KEEP__' ? null : phones.find(p => p.id === modelId);
-  const principal   = Math.max(0, salePrice - deposit);
+  const principal   = loanAmtInput;
   // 🔧 实际应还期数(3→3,6→5,9→8,12→11)，跟新建合同时用同一套规则
   const actualPeriods = periods === 3 ? 3 : periods - 1;
   // 每期本金：优先用手动填写的值(老合同按表格原始数字来)，没填才按售价-首付平均分摊
@@ -13700,13 +13707,14 @@ window.openAuditDetail = async function(contractId) {
         <div style="font-weight:600;font-size:13px;color:#263238">${tl(`${s.periods}期`,`${s.periods} periods`,`${s.periods} ខែ`)}</div>
       </div>
       <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
-        <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('合同金额','Installment Amount','ចំនួនទឹកប្រាក់បង់រំលោះ')}</div>
-        <div style="font-weight:600;font-size:13px;color:#263238">${tl(`$${fmt(s.installmentAmount||0)}/期`,`$${fmt(s.installmentAmount||0)}/period`,`$${fmt(s.installmentAmount||0)}/ខែ`)}</div>
+        <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('放款金额','Loan Amount','ចំនួនកម្ចី')}</div>
+        <div style="font-weight:600;font-size:13px;color:#263238">${fmt(s.installmentAmount||0)}</div>
       </div>
-      <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
+      <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px;position:relative">
         <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('店铺','Store','ហាង')}</div>
-        <input id="auditEdit_storeName_${contractId}" value="${esc(s.shopName || s.storeName || '')}" readonly
+        <input id="auditEdit_storeName_${contractId}" value="${esc(s.shopName || s.storeName || '')}" readonly autocomplete="off"
           style="width:100%;box-sizing:border-box;border:none;background:transparent;font-weight:600;font-size:13px;color:#263238;padding:0;font-family:inherit">
+        <div id="auditStoreDropdown_${contractId}" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:8px;max-height:200px;overflow-y:auto;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,.15)"></div>
       </div>
       <div style="background:#f8f9fa;border-radius:8px;padding:10px 12px">
         <div style="font-size:11px;color:#90a4ae;margin-bottom:3px">${tl('业务员','Salesperson','ភ្នាក់ងារ​លក់')}</div>
@@ -13772,6 +13780,54 @@ window.openAuditDetail = async function(contractId) {
   window._currentAuditStatus[contractId] = curStatus;
 };
 
+// 🆕 2026-10-02：合同审核页"编辑基础信息"时，店铺栏位加一个下拉搜索建议（跟"销售登记"的
+// sShopName/filterStoreOptions是同一套店铺库、同一套过滤逻辑），但不是select下拉框——还是
+// 普通文字输入框，下拉只是辅助点选，不想选、店铺库里没有，照样可以直接手打，手打的会在
+// 保存时按"编号对不对"自动判断有没有命中官方店铺列表（跟saveAuditBasicEdit里现有逻辑一致）。
+window.filterAuditStoreOptions = function(contractId) {
+  const input = document.getElementById(`auditEdit_storeName_${contractId}`);
+  const dropdown = document.getElementById(`auditStoreDropdown_${contractId}`);
+  if (!input || !dropdown) return;
+  const q = input.value.trim().toLowerCase();
+  const stores = (DB_get('stores') || []).filter(s => s.code);
+  const list = q ? stores.filter(s =>
+    (s.code||'').toLowerCase().includes(q) ||
+    (s.nameKm||'').toLowerCase().includes(q) ||
+    (s.nameEn||'').toLowerCase().includes(q) ||
+    (s.name||'').toLowerCase().includes(q)
+  ) : stores;
+  if (!stores.length) {
+    dropdown.innerHTML = `<div style="padding:8px 12px;font-size:12px;color:var(--muted)">${tl('店铺列表还是空的，可以直接手打店铺名','Store list is empty — you can type it in directly','មិនទាន់មានបញ្ជីហាងទេ អាចវាយផ្ទាល់បាន')}</div>`;
+    dropdown.style.display = 'block';
+    return;
+  }
+  if (!list.length) {
+    dropdown.innerHTML = `<div style="padding:8px 12px;font-size:12px;color:var(--muted)">${tl('没有匹配的店铺，可直接手打（会按编号自动判断是否命中官方列表）','No matching store — you can type it in (match is auto-checked by code)','មិនមានហាងដូចនេះ អាចវាយផ្ទាល់បាន')}</div>`;
+    dropdown.style.display = 'block';
+    return;
+  }
+  dropdown.innerHTML = list.slice(0, 300).map(s => `
+    <div class="audit-store-opt" data-name="${esc(s.name||'')}"
+      style="padding:7px 10px;cursor:pointer;font-size:12px;display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #f0f0f0">
+      <span>${s.code ? `<b style="color:var(--blue)">${esc(s.code)}</b> ${esc(s.nameKm||'')}` : esc(s.name||'')}</span>
+      <span style="color:var(--muted)">${esc(s.nameEn||'')}</span>
+    </div>`).join('');
+  dropdown.style.display = 'block';
+  dropdown.querySelectorAll('.audit-store-opt').forEach(el => {
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // 防止点击前 input 的 blur 把下拉框先关掉
+      input.value = el.dataset.name;
+      dropdown.style.display = 'none';
+    });
+  });
+};
+document.addEventListener('click', (e) => {
+  document.querySelectorAll('[id^="auditStoreDropdown_"]').forEach(dd => {
+    const inputId = dd.id.replace('auditStoreDropdown_', 'auditEdit_storeName_');
+    if (!e.target.closest(`#${CSS.escape(inputId)}`) && !e.target.closest(`#${CSS.escape(dd.id)}`)) dd.style.display = 'none';
+  });
+});
+
 // ══════════════════════════════════════════════════════
 // 内审员编辑基础信息：只能改客户姓名/手机号/型号/备注，金额和排期不可动
 // 每次修改都记一条操作日志（谁、什么时候、改之前是什么、改之后是什么），供老板事后核查
@@ -13782,6 +13838,12 @@ window.startAuditBasicEdit = function(contractId) {
     if (el) {
       el.readOnly = false;
       if (f === 'date') el.type = 'date'; // 签约日期改成日期选择器，方便挪到正确的天数分组里
+      // 🆕 2026-10-02：店铺栏位编辑时加上下拉搜索（跟"销售登记"的店铺选择器同一套店铺库），
+      // 但不强制一定要选——还是能直接手打，两种方式都留着，对应那边"手动输入的和下拉的两个都要"
+      if (f === 'storeName') {
+        el.oninput = () => window.filterAuditStoreOptions(contractId);
+        el.onfocus = () => window.filterAuditStoreOptions(contractId);
+      }
       el.style.background = '#fff';
       el.style.border = '1.5px solid #1565c0';
       el.style.borderRadius = '5px';
