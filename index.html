@@ -9458,6 +9458,24 @@ window.submitExpense = async function() {
     return;
   }
 
+  // 🔒 2026-10 防重复记账：同一份Excel对账表既有人按"一天一条合并记账"录过、又有人按"一项一条"拆开录过，
+  // 8月的日常开支因此整体重复了一遍。系统以前对"开支"完全没有查重，这里补上：
+  // 同一天已经有同金额的记录，或者同一天某条记录的备注里已经写着这个金额（合并记账里包含了这一项），先提醒确认。
+  // 只是提醒，确实要记第二笔（比如同一天买了两次一样的东西）点确定就行。
+  const _norm = d => String(d||'').replace(/\//g,'-').slice(0,10);
+  const _sameDay = (DB_get('expenses')||[]).filter(e => _norm(e.date) === _norm(date));
+  const _sameAmt = _sameDay.find(e => Math.abs((+e.amount||0) - amount) < 0.005);
+  const _amtRe = new RegExp('(^|[^0-9.])' + String(amount).replace(/\./g,'\\.') + '(?![0-9])');
+  const _inNote = _sameAmt ? null : _sameDay.find(e => _amtRe.test(String(e.note||'')));
+  const _hit = _sameAmt || _inNote;
+  if (_hit) {
+    const _hitDesc = `${_hit.date} · ${_hit.cat} · ${fmt(_hit.amount)} · ${String(_hit.note||'—').slice(0,40)}`;
+    const _msg = _sameAmt
+      ? tl(`⚠️ 同一天已经有一条金额一样的开支：\n${_hitDesc}\n\n确定要再记一笔吗？（如果是重复记账，请点取消）`, `⚠️ There is already an expense with the same amount on this date:\n${_hitDesc}\n\nRecord another one? (Cancel if this is a duplicate)`, '')
+      : tl(`⚠️ 同一天已有一条开支的备注里包含了这个金额（可能是合并记账里已经记过这一项）：\n${_hitDesc}\n\n确定要再记一笔吗？（如果是重复记账，请点取消）`, `⚠️ An expense on this date already mentions this amount in its note (it may already be included in a combined entry):\n${_hitDesc}\n\nRecord another one? (Cancel if this is a duplicate)`, '');
+    if (!confirm(_msg)) { showMsg('exMsg', `❌ ${tl('已取消，没有记账','Cancelled, nothing recorded','')}`, 'red'); return; }
+  }
+
   const expenses = DB_get('expenses')||[];
   expenses.push({ id: newId(), date, cat, amount, note, person, payDate });
   DB_set('expenses', expenses);
