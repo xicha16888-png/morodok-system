@@ -7180,6 +7180,14 @@ function renderReminderOverdue() {
     const mn = normBrandWords(s.modelName);
     if (mn.indexOf('iphone') === 0 || mn.indexOf('apple') === 0) return 'iphone';
     if (mn.indexOf('oppo') === 0) return 'oppo';
+    // 🔧 2026-10-18（用户要求"以后不要再出现'其他'分组"）：品牌字段空、型号文字也没写"iPhone/OPPO"开头的合同，
+    // 再用"品牌+型号+phoneModel"整段文字里的关键词兜底猜一次（ProMax/14Pro→iPhone；Reno/A6/Find→OPPO），
+    // 只有两边关键词都有或都没有才真的算"其他"。
+    const all = normBrandWords([s.brand, s.modelName, s.phoneModel].join(' '));
+    const ap = /iphone|iphon|ipone|apple|promax|\d{2}pro|\bip\d/.test(all);
+    const op = /oppo|reno|findx|find[nx]|a\d{1,2}[a-z]*\d*g?\b/.test(all) && !/promax/.test(all);
+    if (ap && !op) return 'iphone';
+    if (op && !ap) return 'oppo';
     return 'other';
   }
   const BRAND_GROUPS = [
