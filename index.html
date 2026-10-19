@@ -10606,13 +10606,17 @@ function renderMyPerformance() {
 //   档位：< $200 → $2/单；$200~$300（含200和300）→ $3/单；> $300 → $5/单
 //   已取消的合同不计；放款金额缺失/为0的合同单独标出来、提成记0，提醒老板去补。
 //   离职业务员（在业绩页被"移除"的）也照常统计——他们那个月出的单依然要发提成。
-//   想改档位/单价，只改下面这个数组就行。
+//   🆕 达标规则（老板补充）：业务员当月（按签约日期）有效单数（不含已取消）≥30 单，才按上面的档位算；
+//     不到30单 → 当月每单一律 $1，不分档。「未填写业务员」的单不算任何人的提成（记0，页面红字提醒）。
+//   想改档位/单价/达标单数，只改下面这几个常量就行。
 // ══════════════════════════════════════════════════════
 const COMMISSION_TIERS = [
   { key:'low',  label:'<$200',      test: v => v < 200,             rate: 2 },
   { key:'mid',  label:'$200-$300',  test: v => v >= 200 && v <= 300, rate: 3 },
   { key:'high', label:'>$300',      test: v => v > 300,             rate: 5 },
 ];
+const COMMISSION_MIN_ORDERS = 30; // 当月达到多少单才按档位计提成
+const COMMISSION_BASE_RATE = 1;    // 没达标时每单提成
 function commissionForLoan(loan) {
   const v = +loan || 0;
   if (!(v > 0)) return { key:'none', label:'金额缺失', rate:0 };
@@ -10641,14 +10645,16 @@ function computeCommission(month) {
     const groups = groupStaffNames(filled, s => s.salesperson);
     if (unfilled.length) groups.push({ name: unfilledName, list: unfilled });
     groups.forEach(g => {
+      const isUnfilled = g.name === unfilledName;
+      const reached = g.list.length >= COMMISSION_MIN_ORDERS;
       const items = [...g.list].sort((a,b) => (a.date||'').localeCompare(b.date||'')).map(s => {
         const t = commissionForLoan(s.installmentAmount);
-        return { s, tier: t, amount: t.rate };
+        return { s, tier: t, amount: isUnfilled ? 0 : (reached ? t.rate : COMMISSION_BASE_RATE) };
       });
       const counts = { low:0, mid:0, high:0, none:0 };
       items.forEach(i => counts[i.tier.key]++);
       rows.push({
-        month: m, name: g.name, items, counts, total: items.length,
+        month: m, name: g.name, items, counts, total: items.length, reached, isUnfilled,
         commission: items.reduce((a,i) => a + i.amount, 0),
         loan: items.reduce((a,i) => a + (+i.s.installmentAmount||0), 0)
       });
@@ -10671,11 +10677,11 @@ function buildCommissionHtml() {
   const unfilledCnt = rows.filter(r => r.name === unfilledName).reduce((a,r) => a + r.total, 0);
   const showMonthCol = !month;
   const detail = r => `<table style="width:100%;font-size:12px">
-      <tr style="position:sticky;top:0;background:#f8fbff"><th>${tl('签约日期','Date','')}</th><th>${tl('客户','Customer','')}</th><th>${tl('店家','Store','')}</th><th>${tl('型号','Model','')}</th><th style="text-align:right">${tl('放款金额','Loan','')}</th><th style="text-align:center">${tl('档位','Tier','')}</th><th style="text-align:right">${tl('提成','Commission','')}</th></tr>
+      <tr style="position:sticky;top:0;background:#f8fbff"><th>${tl('签约日期','Date','')}</th><th>${tl('客户','Customer','')}</th><th>${tl('店家','Store','')}</th><th>${tl('型号','Model','')}</th><th style="text-align:right">${tl('放款金额','Loan','')}</th><th style="text-align:center">${tl('金额档位','Tier','')}</th><th style="text-align:right">${tl('提成','Commission','')}</th></tr>
       ${r.items.map(i => `<tr style="cursor:pointer" onclick="event.stopPropagation();viewSchedule('${i.s.id}')">
         <td>${esc(i.s.date||'')}</td><td>${esc(i.s.customer||'')}</td><td>${esc(i.s.shopName||'-')}</td><td style="font-size:11px">${esc(i.s.modelName||'-')}</td>
         <td style="text-align:right">$${fmt(i.s.installmentAmount)}</td>
-        <td style="text-align:center;${i.tier.key==='none'?'color:var(--red);font-weight:700':''}">${i.tier.label}</td>
+        <td style="text-align:center;${i.tier.key==='none'?'color:var(--red);font-weight:700':''}">${i.tier.label}${(!r.reached && !r.isUnfilled) ? '<span style="color:#e65100;font-size:10px"> (未达标按$1)</span>' : ''}</td>
         <td style="text-align:right;font-weight:700">$${i.amount}</td></tr>`).join('')}
     </table>`;
   return `
@@ -10686,7 +10692,7 @@ function buildCommissionHtml() {
         <option value="" ${month===''?'selected':''}>${tl('全部月份','All months','')}</option>
         ${months.map(m => `<option value="${m}" ${month===m?'selected':''}>${m}</option>`).join('')}
       </select>
-      <span style="font-size:11px;font-weight:400;color:var(--muted)">${tl('按放款金额分档：&lt;$200 → $2/单 · $200-$300 → $3/单 · &gt;$300 → $5/单；按签约日期归属月份','Tiers by loan amount: <$200 → $2 · $200-$300 → $3 · >$300 → $5; month by contract date','')}</span>
+      <span style="font-size:11px;font-weight:400;color:var(--muted)">${tl('当月≥${COMMISSION_MIN_ORDERS}单才分档（&lt;$200 → $2 · $200-$300 → $3 · &gt;$300 → $5）；不到${COMMISSION_MIN_ORDERS}单每单$${COMMISSION_BASE_RATE}；按签约日期归属月份','≥${COMMISSION_MIN_ORDERS} orders/month: tiered (<$200 $2, $200-$300 $3, >$300 $5); otherwise $${COMMISSION_BASE_RATE}/order','')}</span>
       <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-outline" style="font-size:12px;padding:6px 10px" onclick="window.exportCommission('xls')">📥 ${tl('导出Excel（汇总+明细）','Export Excel','')}</button>
         <button class="btn btn-outline" style="font-size:12px;padding:6px 10px" onclick="window.exportCommission('summary')">📥 ${tl('汇总CSV','Summary CSV','')}</button>
@@ -10698,7 +10704,7 @@ function buildCommissionHtml() {
       ${tl(`共 ${sum('total')} 单：&lt;$200 ${sum('low')} 单 · $200-$300 ${sum('mid')} 单 · &gt;$300 ${sum('high')} 单；提成合计 <b style="color:var(--navy)">$${sum('commission')}</b>`, `${sum('total')} orders, total commission $${sum('commission')}`, '')}
       ${data.cancelled ? ` · ${tl(`已取消 ${data.cancelled} 单不计`, `${data.cancelled} cancelled not counted`, '')}` : ''}
       ${noneCnt ? `<br><span style="color:var(--red);font-weight:700">⚠️ ${tl(`有 ${noneCnt} 单放款金额缺失/为0，提成按0计，请先补全金额`, `${noneCnt} orders have no loan amount (commission 0)`, '')}</span>` : ''}
-      ${unfilledCnt ? `<br><span style="color:#e65100;font-weight:700">⚠️ ${tl(`有 ${unfilledCnt} 单没填业务员（在表里归到「未填写」），请先补上业务员`, `${unfilledCnt} orders have no salesperson`, '')}</span>` : ''}
+      ${unfilledCnt ? `<br><span style="color:#e65100;font-weight:700">⚠️ ${tl(`有 ${unfilledCnt} 单没填业务员（在表里归到「未填写」），请先补上业务员，这些单提成暂记0`, `${unfilledCnt} orders have no salesperson (commission 0)`, '')}</span>` : ''}
     </div>
     <div class="table-wrap" style="max-height:480px">
       <table style="font-size:12px">
@@ -10707,6 +10713,7 @@ function buildCommissionHtml() {
           <th style="min-width:130px">${tl('业务员','Salesperson','')}</th>
           <th style="text-align:center">${tl('总单数','Orders','')}</th>
           <th style="text-align:center">&lt;$200</th><th style="text-align:center">$200-$300</th><th style="text-align:center">&gt;$300</th>
+          <th style="text-align:center">${tl('是否达标','Reached','')}</th>
           <th style="text-align:right">${tl('放款总额','Total Loan','')}</th>
           <th style="text-align:right">${tl('提成合计','Commission','')}</th>
         </tr>
@@ -10716,13 +10723,14 @@ function buildCommissionHtml() {
           <td style="font-weight:600;color:var(--navy)"><span style="margin-right:6px;font-size:10px;color:var(--muted)" id="cm-arrow-${i}">▶</span>${esc(r.name)}</td>
           <td style="text-align:center;font-weight:700">${r.total}${r.counts.none ? `<span style="color:var(--red)" title="放款金额缺失"> ⚠️${r.counts.none}</span>` : ''}</td>
           <td style="text-align:center">${r.counts.low||'—'}</td><td style="text-align:center">${r.counts.mid||'—'}</td><td style="text-align:center">${r.counts.high||'—'}</td>
+          <td style="text-align:center;font-size:11px">${r.isUnfilled ? '—' : r.reached ? '<span style="color:var(--green);font-weight:700">✅ 分档</span>' : `<span style="color:#e65100">未达标·$${COMMISSION_BASE_RATE}/单<br>差${COMMISSION_MIN_ORDERS - r.total}单</span>`}</td>
           <td style="text-align:right">$${fmt(r.loan)}</td>
           <td style="text-align:right;font-weight:800;color:var(--green)">$${r.commission}</td>
         </tr>
-        <tr id="cm-${i}" style="display:none;background:#f8fbff"><td colspan="${showMonthCol?8:7}" style="padding:14px"><div style="max-height:320px;overflow-y:auto">${detail(r)}</div></td></tr>`).join('')}
+        <tr id="cm-${i}" style="display:none;background:#f8fbff"><td colspan="${showMonthCol?9:8}" style="padding:14px"><div style="max-height:320px;overflow-y:auto">${detail(r)}</div></td></tr>`).join('')}
         <tr style="background:#f5f7fa;font-weight:700">
           <td colspan="${showMonthCol?2:1}">${tl('合计','Total','')}</td>
-          <td style="text-align:center">${sum('total')}</td><td style="text-align:center">${sum('low')}</td><td style="text-align:center">${sum('mid')}</td><td style="text-align:center">${sum('high')}</td>
+          <td style="text-align:center">${sum('total')}</td><td style="text-align:center">${sum('low')}</td><td style="text-align:center">${sum('mid')}</td><td style="text-align:center">${sum('high')}</td><td></td>
           <td style="text-align:right">$${fmt(rows.reduce((a,r)=>a+r.loan,0))}</td><td style="text-align:right;color:var(--green)">$${sum('commission')}</td>
         </tr>
       </table>
@@ -10736,11 +10744,12 @@ window.rerenderCommission = function() {
 window.exportCommission = function(kind) {
   const month = window._commissionMonth === null ? _commissionDefaultMonth() : window._commissionMonth;
   const data = computeCommission(month);
-  const sumHead = ['月份','业务员','总单数','<$200单数','$200-$300单数','>$300单数','金额缺失单数','放款总额','提成合计'];
-  const sumRows = data.rows.map(r => [r.month, r.name, r.total, r.counts.low, r.counts.mid, r.counts.high, r.counts.none, +r.loan.toFixed(2), r.commission]);
-  const detHead = ['月份','业务员','签约日期','客户','客户电话','店家','型号','放款金额','档位','每单提成','合同状态'];
+  const ruleOf = r => r.isUnfilled ? '未填写业务员(不计提成)' : r.reached ? `达标(≥${COMMISSION_MIN_ORDERS}单)按金额分档` : `未达标(<${COMMISSION_MIN_ORDERS}单)每单$${COMMISSION_BASE_RATE}`;
+  const sumHead = ['月份','业务员','当月总单数','是否达标','计算方式','<$200单数','$200-$300单数','>$300单数','金额缺失单数','放款总额','提成合计'];
+  const sumRows = data.rows.map(r => [r.month, r.name, r.total, r.isUnfilled ? '' : (r.reached ? '是' : '否'), ruleOf(r), r.counts.low, r.counts.mid, r.counts.high, r.counts.none, +r.loan.toFixed(2), r.commission]);
+  const detHead = ['月份','业务员','签约日期','客户','客户电话','店家','型号','放款金额','金额档位','是否达标','每单提成','合同状态'];
   const detRows = [];
-  data.rows.forEach(r => r.items.forEach(i => detRows.push([r.month, r.name, (i.s.date||'').replace(/\//g,'-').slice(0,10), i.s.customer||'', i.s.customerPhone||'', i.s.shopName||'', i.s.modelName||'', +(+i.s.installmentAmount||0).toFixed(2), i.tier.label, i.amount, i.s.status||''])));
+  data.rows.forEach(r => r.items.forEach(i => detRows.push([r.month, r.name, (i.s.date||'').replace(/\//g,'-').slice(0,10), i.s.customer||'', i.s.customerPhone||'', i.s.shopName||'', i.s.modelName||'', +(+i.s.installmentAmount||0).toFixed(2), i.tier.label, r.isUnfilled ? '' : (r.reached ? '是' : '否'), i.amount, i.s.status||''])));
   const label = month || '全部月份';
   const save = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 200); };
   const csv = (head, rows) => '﻿' + [head, ...rows].map(r => r.map(v => { v = String(v ?? ''); return /[",\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v; }).join(',')).join('\r\n');
