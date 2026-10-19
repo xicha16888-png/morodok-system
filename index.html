@@ -3500,7 +3500,7 @@ function renderSaleList() {
   });
   function _fastResolveStoreDisplayName(key, rawValuesForKey) {
     const ag = _aliasByOwnKey.get(key);
-    if (ag) return ag.code ? `${ag.code} - ${ag.name || ''}` : (ag.name || ag.code);
+    if (ag) return _agDisplay(ag);
     const matched = _storeByKey.get(key);
     if (matched) return matched.code ? `${matched.code} - ${matched.nameKm || matched.name || ''}` : matched.name;
     if (rawValuesForKey && rawValuesForKey.length) {
@@ -9543,11 +9543,23 @@ function extractStoreKey(nameOrCode) {
   return raw.replace(/\s+/g, '').toUpperCase(); // 没有编号的，退回按名称(去空格/大小写)分组
 }
 
+// 🔧 2026-10-19：归并分组的 code 和 name 有时已经各自包含了"编号 - 店名"（比如 MPIN00154 那一组，
+// code 和 name 都是 "MPIN00154 - ត្រីកោណ Morodok ( កំបូល )"），拼接后会变成"…… - MPIN00154 - ……"重复两遍，
+// 看着像两家店、也很难认。这里统一处理：name 已经以编号开头（或和 code 完全一样）就直接用，不再重复拼。
+function _agDisplay(ag) {
+  const code = (ag.code || '').trim(), name = (ag.name || '').trim();
+  if (!code) return name;
+  if (!name || storeNorm(name) === storeNorm(code)) return code;
+  if (storeNorm(name).startsWith(storeNorm(code))) return name;
+  if (storeNorm(code).startsWith(storeNorm(name)) && code.length > name.length) return code;
+  return `${code} - ${name}`;
+}
+
 // 给一个店家key(extractStoreKey算出来的)，返回统一展示名字：
 // 1) 先查人工归并分组的名字；2) 再查店铺编号库里的正式名称；3) 都没有就从传入的原始写法里挑一个信息最全的
 function resolveStoreDisplayName(key, rawValuesForKey) {
   const ag = getStoreAliasGroups().find(a => storeNorm(a.code || a.name) === key);
-  if (ag) return ag.code ? `${ag.code} - ${ag.name || ''}` : (ag.name || ag.code);
+  if (ag) return _agDisplay(ag);
   const stores = DB_get('stores') || [];
   const matched = stores.find(st => st.code && extractStoreKey(st.code) === key) || stores.find(st => extractStoreKey(st.name) === key);
   if (matched) return matched.code ? `${matched.code} - ${matched.nameKm || matched.name || ''}` : matched.name;
@@ -9625,7 +9637,7 @@ function renderStoreStats() {
   const _storeAliasGroups = getStoreAliasGroups();
   function pickDisplayName(g) {
     const ag = _storeAliasGroups.find(a => storeNorm(a.code || a.name) === g.key);
-    if (ag) return ag.code ? `${ag.code} - ${ag.name || ''}` : ag.name;
+    if (ag) return _agDisplay(ag);
     const matched = g.matchedStore || stores.find(st => st.code && extractStoreKey(st.code) === g.key);
     if (matched) return matched.code ? `${matched.code} - ${matched.nameKm || matched.name || ''}` : matched.name;
     const names = Object.keys(g.nameCounts).sort((a,b) => g.nameCounts[b] - g.nameCounts[a]);
@@ -9633,11 +9645,15 @@ function renderStoreStats() {
   }
 
   // 按名称末尾数字从大到小排序（如MPIN00046 > MPIN00012）
+  // 🔧 2026-10-19：MPIN00154（ត្រីកោណ）一直"找不到"——它被人工归并分组命中，key 变成了
+  // "MPIN00154-ត្រីកោណMORODOK(កំបូល)"（编号后面还跟着店名），旧排序只看 key 末尾的数字、
+  // 取不到就当成0，于是这家店被排到整张表最前面，而不是在 00153 和 00155 之间。
+  // 现在改成：取 key 开头"字母+编号"里的编号数字，从小到大排；没有编号的店排在最后（再按名字）。
+  const _storeNum = k => { const m = String(k).match(/^[A-Za-z]+0*(\d+)/); return m ? parseInt(m[1], 10) : Infinity; };
   const storeKeys = Object.keys(groups).sort((a,b) => {
-    const numA = parseInt((a.match(/\d+$/) || ['0'])[0]);
-    const numB = parseInt((b.match(/\d+$/) || ['0'])[0]);
-    if (numA !== numB) return numA - numB;
-    return b.localeCompare(a);
+    const numA = _storeNum(a), numB = _storeNum(b);
+    if (numA !== numB) return numA < numB ? -1 : 1;
+    return a.localeCompare(b);
   });
 
   // 预计算所有店家数据
@@ -10552,6 +10568,7 @@ function renderMyPerformance() {
     ['🏆', tl('团队累计出单','Team Total','សរុប'), teamTotal, 'var(--amber)'],
   ])}
   ${monthlyMatrixHtml(board, td)}
+  ${['boss','manager'].includes(role) ? `<div id="commissionWrap">${buildCommissionHtml()}</div>` : ''}
   <div class="card" style="padding:0;overflow:hidden">
     <div class="table-wrap">
       <table>
@@ -10582,6 +10599,166 @@ function renderMyPerformance() {
   </div>`;
 }
 
+
+// ══════════════════════════════════════════════════════
+// 🆕 2026-10-19 业务员提成统计（老板要求：提成按「单子金额」分档，统计每个业务员的详细数据，导出后上传薪资系统）
+//   单子金额 = 放款金额（分期金额 installmentAmount，老板确认）；归属月份 = 合同签约日期 sale.date（老板确认）
+//   档位：< $200 → $2/单；$200~$300（含200和300）→ $3/单；> $300 → $5/单
+//   已取消的合同不计；放款金额缺失/为0的合同单独标出来、提成记0，提醒老板去补。
+//   离职业务员（在业绩页被"移除"的）也照常统计——他们那个月出的单依然要发提成。
+//   想改档位/单价，只改下面这个数组就行。
+// ══════════════════════════════════════════════════════
+const COMMISSION_TIERS = [
+  { key:'low',  label:'<$200',      test: v => v < 200,             rate: 2 },
+  { key:'mid',  label:'$200-$300',  test: v => v >= 200 && v <= 300, rate: 3 },
+  { key:'high', label:'>$300',      test: v => v > 300,             rate: 5 },
+];
+function commissionForLoan(loan) {
+  const v = +loan || 0;
+  if (!(v > 0)) return { key:'none', label:'金额缺失', rate:0 };
+  const t = COMMISSION_TIERS.find(t => t.test(v));
+  return t ? { key:t.key, label:t.label, rate:t.rate } : { key:'none', label:'金额缺失', rate:0 };
+}
+window._commissionMonth = null; // null=默认上个月；''=全部月份
+function _commissionDefaultMonth() {
+  const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+// 返回 {month, rows:[{month,name,list,items:[{s,tier,amount}],counts:{low,mid,high,none},total,commission,loan}], cancelled}
+function computeCommission(month) {
+  const all = DB_get('sales') || [];
+  const mOf = s => (s.date||'').replace(/\//g,'-').slice(0,7);
+  const inRange = s => !!mOf(s) && (!month || mOf(s) === month);
+  const live = all.filter(s => s && inRange(s) && s.status !== '已取消' && !s.cancelled);
+  const cancelled = all.filter(s => s && inRange(s) && (s.status === '已取消' || s.cancelled)).length;
+  const unfilledName = tl('未填写','Unassigned','មិន​បាន​បញ្ជាក់');
+  const byMonth = {};
+  live.forEach(s => { (byMonth[mOf(s)] = byMonth[mOf(s)] || []).push(s); });
+  const rows = [];
+  Object.keys(byMonth).sort().forEach(m => {
+    const filled = byMonth[m].filter(s => (s.salesperson||'').trim());
+    const unfilled = byMonth[m].filter(s => !((s.salesperson||'').trim()));
+    const groups = groupStaffNames(filled, s => s.salesperson);
+    if (unfilled.length) groups.push({ name: unfilledName, list: unfilled });
+    groups.forEach(g => {
+      const items = [...g.list].sort((a,b) => (a.date||'').localeCompare(b.date||'')).map(s => {
+        const t = commissionForLoan(s.installmentAmount);
+        return { s, tier: t, amount: t.rate };
+      });
+      const counts = { low:0, mid:0, high:0, none:0 };
+      items.forEach(i => counts[i.tier.key]++);
+      rows.push({
+        month: m, name: g.name, items, counts, total: items.length,
+        commission: items.reduce((a,i) => a + i.amount, 0),
+        loan: items.reduce((a,i) => a + (+i.s.installmentAmount||0), 0)
+      });
+    });
+  });
+  rows.sort((a,b) => a.month === b.month ? (b.commission - a.commission || b.total - a.total) : a.month.localeCompare(b.month));
+  return { month, rows, cancelled };
+}
+function buildCommissionHtml() {
+  if (window._commissionMonth === null) window._commissionMonth = _commissionDefaultMonth();
+  const month = window._commissionMonth;
+  const all = DB_get('sales') || [];
+  const months = [...new Set(all.map(s => (s.date||'').replace(/\//g,'-').slice(0,7)).filter(Boolean))].sort().reverse();
+  if (month && !months.includes(month)) months.unshift(month);
+  const data = computeCommission(month);
+  const rows = data.rows;
+  const sum = k => rows.reduce((a,r) => a + (k === 'commission' ? r.commission : k === 'total' ? r.total : r.counts[k]), 0);
+  const unfilledName = tl('未填写','Unassigned','មិន​បាន​បញ្ជាក់');
+  const noneCnt = sum('none');
+  const unfilledCnt = rows.filter(r => r.name === unfilledName).reduce((a,r) => a + r.total, 0);
+  const showMonthCol = !month;
+  const detail = r => `<table style="width:100%;font-size:12px">
+      <tr style="position:sticky;top:0;background:#f8fbff"><th>${tl('签约日期','Date','')}</th><th>${tl('客户','Customer','')}</th><th>${tl('店家','Store','')}</th><th>${tl('型号','Model','')}</th><th style="text-align:right">${tl('放款金额','Loan','')}</th><th style="text-align:center">${tl('档位','Tier','')}</th><th style="text-align:right">${tl('提成','Commission','')}</th></tr>
+      ${r.items.map(i => `<tr style="cursor:pointer" onclick="event.stopPropagation();viewSchedule('${i.s.id}')">
+        <td>${esc(i.s.date||'')}</td><td>${esc(i.s.customer||'')}</td><td>${esc(i.s.shopName||'-')}</td><td style="font-size:11px">${esc(i.s.modelName||'-')}</td>
+        <td style="text-align:right">$${fmt(i.s.installmentAmount)}</td>
+        <td style="text-align:center;${i.tier.key==='none'?'color:var(--red);font-weight:700':''}">${i.tier.label}</td>
+        <td style="text-align:right;font-weight:700">$${i.amount}</td></tr>`).join('')}
+    </table>`;
+  return `
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+    <div class="card-title" style="margin:14px 16px 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span>💵 ${tl('业务员提成统计','Sales Commission','ប្រាក់កម្រៃ')}</span>
+      <select onchange="window._commissionMonth=this.value;window.rerenderCommission()" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit">
+        <option value="" ${month===''?'selected':''}>${tl('全部月份','All months','')}</option>
+        ${months.map(m => `<option value="${m}" ${month===m?'selected':''}>${m}</option>`).join('')}
+      </select>
+      <span style="font-size:11px;font-weight:400;color:var(--muted)">${tl('按放款金额分档：&lt;$200 → $2/单 · $200-$300 → $3/单 · &gt;$300 → $5/单；按签约日期归属月份','Tiers by loan amount: <$200 → $2 · $200-$300 → $3 · >$300 → $5; month by contract date','')}</span>
+      <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-outline" style="font-size:12px;padding:6px 10px" onclick="window.exportCommission('xls')">📥 ${tl('导出Excel（汇总+明细）','Export Excel','')}</button>
+        <button class="btn btn-outline" style="font-size:12px;padding:6px 10px" onclick="window.exportCommission('summary')">📥 ${tl('汇总CSV','Summary CSV','')}</button>
+        <button class="btn btn-outline" style="font-size:12px;padding:6px 10px" onclick="window.exportCommission('detail')">📥 ${tl('明细CSV','Detail CSV','')}</button>
+      </span>
+    </div>
+    ${rows.length ? `
+    <div style="padding:0 16px 10px;font-size:12px;color:var(--muted);line-height:1.7">
+      ${tl(`共 ${sum('total')} 单：&lt;$200 ${sum('low')} 单 · $200-$300 ${sum('mid')} 单 · &gt;$300 ${sum('high')} 单；提成合计 <b style="color:var(--navy)">$${sum('commission')}</b>`, `${sum('total')} orders, total commission $${sum('commission')}`, '')}
+      ${data.cancelled ? ` · ${tl(`已取消 ${data.cancelled} 单不计`, `${data.cancelled} cancelled not counted`, '')}` : ''}
+      ${noneCnt ? `<br><span style="color:var(--red);font-weight:700">⚠️ ${tl(`有 ${noneCnt} 单放款金额缺失/为0，提成按0计，请先补全金额`, `${noneCnt} orders have no loan amount (commission 0)`, '')}</span>` : ''}
+      ${unfilledCnt ? `<br><span style="color:#e65100;font-weight:700">⚠️ ${tl(`有 ${unfilledCnt} 单没填业务员（在表里归到「未填写」），请先补上业务员`, `${unfilledCnt} orders have no salesperson`, '')}</span>` : ''}
+    </div>
+    <div class="table-wrap" style="max-height:480px">
+      <table style="font-size:12px">
+        <tr style="position:sticky;top:0;z-index:2">
+          ${showMonthCol ? `<th>${tl('月份','Month','')}</th>` : ''}
+          <th style="min-width:130px">${tl('业务员','Salesperson','')}</th>
+          <th style="text-align:center">${tl('总单数','Orders','')}</th>
+          <th style="text-align:center">&lt;$200</th><th style="text-align:center">$200-$300</th><th style="text-align:center">&gt;$300</th>
+          <th style="text-align:right">${tl('放款总额','Total Loan','')}</th>
+          <th style="text-align:right">${tl('提成合计','Commission','')}</th>
+        </tr>
+        ${rows.map((r,i) => `
+        <tr style="cursor:pointer;${r.name===unfilledName?'background:#fafafa;color:#90a4ae':''}" onclick="toggleDetailRow('cm-${i}','cm-arrow-${i}')">
+          ${showMonthCol ? `<td>${r.month}</td>` : ''}
+          <td style="font-weight:600;color:var(--navy)"><span style="margin-right:6px;font-size:10px;color:var(--muted)" id="cm-arrow-${i}">▶</span>${esc(r.name)}</td>
+          <td style="text-align:center;font-weight:700">${r.total}${r.counts.none ? `<span style="color:var(--red)" title="放款金额缺失"> ⚠️${r.counts.none}</span>` : ''}</td>
+          <td style="text-align:center">${r.counts.low||'—'}</td><td style="text-align:center">${r.counts.mid||'—'}</td><td style="text-align:center">${r.counts.high||'—'}</td>
+          <td style="text-align:right">$${fmt(r.loan)}</td>
+          <td style="text-align:right;font-weight:800;color:var(--green)">$${r.commission}</td>
+        </tr>
+        <tr id="cm-${i}" style="display:none;background:#f8fbff"><td colspan="${showMonthCol?8:7}" style="padding:14px"><div style="max-height:320px;overflow-y:auto">${detail(r)}</div></td></tr>`).join('')}
+        <tr style="background:#f5f7fa;font-weight:700">
+          <td colspan="${showMonthCol?2:1}">${tl('合计','Total','')}</td>
+          <td style="text-align:center">${sum('total')}</td><td style="text-align:center">${sum('low')}</td><td style="text-align:center">${sum('mid')}</td><td style="text-align:center">${sum('high')}</td>
+          <td style="text-align:right">$${fmt(rows.reduce((a,r)=>a+r.loan,0))}</td><td style="text-align:right;color:var(--green)">$${sum('commission')}</td>
+        </tr>
+      </table>
+    </div>` : `<div class="empty-state" style="padding:24px"><p>${tl('这个月没有合同','No contracts in this month','')}</p></div>`}
+  </div>`;
+}
+window.rerenderCommission = function() {
+  const el = document.getElementById('commissionWrap');
+  if (el) el.innerHTML = buildCommissionHtml();
+};
+window.exportCommission = function(kind) {
+  const month = window._commissionMonth === null ? _commissionDefaultMonth() : window._commissionMonth;
+  const data = computeCommission(month);
+  const sumHead = ['月份','业务员','总单数','<$200单数','$200-$300单数','>$300单数','金额缺失单数','放款总额','提成合计'];
+  const sumRows = data.rows.map(r => [r.month, r.name, r.total, r.counts.low, r.counts.mid, r.counts.high, r.counts.none, +r.loan.toFixed(2), r.commission]);
+  const detHead = ['月份','业务员','签约日期','客户','客户电话','店家','型号','放款金额','档位','每单提成','合同状态'];
+  const detRows = [];
+  data.rows.forEach(r => r.items.forEach(i => detRows.push([r.month, r.name, (i.s.date||'').replace(/\//g,'-').slice(0,10), i.s.customer||'', i.s.customerPhone||'', i.s.shopName||'', i.s.modelName||'', +(+i.s.installmentAmount||0).toFixed(2), i.tier.label, i.amount, i.s.status||''])));
+  const label = month || '全部月份';
+  const save = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 200); };
+  const csv = (head, rows) => '﻿' + [head, ...rows].map(r => r.map(v => { v = String(v ?? ''); return /[",\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v; }).join(',')).join('\r\n');
+  if (kind === 'summary') { save(new Blob([csv(sumHead, sumRows)], {type:'text/csv;charset=utf-8'}), `业务员提成_${label}_汇总.csv`); return; }
+  if (kind === 'detail')  { save(new Blob([csv(detHead, detRows)], {type:'text/csv;charset=utf-8'}), `业务员提成_${label}_明细.csv`); return; }
+  const esch = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const sheets = [['汇总', sumHead, sumRows], ['明细', detHead, detRows]];
+  let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>`;
+  sheets.forEach(([n]) => { html += `<x:ExcelWorksheet><x:Name>${n}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet>`; });
+  html += `</x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body>`;
+  sheets.forEach(([n, head, rows]) => {
+    html += `<table><tr>${head.map(h => `<td style="background:#1565c0;color:white;font-weight:bold;border:1px solid #ccc">${esch(h)}</td>`).join('')}</tr>`;
+    rows.forEach(r => { html += `<tr>${r.map(v => `<td style="border:1px solid #ddd">${esch(v)}</td>`).join('')}</tr>`; });
+    html += `</table>`;
+  });
+  html += '</body></html>';
+  save(new Blob(['﻿' + html], {type:'application/vnd.ms-excel;charset=utf-8'}), `业务员提成_${label}.xls`);
+};
 
 // ── 业务员 tab：按合同「业务员」字段分组 ──
 window._staffSalesMonth = ''; // '' = 全部月份（AUDIT_START_MONTH 起）
