@@ -9042,8 +9042,13 @@ function renderFinanceReport() {
     const actualCollected = mDuePaid.reduce((a,p) =>
       a + (+p.paidPrincipal||0) + (+p.paidInterest||0) + (+p.paidServiceFee||0), 0);
 
-    // 本月回款总额（顶部卡片用）
-    const totalRepay = actualCollected;
+    // 本月回款总额（顶部卡片用）= 本月实际收到的所有钱（按收款日期）：
+    // 正常还款(本金+利息+手续费) + 滞纳金 + 多收款 + 提前结清协商金额。
+    // 注意：下面的 actualCollected 是「本月到期的期次已收多少」（按到期日归月），只用来算回款率/坏账率，不是实收。
+    const mCashPays = mPays.reduce((a,p) => a + (+p.principal||0) + (+p.interest||0) + (+p.serviceFee||0), 0);
+    const mOverpaidIn = mPays.reduce((a,p) => a + (+p.overpaid||0), 0);
+    const mEarlyCash = mEarly.reduce((a,r) => a + (+(r.negotiatedAmount||r.negotiated)||0), 0);
+    const totalRepay = mCashPays + mPenalty + mOverpaidIn + mEarlyCash;
 
     // 坏账金额 = 本月到期期次中，到期日已过（不含未到期）但仍未还的部分
     const badDebtAmt2 = mDuePeriods
@@ -9116,7 +9121,7 @@ function renderFinanceReport() {
     const mEarlyCount = mEarly.length;
     return { m, orderCount, mEarlyProfit, mEarlyCount, totalLoan, totalRepay, mProfit, mProfitBeforeExp, mExpenses,
              mPenalty, mPending, overdueRate, repayRate, repayRateWithPenalty, badDebtRate,
-             totalDueAmt, actualCollected,
+             totalDueAmt, actualCollected, mEarlyCash, mCashPays, mOverpaidIn,
              badDebtAmt: badDebtAmt2,
              mDue: mDuePeriods.length, mOverdue: mOverduePeriods.length,
              bd7Rate, bd7noP, bd7RateP, bd7withP,
@@ -9192,7 +9197,7 @@ function renderFinanceReport() {
       <span class="stat-icon">💰</span>
       <div class="stat-label">${t("monthRepay")}</div>
       <div class="stat-value">${fmt(sel.totalRepay||0)}</div>
-      <div class="stat-sub">${t("repayRate")} ${sel.repayRate||'—'}%</div>
+      <div class="stat-sub">${tl('含滞纳金','incl. late fees','')} ${fmt(sel.mPenalty||0)} · ${tl('提前结清','early settle','')} ${fmt(sel.mEarlyCash||0)}</div>
     </div>
     <div class="stat-card amber">
       <span class="stat-icon">📈</span>
@@ -9232,9 +9237,9 @@ function renderFinanceReport() {
         <div style="font-size:11px;color:var(--muted);margin-top:4px">${_lang==='km'?'ដើម+ការប្រាក់+ថ្លៃសេវា':_lang==='en'?'Principal+Interest+Fee':'本金+利息+手续费'}</div>
       </div>
       <div style="background:#e8f5e9;border-radius:10px;padding:14px;border-top:3px solid var(--green)">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">💵 ${_lang==='km'?'ការប្រមូលជាក់ស្តែង':_lang==='en'?'Actual Collections':'本月实际回款'}</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">💵 ${_lang==='km'?'ការប្រមូលជាក់ស្តែង':_lang==='en'?'Collected (due this month)':'本月到期已收'}</div>
         <div style="font-size:22px;font-weight:700;color:var(--green)">${fmt(sel.actualCollected||0)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px">${_lang==='km'?'មិនរាប់ប្រាក់ពិន័យ':_lang==='en'?'Excl. late fees':'不含滞纳金'}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">${_lang==='km'?'មិនរាប់ប្រាក់ពិន័យ':_lang==='en'?'By due date, for repay rate':'按到期日算，用于回款率'}</div>
       </div>
       <div style="background:#fff8e1;border-radius:10px;padding:14px;border-top:3px solid var(--amber)">
         <div style="font-size:11px;color:var(--muted);margin-bottom:4px">⏳ ${_lang==='km'?'ប្រាក់នៅតម្រូវ':_lang==='en'?'Pending Receivables':'本月待收款'}</div>
