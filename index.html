@@ -1054,13 +1054,14 @@ function buildSidebar() {
       ${navItem('audit','📋','合同审核')}
       ${navItem('staff-stats','🏆','员工绩效 🔐')}
     </div>`:''}
-    ${(show('stats-collection')||show('stats-profit')||show('finance-report')||show('finance-recon')||show('expenses')||show('store-stats')||show('fund-stats'))?`
+    ${(show('stats-collection')||show('stats-profit')||show('finance-report')||show('recovery-report')||show('finance-recon')||show('expenses')||show('store-stats')||show('fund-stats'))?`
     <div class="nav-divider"></div>
     <div style="padding:4px 0">
       <div class="sb-label">${t('reports')}</div>
       ${navItem('stats-collection','📊',t('statsCollection'),' 🔐')}
       ${navItem('stats-profit','💰',t('statsProfit'),' 🔐')}
       ${navItem('finance-report','📈',t('financeReport'),' 🔐')}
+      ${navItem('recovery-report','🔁','放款回收分析',' 🔐')}
       ${navItem('finance-recon','💼','财务对账',' 🔐')}
       ${navItem('expenses','🧾',t('expenses'),' 🔐')}
       ${navItem('store-stats','🏪',t('storeStats'),' 🔐')}
@@ -1121,6 +1122,7 @@ const MOB_MORE_ITEMS = [
   {page:'stats-collection', icon:'📊', label:'statsCollection', lock:true},
   {page:'stats-profit',     icon:'💰', label:'statsProfit',     lock:true},
   {page:'finance-report',   icon:'📈', label:'financeReport',   lock:true},
+  {page:'recovery-report',  icon:'🔁', label:'放款回收分析',     lock:true},
   {page:'finance-recon',    icon:'💼', label:'财务对账',         lock:true},
   {page:'expenses',         icon:'🧾', label:'expenses',        lock:true},
   {divider:true},
@@ -1595,7 +1597,7 @@ window.closeModal = () => document.getElementById('modalBg').classList.remove('o
 // ══════════════════════════════════════════════════════
 // 🔐 密码保护
 // ══════════════════════════════════════════════════════
-const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','finance-recon','expenses','store-stats','staff-stats','fund-stats'];
+const PROTECTED_PAGES = ['stats-collection','stats-profit','finance-report','recovery-report','finance-recon','expenses','store-stats','staff-stats','fund-stats'];
 const REPORT_PWD = 'morodok888';
 const DELETE_PWD = 'cao';
 const AUDITOR_DELETE_PWD = '0000'; // 内审员专用的删除密码(所有内审员通用)，跟老板/主管的删除密码(DELETE_PWD)完全分开，互不影响
@@ -1666,7 +1668,7 @@ window.checkPwd = function(page) {
 const PAGES = {
   'home': renderHome, 'sale-add': renderSaleAdd, 'sale-list': renderSaleList,
   'payment-add': renderPaymentAdd, 'early-payment': renderEarlyPayment,
-  'stats-collection': renderStatsCollection, 'finance-report': renderFinanceReport, 'finance-recon': renderFinanceRecon, 'expenses': renderExpenses, 'store-stats': renderStoreStats, 'staff-stats': renderStaffStats, 'fund-stats': renderFundStats, 'fund-settings': renderFundSettings,
+  'stats-collection': renderStatsCollection, 'finance-report': renderFinanceReport, 'recovery-report': renderRecoveryReport, 'finance-recon': renderFinanceRecon, 'expenses': renderExpenses, 'store-stats': renderStoreStats, 'staff-stats': renderStaffStats, 'fund-stats': renderFundStats, 'fund-settings': renderFundSettings,
   'stats-profit': renderStatsProfit, 'reminder-tomorrow': renderReminderTomorrow,
   'reminder-overdue': renderReminderOverdue, 'payment-query': renderPaymentQuery,
   'phones': renderPhones, 'suppliers': renderSuppliers,
@@ -8568,6 +8570,401 @@ window.submitEarlyPayment = async function() {
   if (document.getElementById('epProfitTip')) document.getElementById('epProfitTip').innerHTML = '';
   updateBadges();
   setTimeout(() => nav('early-payment'), 600);
+};
+
+// ══════════════════════════════════════════════════════
+// 🆕 2026-10-23 放款回收分析（老板要求：照大表里的「汇总」表，在财务板块做一个新模块，
+//   每个数据都要讲清楚：从哪来、怎么算、合不合理。数据全部由系统合同实时计算，不用再手工维护表格。）
+//   按「放款月」（合同签约日期所在月）一行；已取消的合同不算。只有老板能看（不在 manager/finance 的页面名单里）。
+//   品牌：iPhone / OPPO / 全部（切换）；坏账天数：逾期满几天算坏账（默认 1 天，老板 2026-10-21 要求"超过一天都算"）。
+//   想改口径，只改下面 computeRecovery 里的注释对应位置和 REC_DOC 里的说明文字。
+// ══════════════════════════════════════════════════════
+window._rec = window._rec || { brand: 'all', badDays: 1 };
+function recBrandKey(s) {
+  // 跟「逾期提醒」里的 odBrandKey 同一套判断（品牌字段 → 型号文字 → 关键词兜底）
+  if (normBrandWords(s.brand) === 'apple') return 'iphone';
+  if (normBrandWords(s.brand) === 'oppo') return 'oppo';
+  const mn = normBrandWords(s.modelName);
+  if (mn.indexOf('iphone') === 0 || mn.indexOf('apple') === 0) return 'iphone';
+  if (mn.indexOf('oppo') === 0) return 'oppo';
+  const all = normBrandWords([s.brand, s.modelName, s.phoneModel].join(' '));
+  const ap = /iphone|iphon|ipone|apple|promax|\d{2}pro|\bip\d/.test(all);
+  const op = /oppo|reno|findx|find[nx]|a\d{1,2}[a-z]*\d*g?\b/.test(all) && !/promax/.test(all);
+  if (ap && !op) return 'iphone';
+  if (op && !ap) return 'oppo';
+  return 'other';
+}
+function recD(d) { return String(d || '').replace(/\//g, '-').slice(0, 10); }
+function recMonthEnd(ym, add) { // ym 'YYYY-MM' 加 add 个月后的月底，返回 'YYYY-MM-DD'
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + add + 1, 0));
+  return d.toISOString().slice(0, 10);
+}
+function recMonthIndex(ym) { const [y, m] = ym.split('-').map(Number); return y * 12 + m - 1; }
+
+// 返回 { td, rows:[每个放款月一行], total, curve:[{m, cost, pts:[回收率...]}], nContracts, nOther }
+function computeRecovery(brand, badDays) {
+  const td = today();
+  const eps = DB_get('earlyPayments') || [];
+  const sales = (DB_get('sales') || []).filter(s => s && s.date && s.status !== '已取消' && !s.cancelled && Array.isArray(s.schedule));
+  const dueOf = p => (+p.principalDue || 0) + (+p.interestDue || 0) + (+p.serviceFeeDue || 0);   // 这一期应收：本金+利息+手续费（不含滞纳金）
+  const gotOf = p => (+p.paidPrincipal || 0) + (+p.paidInterest || 0) + (+p.paidServiceFee || 0); // 这一期实收：同上口径
+  const byM = {};
+  let nOther = 0;
+  sales.forEach(s => {
+    const bk = recBrandKey(s);
+    if (bk === 'other') nOther++;
+    if (brand !== 'all' && bk !== brand) return;
+    const m = recD(s.date).slice(0, 7);
+    if (!m) return;
+    const early = s.status === '提前结清';
+    let rent = 0, paid = 0, dueAmt = 0, overdueAmt = 0, badAmt = 0, maxOd = 0;
+    const events = []; // 每笔实收的日期和金额，用来画回收曲线
+    let earlyCash = 0, earlyHandled = false;
+    s.schedule.forEach(p => {
+      const d = dueOf(p), dd = recD(p.dueDate);
+      const isEarlyP = early && p.earlySettled;
+      if (isEarlyP) { earlyCash += gotOf(p); return; } // 提前结清时一次性补齐的期次：下面按「协商实收」统一处理
+      rent += d;
+      if (dd && dd < td) dueAmt += d;
+      if (p.paid) {
+        const a = gotOf(p); paid += a; events.push({ date: recD(p.paidDate) || dd, amt: a });
+      } else if (dd && dd < td) {
+        const age = Math.floor((new Date(td) - new Date(dd)) / 86400000);
+        overdueAmt += d;
+        if (age >= badDays) badAmt += d;
+        if (age > maxOd) maxOd = age;
+      }
+    });
+    if (early && s.schedule.some(p => p.earlySettled)) { // 只有「系统里办过提前结清」的合同才有协商实收；从大表导入的已结清合同，各期本来就标成已还，不重复加
+      const ep = eps.find(e => String(e.contractId) === String(s.id));
+      const cash = ep ? (+ep.negotiatedAmount || 0) : earlyCash; // 提前结清：实际收到的协商金额（剩下没收的利息不会再收，不算进总租金）
+      rent += cash; paid += cash; dueAmt += cash;
+      events.push({ date: recD(ep && ep.date) || recD(s.schedule.find(p => p.earlySettled)?.paidDate) || td, amt: cash });
+    }
+    const r = byM[m] = byM[m] || { m, orders: 0, loan: 0, rebate: 0, rent: 0, paid: 0, dueAmt: 0, overdueAmt: 0, badAmt: 0, badCnt: 0, periods: 0, earlyCnt: 0, events: [] };
+    r.orders++; r.loan += +s.installmentAmount || 0; r.rebate += +s.storeRebate || 0;
+    r.rent += rent; r.paid += paid; r.dueAmt += dueAmt; r.overdueAmt += overdueAmt; r.badAmt += badAmt;
+    if (maxOd >= badDays && badAmt > 0) r.badCnt++;
+    r.periods += s.schedule.length; if (early) r.earlyCnt++;
+    r.events.push(...events);
+  });
+  const fin = r => {
+    r.cost = r.loan + r.rebate;
+    r.pending = r.rent - r.paid;
+    r.notDue = Math.max(0, r.pending - r.overdueAmt);
+    r.net = r.cost - r.paid;
+    r.recov = r.cost > 0 ? r.paid / r.cost : null;
+    r.actGM = r.cost > 0 ? (r.paid - r.cost) / r.cost : null;
+    r.theo = r.rent - r.cost;
+    r.theoRate = r.cost > 0 ? r.theo / r.cost : null;
+    r.theoRate2 = r.rent > 0 ? r.theo / r.rent : null;
+    r.badRate = r.rent > 0 ? r.badAmt / r.rent : null;
+    r.abnRate = r.dueAmt > 0 ? r.overdueAmt / r.dueAmt : null;
+    r.mult = r.cost > 0 ? r.rent / r.cost : null;
+    r.avgLoan = r.orders > 0 ? r.loan / r.orders : null;
+    r.avgPeriods = r.orders > 0 ? r.periods / r.orders : null;
+    r.rebateRate = r.loan > 0 ? r.rebate / r.loan : null;
+    return r;
+  };
+  const rows = Object.values(byM).sort((a, b) => a.m.localeCompare(b.m)).map(fin);
+  const total = fin(rows.reduce((t, r) => {
+    ['orders', 'loan', 'rebate', 'rent', 'paid', 'dueAmt', 'overdueAmt', 'badAmt', 'badCnt', 'periods', 'earlyCnt'].forEach(k => t[k] += r[k]);
+    return t;
+  }, { m: '合计', orders: 0, loan: 0, rebate: 0, rent: 0, paid: 0, dueAmt: 0, overdueAmt: 0, badAmt: 0, badCnt: 0, periods: 0, earlyCnt: 0 }));
+  // 回收曲线：放款月底(M0)、+1个月底(M1)…累计已还 ÷ 投入成本；还没到的月份不画
+  const curMI = recMonthIndex(td.slice(0, 7));
+  const curve = rows.map(r => {
+    const maxK = Math.min(12, curMI - recMonthIndex(r.m));
+    const pts = [];
+    for (let k = 0; k <= maxK; k++) {
+      const cut = recMonthEnd(r.m, k);
+      const got = r.events.filter(e => e.date <= cut).reduce((a, e) => a + e.amt, 0);
+      pts.push(r.cost > 0 ? got / r.cost : null);
+    }
+    return { m: r.m, cost: r.cost, pts };
+  });
+  return { td, rows, total, curve, nOther };
+}
+
+// ── 每一列的说明：数据从哪来、怎么算、合不合理。点表头的 ⓘ 弹出 ──
+// level: ok=合理 / warn=有保留 / bad=口径有问题或原表有错
+const REC_DOC = {
+  orders: { name: '订单数', level: 'ok',
+    src: '系统里的合同（销售登记）。按「合同签约日期」所在的月份归到「放款月」，已取消的合同不算。',
+    formula: '数合同条数',
+    ex: r => `${r.m} 一共签了 ${r.orders} 单。`,
+    verdict: '合理。要注意「放款月」按的是合同签约日期，不是钱真正转给店家的那天，两者可能差几天，跨月底的单会归到不同月份。原表 9 月订单数是空的，合计 461 单漏了 9 月，这里补全了。' },
+  loan: { name: '分期金额', level: 'ok',
+    src: '合同里的「分期金额」（= 手机售价 − 客户首付），也就是公司实际放出去的本金。',
+    formula: '把这个月所有合同的分期金额加起来',
+    ex: r => `${r.m} 共 ${r.orders} 单，分期金额合计 ${recM(r.loan)}，平均每单 ${recM(r.avgLoan)}。`,
+    verdict: '合理。这是公司真正掏出去的钱，和「业务员提成」里的「放款金额」是同一个数。' },
+  rebate: { name: '佣金', level: 'ok',
+    src: '合同里的「店家返点」，付给合作店家的佣金（大表里叫「店家傭金」）。',
+    formula: '把这个月所有合同的店家返点加起来',
+    ex: r => `${r.m} 佣金合计 ${recM(r.rebate)}，占分期金额的 ${recP(r.rebateRate)}。`,
+    verdict: '合理。佣金是实打实付出去的现金，必须算进成本；一般占分期金额 6%~7%，这个比例变高就会直接吃掉利润（看下面「为什么毛利率会变」）。' },
+  cost: { name: '投入成本', level: 'ok',
+    src: '由「分期金额」和「佣金」相加得到。',
+    formula: '投入成本 = 分期金额 + 佣金',
+    ex: r => `${r.m}：${recM(r.loan)} + ${recM(r.rebate)} = ${recM(r.cost)}。`,
+    verdict: '合理，和原表「投入成本」一致。不过它只算了「放款+佣金」，没有算资金成本（借钱的利息）、员工工资、运营开支，所以不是公司的总成本；那些在「月度财务报表」里扣。' },
+  rent: { name: '总租金（合同应收）', level: 'ok',
+    src: '每份合同还款计划表里所有期次的「本金 + 利息 + 手续费」加起来，也就是客户整个合同期总共要还给公司的钱。提前结清的合同，按实际收到的协商金额算（剩下没收的利息不会再收）。',
+    formula: '总租金 = Σ 每期（应收本金 + 应收利息 + 应收手续费）',
+    ex: r => `${r.m} 的合同按计划一共要收 ${recM(r.rent)}，是投入成本 ${recM(r.cost)} 的 ${r.mult ? r.mult.toFixed(2) : '—'} 倍。`,
+    verdict: '合理，和原表口径一致。注意它是「按计划应收」，不是「一定收得到」；滞纳金不在里面（滞纳金是罚金，不是租金）。' },
+  paid: { name: '已还租金', level: 'ok',
+    src: '还款计划表里已还期次的「实收本金 + 实收利息 + 实收手续费」；提前结清的合同按协商后实际收到的金额。不含滞纳金。',
+    formula: '已还租金 = Σ 已还期次的实收金额',
+    ex: r => `${r.m} 已收回 ${recM(r.paid)}，占投入成本的 ${recP(r.recov)}。`,
+    verdict: '合理。这是真金白银收到的钱（本金+利息一起）。它包含少数客户提前多交的未到期款项。如果和大表对不上，通常是某期在系统里漏标了「已还」。' },
+  pending: { name: '待还租金', level: 'ok',
+    src: '总租金减去已还租金。',
+    formula: '待还租金 = 总租金 − 已还租金',
+    ex: r => `${r.m}：${recM(r.rent)} − ${recM(r.paid)} = ${recM(r.pending)}。`,
+    verdict: '合理，且比原表更清楚——原表把「还没到期」和「已经该还没还」混在一起，看不出风险。这里拆成下面两列。' },
+  overdue: { name: '其中：已逾期', level: 'ok',
+    src: '还款计划里「到期日在今天之前、还没标记已还」的期次，金额加起来。今天到期的不算逾期。',
+    formula: '已逾期 = Σ（到期日 < 今天 且 未还 的期次金额）',
+    ex: r => `${r.m} 已经该还没还的有 ${recM(r.overdueAmt)}。`,
+    verdict: '合理。这才是真正需要催的钱。' },
+  notdue: { name: '其中：未到期', level: 'ok',
+    src: '待还租金里扣掉已逾期的部分。',
+    formula: '未到期 = 待还租金 − 已逾期',
+    ex: r => `${r.m} 还没到还款日的有 ${recM(r.notDue)}。`,
+    verdict: '合理。越新的月份这一块越大，不是风险，只是还没到时间。' },
+  net: { name: '实际投入（未回收的本钱）', level: 'ok',
+    src: '投入成本减去已还租金，也就是这批单子还压在外面的钱。',
+    formula: '实际投入 = 投入成本 − 已还租金',
+    ex: r => `${r.m}：${recM(r.cost)} − ${recM(r.paid)} = ${recM(r.net)}。`,
+    verdict: '合理，和原表「实际投入（实毛）」一致。负数表示已经回本、有盈余。放款越新、金额越大，这个数自然越大，是正常现象，不代表亏损。' },
+  recov: { name: '回收率（新增）', level: 'ok',
+    src: '已还租金 ÷ 投入成本。',
+    formula: '回收率 = 已还租金 ÷ 投入成本',
+    ex: r => `${r.m}：${recM(r.paid)} ÷ ${recM(r.cost)} = ${recP(r.recov)}。`,
+    verdict: '新增指标，用来取代原表的「实际毛利率」来看回本进度：100% 就是本钱全回来了，超过 100% 才开始赚钱。比较不同月份时，要看下面的「回收曲线」（同样放款月龄才公平）。' },
+  actGM: { name: '实际毛利率（原表口径）', level: 'bad',
+    src: '沿用原表：（已还租金 − 投入成本）÷ 投入成本。',
+    formula: '实际毛利率 = −（实际投入 ÷ 投入成本）= （已还 − 投入）÷ 投入',
+    ex: r => `${r.m}：（${recM(r.paid)} − ${recM(r.cost)}）÷ ${recM(r.cost)} = ${recP(r.actGM)}。`,
+    verdict: '名字会误导。它不是利润率，而是「回本进度」减 100%：放款越新越负（原表 9 月 −85.8%），只说明才收回一小部分，不代表亏。拿 4 月和 9 月直接比没有意义。建议看「回收率」和「回收曲线」。这里为了和原表对得上才保留。' },
+  theo: { name: '理论毛利', level: 'warn',
+    src: '总租金减去投入成本。',
+    formula: '理论毛利 = 总租金 − 投入成本',
+    ex: r => `${r.m}：${recM(r.rent)} − ${recM(r.cost)} = ${recM(r.theo)}。`,
+    verdict: '有保留。它假设所有客户都按计划还完，没有坏账；也没有算滞纳金收入、提前结清的让利、资金成本、工资和运营开支。适合用来比较不同月份的「定价好不好」，不能当成赚到的钱。真实利润看「月度财务报表」。' },
+  theoRate: { name: '理论毛利率（毛利 ÷ 投入成本）', level: 'ok',
+    src: '沿用原表口径：理论毛利 ÷ 投入成本。',
+    formula: '理论毛利率 = 理论毛利 ÷ 投入成本',
+    ex: r => `${r.m}：${recM(r.theo)} ÷ ${recM(r.cost)} = ${recP(r.theoRate)}。`,
+    verdict: '合理，含义是「放出去 100 块，全部还完能赚多少」。但严格说它是「投资回报率」，不是传统毛利率——传统毛利率是除以收入（下一列）。两个都显示，避免和别人讲数字时说不到一起。' },
+  theoRate2: { name: '理论毛利率（毛利 ÷ 总租金，传统口径）', level: 'ok',
+    src: '理论毛利 ÷ 总租金。',
+    formula: '传统毛利率 = 理论毛利 ÷ 总租金',
+    ex: r => `${r.m}：${recM(r.theo)} ÷ ${recM(r.rent)} = ${recP(r.theoRate2)}。`,
+    verdict: '合理，是会计上常说的毛利率，数字比上一列低。对外汇报或和别的行业比较时用这一列。' },
+  badCnt: { name: '坏账数量', level: 'ok',
+    src: '还款计划里至少有一期「逾期天数 ≥ 所选坏账天数」且还没还的合同数。',
+    formula: '坏账数量 = 有逾期满 N 天未还期次的合同数（N 在页面顶部选，默认 1 天）',
+    ex: r => `${r.m} 有 ${r.badCnt} 单至少有一期逾期未还。`,
+    verdict: '原表这一列是空的（$0.00，连单位都错了）。按老板 2026-10-21 的要求，默认逾期 1 天以上都算坏账；传统做法是逾期 30 天（或 90 天）才算，要换口径在顶部改「坏账天数」即可。' },
+  badAmt: { name: '坏账金额', level: 'ok',
+    src: '上面这些逾期期次的应收金额加总（不含滞纳金）。',
+    formula: '坏账金额 = Σ（逾期天数 ≥ N 且 未还 的期次金额）',
+    ex: r => `${r.m} 坏账金额 ${recM(r.badAmt)}（涉及 ${r.badCnt} 单）。`,
+    verdict: '合理。注意只算「已到期没还的那几期」，客户还没到期的后续期次不算坏账。' },
+  badRate: { name: '坏账率（÷总租金）', level: 'warn',
+    src: '坏账金额 ÷ 总租金。',
+    formula: '坏账率 = 坏账金额 ÷ 总租金',
+    ex: r => `${r.m}：${recM(r.badAmt)} ÷ ${recM(r.rent)} = ${recP(r.badRate)}。`,
+    verdict: '和「店家统计」里的总逾期率同一个口径，方便对照。但分母是整个合同期的全部应收，越新的月份分母里「还没到期」的越多，所以数字会偏小。看风险请同时看右边的「异常率」。' },
+  abnRate: { name: '异常率（到期未还率）', level: 'ok',
+    src: '已逾期金额 ÷ 已到期应收。对应原表「截至8月底还款异常率」那一列。',
+    formula: '异常率 = 已逾期金额 ÷ 已到期应收（到期日在今天之前的全部期次应收）',
+    ex: r => `${r.m}：${recM(r.overdueAmt)} ÷ ${recM(r.dueAmt)} = ${recP(r.abnRate)}。`,
+    verdict: '合理，也是最能说明客户质量的一列：只拿「已经到了还款日」的钱来比，不会被没到期的钱稀释。原表这一列大部分显示 #REF!（公式引用断了），4 月、5 月的 32.6%、11.4% 也无法确认当时怎么算的，这里重新定义并全部补算。' },
+  mult: { name: '租金倍数', level: 'ok',
+    src: '总租金 ÷ 投入成本（辅助分析列）。',
+    formula: '租金倍数 = 总租金 ÷ 投入成本',
+    ex: r => `${r.m}：${recM(r.rent)} ÷ ${recM(r.cost)} = ${r.mult ? r.mult.toFixed(2) : '—'} 倍。`,
+    verdict: '用来解释理论毛利率为什么变：放出去 1 块，合同期内应收回几块。这个数下降，就是定价（利息）变低或期数变短了。' },
+  avgLoan: { name: '平均每单分期金额', level: 'ok', src: '分期金额 ÷ 订单数。', formula: '平均分期金额 = 分期金额 ÷ 订单数',
+    ex: r => `${r.m}：${recM(r.loan)} ÷ ${r.orders} = ${recM(r.avgLoan)}。`, verdict: '看是不是在放更大额的单，单子大风险也大。' },
+  avgPeriods: { name: '平均期数', level: 'ok', src: '所有合同还款计划的期数 ÷ 订单数。', formula: '平均期数 = Σ 每单还款期数 ÷ 订单数',
+    ex: r => `${r.m} 平均每单 ${r.avgPeriods ? r.avgPeriods.toFixed(1) : '—'} 期。`, verdict: '期数短，利息收得少，理论毛利率会下降。' },
+  rebateRate: { name: '佣金率', level: 'ok', src: '佣金 ÷ 分期金额。', formula: '佣金率 = 佣金 ÷ 分期金额',
+    ex: r => `${r.m}：${recM(r.rebate)} ÷ ${recM(r.loan)} = ${recP(r.rebateRate)}。`, verdict: '佣金率升高，会直接压低毛利。' }
+};
+function recM(v) { return v == null || isNaN(v) ? '—' : '$' + Math.round(v).toLocaleString('en-US'); }
+function recP(v) { return v == null || isNaN(v) ? '—' : (v * 100).toFixed(1) + '%'; }
+window.recShowDoc = function (key) {
+  const d = REC_DOC[key]; if (!d) return;
+  const data = computeRecovery(window._rec.brand, window._rec.badDays);
+  const sample = [...data.rows].reverse().find(r => r.orders >= 5) || data.total;
+  const lv = { ok: ['#2e7d32', '#e8f5e9', '✅ 合理'], warn: ['#e65100', '#fff3e0', '⚠️ 有保留'], bad: ['#c62828', '#fdecea', '❗ 口径有问题'] }[d.level];
+  const box = (t, c) => `<div style="margin-bottom:12px"><div style="font-size:12px;color:var(--muted);margin-bottom:3px">${t}</div><div style="font-size:14px;line-height:1.7">${c}</div></div>`;
+  showModal('ⓘ ' + d.name,
+    box('数据从哪来', esc(d.src)) +
+    box('怎么算', `<code style="background:#f5f7fa;padding:2px 6px;border-radius:4px">${esc(d.formula)}</code>`) +
+    box('拿现在的数据举个例子', esc(d.ex(sample))) +
+    `<div style="background:${lv[1]};border-radius:8px;padding:10px 12px"><b style="color:${lv[0]}">${lv[2]}</b><div style="font-size:13px;line-height:1.7;margin-top:4px">${esc(d.verdict)}</div></div>`);
+};
+window.recSet = function (k, v) { window._rec[k] = k === 'badDays' ? +v : v; nav('recovery-report'); };
+window.recDownload = function (blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 200);
+};
+
+// 表头定义：[字段, 显示名, 格式, 分组]
+const REC_COLS = [
+  ['orders', '订单数', 'n', '投入'], ['loan', '分期金额', 'm', '投入'], ['rebate', '佣金', 'm', '投入'], ['cost', '投入成本', 'm', '投入'],
+  ['rent', '总租金', 'm', '合同应收'], ['theo', '理论毛利', 'm', '合同应收'], ['theoRate', '理论毛利率\n(÷投入成本)', 'p', '合同应收'], ['theoRate2', '理论毛利率\n(÷总租金)', 'p', '合同应收'],
+  ['paid', '已还租金', 'm', '回收'], ['recov', '回收率', 'p', '回收'], ['net', '实际投入\n(未回收)', 'm', '回收'], ['actGM', '实际毛利率\n(原表口径)', 'p', '回收'],
+  ['pending', '待还租金', 'm', '待还'], ['overdue', '其中\n已逾期', 'm', '待还'], ['notdue', '其中\n未到期', 'm', '待还'],
+  ['badCnt', '坏账数量', 'n', '风险'], ['badAmt', '坏账金额', 'm', '风险'], ['badRate', '坏账率\n(÷总租金)', 'p', '风险'], ['abnRate', '异常率\n(到期未还率)', 'p', '风险']
+];
+const REC_FIELD = { overdue: 'overdueAmt', notdue: 'notDue' };
+function recCell(r, key, fmtK) {
+  const v = r[REC_FIELD[key] || key];
+  return fmtK === 'n' ? (v == null ? '—' : String(v)) : fmtK === 'm' ? recM(v) : recP(v);
+}
+function recColor(key, v) { // 个别列用颜色提醒
+  if (v == null) return '';
+  if (key === 'actGM') return v < 0 ? 'color:#90a4ae' : 'color:#2e7d32;font-weight:700';
+  if (key === 'abnRate' || key === 'badRate') return v >= 0.2 ? 'color:#c62828;font-weight:700' : v >= 0.1 ? 'color:#e65100;font-weight:700' : '';
+  return '';
+}
+
+// 自动找出「理论毛利率」降得最多的一个月，并拆解原因
+function recInsight(rows) {
+  const ok = rows.filter(r => r.orders >= 10 && r.theoRate != null);
+  let best = null;
+  for (let i = 1; i < ok.length; i++) {
+    const drop = ok[i - 1].theoRate - ok[i].theoRate;
+    if (!best || drop > best.drop) best = { drop, a: ok[i - 1], b: ok[i] };
+  }
+  if (!best || best.drop < 0.05) return '';
+  const { a, b } = best;
+  const arrow = (x, y, f) => `${f(x)} → ${f(y)}`;
+  const reasons = [];
+  if (Math.abs(a.mult - b.mult) >= 0.05) reasons.push(`租金倍数 ${arrow(a.mult, b.mult, v => v.toFixed(2))}（放出去 1 块能收回的钱变少了，说明利息收得少了，或者期数变短）`);
+  if (Math.abs(a.avgPeriods - b.avgPeriods) >= 0.3) reasons.push(`平均期数 ${arrow(a.avgPeriods, b.avgPeriods, v => v.toFixed(1))} 期`);
+  if (Math.abs(a.rebateRate - b.rebateRate) >= 0.005) reasons.push(`佣金率 ${arrow(a.rebateRate, b.rebateRate, recP)}`);
+  if (Math.abs(a.avgLoan - b.avgLoan) >= 15) reasons.push(`平均每单分期金额 ${arrow(a.avgLoan, b.avgLoan, recM)}`);
+  return `<div class="card" style="padding:14px 16px;margin-bottom:14px;border-left:4px solid #e65100;background:#fffaf3">
+    <div style="font-weight:700;color:#e65100;margin-bottom:6px">🔎 自动发现：为什么理论毛利率会变？</div>
+    <div style="font-size:13px;line-height:1.8">理论毛利率下降最多的是 <b>${a.m} → ${b.m}</b>：<b>${recP(a.theoRate)} → ${recP(b.theoRate)}</b>（降了 ${(best.drop * 100).toFixed(1)} 个百分点）。<br>
+    同时变化的有：${reasons.length ? reasons.join('；') : '（几项辅助指标变化都不大，需要看合同明细）'}。<br>
+    <span style="color:var(--muted)">这几项就是毛利率的来源：倍数 = 定价，期数 = 合同结构，佣金率 = 成本。哪一项变了，就是原因所在；可以去看那个月的合同是不是换了利率/期数方案。</span></div></div>`;
+}
+
+function renderRecoveryReport() {
+  const st = window._rec;
+  const data = computeRecovery(st.brand, st.badDays);
+  const { rows, total, curve, td } = data;
+  const th = (key, label) => `<th style="text-align:right;white-space:pre-line;font-size:11px;line-height:1.3;vertical-align:bottom">${esc(label)}${REC_DOC[key] ? ` <span onclick="recShowDoc('${key}')" style="cursor:pointer;color:var(--blue,#1565c0);font-weight:700" title="点开看：数据从哪来、怎么算、合不合理">ⓘ</span>` : ''}</th>`;
+  const groups = []; REC_COLS.forEach(c => { const g = groups[groups.length - 1]; if (g && g.n === c[3]) g.c++; else groups.push({ n: c[3], c: 1 }); });
+  const gColor = { '投入': '#e3f2fd', '合同应收': '#e8f5e9', '回收': '#fff8e1', '待还': '#f3e5f5', '风险': '#fdecea' };
+  const head = `<tr><th rowspan="2" style="min-width:70px;position:sticky;left:0;background:#e9eef6;color:#0f2d5c;z-index:3;vertical-align:bottom">放款月</th>${groups.map(g => `<th colspan="${g.c}" style="text-align:center;background:${gColor[g.n]};color:#0f2d5c;font-size:12px">${g.n}</th>`).join('')}</tr>
+    <tr>${REC_COLS.map(c => th(c[0], c[1])).join('')}</tr>`;
+  const line = (r, bold) => `<tr style="${bold ? 'background:#f5f7fa;font-weight:700' : ''}">
+    <td style="position:sticky;left:0;background:${bold ? '#f5f7fa' : '#fff'};font-weight:700;color:var(--navy)">${r.m}</td>
+    ${REC_COLS.map(c => `<td style="text-align:right;${recColor(c[0], r[c[0]])}">${recCell(r, c[0], c[2])}</td>`).join('')}</tr>`;
+  const brandBtn = (k, lb) => `<button class="btn ${st.brand === k ? 'btn-primary' : 'btn-outline'}" style="font-size:12px;padding:6px 14px" onclick="recSet('brand','${k}')">${lb}</button>`;
+  const maxK = Math.max(0, ...curve.map(c => c.pts.length));
+  const curveHtml = curve.length ? `
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
+      <div class="card-title" style="margin:14px 16px 4px">📈 回收曲线：每个放款月，放款后每个月底累计收回了投入成本的百分之几</div>
+      <div style="padding:0 16px 10px;font-size:12px;color:var(--muted);line-height:1.7">
+        这张表是用来<b>公平比较不同月份</b>的：看同一列（放款后同样的月数），哪个月的客户还得更快。M0 = 放款当月月底，M1 = 下个月月底，以此类推；颜色越绿回收越多。
+        比如原表里 9 月的「实际毛利率 −85.8%」，只是因为才放款一个月；比较不同月份，要看这里同一列的数字。
+      </div>
+      <div class="table-wrap"><table style="font-size:12px">
+        <tr><th style="min-width:70px">放款月</th><th style="text-align:right">投入成本</th>${Array.from({ length: maxK }, (_, k) => `<th style="text-align:center">M${k}</th>`).join('')}</tr>
+        ${curve.map(c => `<tr><td style="font-weight:700;color:var(--navy)">${c.m}</td><td style="text-align:right">${recM(c.cost)}</td>
+          ${Array.from({ length: maxK }, (_, k) => { const v = c.pts[k]; if (v == null) return '<td></td>'; const a = Math.min(1, v / 1.2); return `<td style="text-align:center;background:rgba(46,125,50,${(a * 0.35).toFixed(2)})">${(v * 100).toFixed(0)}%</td>`; }).join('')}</tr>`).join('')}
+      </table></div>
+    </div>` : '';
+  const diagHtml = `
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
+      <div class="card-title" style="margin:14px 16px 4px">🧮 毛利率是从哪来的？（定价和成本的变化）</div>
+      <div style="padding:0 16px 10px;font-size:12px;color:var(--muted);line-height:1.7">理论毛利率由这几样决定：租金倍数（定价）、平均期数（合同结构）、佣金率（成本）、平均单额。哪个月毛利率变了，对着这里就能看出是哪一项变的。</div>
+      <div class="table-wrap"><table style="font-size:12px">
+        <tr><th>放款月</th>${[['mult', '租金倍数'], ['avgPeriods', '平均期数'], ['rebateRate', '佣金率'], ['avgLoan', '平均每单\n分期金额'], ['theoRate', '理论毛利率\n(÷投入成本)']].map(c => th(c[0], c[1])).join('')}<th style="text-align:right;font-size:11px;white-space:pre-line">提前结清\n单数</th></tr>
+        ${[...rows, total].map(r => `<tr style="${r === total ? 'background:#f5f7fa;font-weight:700' : ''}"><td style="font-weight:700;color:var(--navy)">${r.m}</td>
+          <td style="text-align:right">${r.mult ? r.mult.toFixed(2) : '—'}</td><td style="text-align:right">${r.avgPeriods ? r.avgPeriods.toFixed(1) : '—'}</td>
+          <td style="text-align:right">${recP(r.rebateRate)}</td><td style="text-align:right">${recM(r.avgLoan)}</td><td style="text-align:right">${recP(r.theoRate)}</td><td style="text-align:right">${r.earlyCnt || '—'}</td></tr>`).join('')}
+      </table></div>
+    </div>`;
+  const guide = `
+    <div class="card" style="padding:14px 16px;margin-bottom:14px;background:#f8fbff">
+      <div style="font-weight:700;color:var(--navy);margin-bottom:6px">这张表怎么看</div>
+      <div style="font-size:13px;line-height:1.9">
+        <b>一句话：</b>一个月放出去多少钱（投入），合同到期总共能收多少（总租金），现在已经收回多少（已还），还有多少没收（待还，分成已逾期和未到期），其中多少有风险（坏账、异常率）。<br>
+        <b>看盈利：</b>看「理论毛利率」，它说的是「如果所有客户都还完，能赚多少」。<br>
+        <b>看回本：</b>看「回收率」和下面的「回收曲线」。放款越新越低是正常的，不是亏损。<br>
+        <b>看风险：</b>看「异常率」，它只拿「已经到了还款日」的钱来比，最能说明客户质量。<br>
+        <b>每一列的表头都有 ⓘ</b>，点开能看到：数据从哪个字段来、公式、用现在的数据举例、合不合理。
+      </div>
+    </div>`;
+  const note = `<div style="font-size:12px;color:var(--muted);line-height:1.8;margin:6px 2px 24px">
+    统计日期：${td}（逾期 = 到期日在今天之前、还没还；今天到期的不算）。数据来自系统里的合同和还款计划表，已取消的合同不算，金额不含滞纳金。
+    ${data.nOther ? `<br><span style="color:#e65100">⚠️ 有 ${data.nOther} 单的品牌无法判断（只在「全部」里统计）。</span>` : ''}
+    <br>这个页面说的是「放款回收」，不是公司利润：没有扣资金成本、工资、运营开支，滞纳金收入也没算。公司真实利润请看「月度财务报表」。</div>`;
+  return `
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
+    <div><div class="page-title">🔁 ${tl('放款回收分析', 'Loan Recovery Analysis', 'ការវិភាគការប្រមូលសង')}</div>
+    <div class="page-sub">${tl('按放款月看：投入多少、能收多少、收回多少、风险多大', 'By loan month', '')}</div></div>
+    <button class="btn btn-outline" style="font-size:12px;padding:8px 14px" onclick="exportRecovery()">📥 导出Excel（含口径说明）</button>
+  </div>
+  <div class="card" style="padding:12px 16px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span style="font-size:13px;font-weight:600;color:var(--navy)">品牌：</span>${brandBtn('all', '全部')}${brandBtn('iphone', 'iPhone')}${brandBtn('oppo', 'OPPO')}
+    <span style="margin-left:14px;font-size:13px;font-weight:600;color:var(--navy)">逾期满几天算坏账：</span>
+    <select onchange="recSet('badDays',this.value)" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit">
+      ${[1, 7, 15, 30].map(d => `<option value="${d}" ${st.badDays === d ? 'selected' : ''}>${d} 天${d === 1 ? '（逾期就算）' : ''}</option>`).join('')}
+    </select>
+  </div>
+  ${guide}
+  ${recInsight(rows)}
+  ${rows.length ? `
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
+    <div class="card-title" style="margin:14px 16px 8px">📋 放款回收汇总表（${{ all: '全部品牌', iphone: 'iPhone', oppo: 'OPPO' }[st.brand]}）</div>
+    <div class="table-wrap" style="max-height:560px"><table style="font-size:12px;white-space:nowrap">${head}${rows.map(r => line(r)).join('')}${line(total, true)}</table></div>
+  </div>
+  ${diagHtml}${curveHtml}` : `<div class="empty-state" style="padding:30px"><p>没有符合条件的合同</p></div>`}
+  ${note}`;
+}
+
+window.exportRecovery = function () {
+  const st = window._rec;
+  const data = computeRecovery(st.brand, st.badDays);
+  const label = { all: '全部品牌', iphone: 'iPhone', oppo: 'OPPO' }[st.brand];
+  const num = (v, k) => v == null ? '' : k === 'p' ? +(v * 100).toFixed(2) + '%' : +(+v).toFixed(2);
+  const s1h = ['放款月', ...REC_COLS.map(c => c[1].replace('\n', ''))];
+  const s1 = [...data.rows, data.total].map(r => [r.m, ...REC_COLS.map(c => num(r[REC_FIELD[c[0]] || c[0]], c[2] === 'p' ? 'p' : 'm'))]);
+  const maxK = Math.max(0, ...data.curve.map(c => c.pts.length));
+  const s2h = ['放款月', '投入成本', ...Array.from({ length: maxK }, (_, k) => 'M' + k)];
+  const s2 = data.curve.map(c => [c.m, +c.cost.toFixed(2), ...Array.from({ length: maxK }, (_, k) => c.pts[k] == null ? '' : (c.pts[k] * 100).toFixed(1) + '%')]);
+  const s3h = ['放款月', '租金倍数', '平均期数', '佣金率', '平均每单分期金额', '理论毛利率(÷投入成本)', '提前结清单数'];
+  const s3 = [...data.rows, data.total].map(r => [r.m, r.mult ? +r.mult.toFixed(3) : '', r.avgPeriods ? +r.avgPeriods.toFixed(2) : '', num(r.rebateRate, 'p'), num(r.avgLoan, 'm'), num(r.theoRate, 'p'), r.earlyCnt]);
+  const sample = [...data.rows].reverse().find(r => r.orders >= 5) || data.total;
+  const lv = { ok: '合理', warn: '有保留', bad: '口径有问题' };
+  const s4h = ['列名', '数据从哪来', '怎么算', '用现在的数据举例', '合不合理', '评价'];
+  const s4 = Object.values(REC_DOC).map(d => [d.name, d.src, d.formula, d.ex(sample), d.verdict, lv[d.level]]);
+  const sheets = [['放款回收汇总', s1h, s1], ['回收曲线', s2h, s2], ['毛利率拆解', s3h, s3], ['口径说明', s4h, s4]];
+  const esch = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>`;
+  sheets.forEach(([n]) => { html += `<x:ExcelWorksheet><x:Name>${n}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet>`; });
+  html += `</x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body>`;
+  sheets.forEach(([n, head, rows]) => {
+    html += `<table><tr>${head.map(h => `<td style="background:#1565c0;color:white;font-weight:bold;border:1px solid #ccc">${esch(h)}</td>`).join('')}</tr>`;
+    rows.forEach(r => { html += `<tr>${r.map(v => `<td style="border:1px solid #ddd;vertical-align:top">${esch(v)}</td>`).join('')}</tr>`; });
+    html += `</table><br>`;
+  });
+  html += '</body></html>';
+  window.recDownload(new Blob(['﻿' + html], { type: 'application/vnd.ms-excel;charset=utf-8' }), `放款回收分析_${label}_${data.td}.xls`);
 };
 
 // ══════════════════════════════════════════════════════
