@@ -4072,13 +4072,19 @@ window.saveEditSale = function(id) {
       newSchedule.push(existingPaid); // 已还期数：完全保留，不受本次编辑影响
     } else {
       const d = new Date(firstDue); d.setMonth(d.getMonth() + i);
+      // 🔧 2026-10-23：以前这里写死 serviceFeeDue: 0，带手续费的合同只要点一次"保存"，
+      // 所有未还期次的手续费就被清零，每期应还少一块手续费（例：68 变成 56）。
+      // 现在手续费沿用表单里的「每期手续费」；原来哪些期次有手续费就仍然只在那些期次收。
+      const _oldP = oldSchedule.find(p => p.period === periodNum);
+      const _anyOldFee = oldSchedule.some(p => (+p.serviceFeeDue || 0) > 0);
+      const _fee = monthlySvc > 0 ? ((_oldP && _anyOldFee) ? ((+_oldP.serviceFeeDue || 0) > 0 ? monthlySvc : 0) : monthlySvc) : 0;
       newSchedule.push({
         period: periodNum,
         dueDate: d.toISOString().slice(0, 10),
         principalDue: monthlyPrincipal,
         interestDue: monthlyInt,
-        serviceFeeDue: 0,
-        totalDue: +(monthlyPrincipal + monthlyInt).toFixed(2),
+        serviceFeeDue: _fee,
+        totalDue: +(monthlyPrincipal + monthlyInt + _fee).toFixed(2),
         paid: false, paidDate: null,
         paidPrincipal: 0, paidInterest: 0, paidServiceFee: 0, penalty: 0
       });
@@ -4099,7 +4105,7 @@ window.saveEditSale = function(id) {
     periods, svcPeriods,
     interestRate: intRate, serviceFeeRate: svcRate,
     monthlyPayment: monthly,
-    totalInterest: totalInt, totalServiceFee: totalSvc,
+    totalInterest: totalInt, totalServiceFee: newSchedule.reduce((a, p) => a + (+p.serviceFeeDue || 0), 0),
     contractNetProfit,
     dailyLateFee: +(document.getElementById('eDailyFee')?.value || 0),
     storeRebate: rebate,
